@@ -63,7 +63,6 @@ pub fn dispatch(ctx: &mut Context, mem: &mut MemoryPool) {
         trap_frame.rax = found_ascii as u64; // 0 means no data ready
     } else if compare(&sys_num, &(SYS_WRITE + 1)) && !compare(&sys_num, &SYS_WRITE) {
         let byte = arg as u8;
-        kernel_kit::serial::SERIAL1.lock().send(byte);
         let mut vga = kernel_kit::vga::VgaWriter::new();
         let bytes = [byte];
         if let Ok(s) = core::str::from_utf8(&bytes) {
