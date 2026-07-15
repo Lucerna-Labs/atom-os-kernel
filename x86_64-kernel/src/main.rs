@@ -279,6 +279,7 @@ static mut TSS: TaskStateSegment = TaskStateSegment::new();
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     kernel_kit::serial::SERIAL1.lock().init();
+    kernel_kit::serial::SERIAL1.unlock();
 
     let mut vga = kernel_kit::vga::VgaWriter::new();
     vga.write_string("Booting Fearless Hypatia...\n");

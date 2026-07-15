@@ -14,6 +14,7 @@ impl VgaWriter {
 
     pub fn write_byte(&mut self, byte: u8) {
         crate::serial::SERIAL1.lock().send(byte);
+        crate::serial::SERIAL1.unlock();
         
         if byte == b'\n' {
             self.new_line();
