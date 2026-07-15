@@ -18,8 +18,8 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 #[global_allocator]
 static ALLOCATOR: AtomHeap = AtomHeap(Spinlock::new(BumpAllocator::new()));
 
-// 1MB statically allocated byte array in the `.bss` section to serve as our physical heap.
-static mut HEAP_MEM: [u8; 1024 * 1024] = [0; 1024 * 1024];
+// 16MB statically allocated byte array in the `.bss` section to serve as our physical heap.
+static mut HEAP_MEM: [u8; 16 * 1024 * 1024] = [0; 16 * 1024 * 1024];
 
 #[alloc_error_handler]
 fn alloc_error_handler(_layout: Layout) -> ! {
@@ -200,8 +200,8 @@ pub extern "C" fn syscall_interrupt_handler(rsp: u64) -> u64 {
 }
 
 fn inject_payloads() {
-    let shell_bytes = include_bytes!("../../target/x86_64-os/debug/payload");
-    let daemon_bytes = include_bytes!("../../target/x86_64-os/debug/daemon");
+    let shell_bytes = include_bytes!("../../target/x86_64-os/release/payload");
+    let daemon_bytes = include_bytes!("../../target/x86_64-os/release/daemon");
     
     // Inject the payloads into the Root RamFS
     let mut fs = kernel_kit::fs::ROOT_FS.lock();

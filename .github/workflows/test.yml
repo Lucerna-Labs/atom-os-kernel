@@ -29,12 +29,12 @@ jobs:
         
       - name: Build bootimage
         working-directory: ./x86_64-kernel
-        run: cargo +nightly bootimage -Zjson-target-spec -Zbuild-std="core,alloc,compiler_builtins" -Zbuild-std-features="compiler-builtins-mem" --target ../x86_64-os.json
+        run: cargo +nightly bootimage -Zjson-target-spec -Zbuild-std="core,alloc,compiler_builtins" -Zbuild-std-features="compiler-builtins-mem" --target ../x86_64-os.json --release
 
       - name: Run QEMU and capture Serial Output
         run: |
           timeout 10 qemu-system-x86_64 \
-            -drive format=raw,file=target/x86_64-os/debug/bootimage-x86_64-kernel.bin \
+            -drive format=raw,file=target/x86_64-os/release/bootimage-x86_64-kernel.bin \
             -display none \
             -serial file:qemu.log || true
           
