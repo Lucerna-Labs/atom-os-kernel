@@ -110,9 +110,9 @@ pub fn duplicate_pml4(active_cr3: u64) -> Option<u64> {
             1
         );
         
-        // Clear the lower half (user space, 0 to 255)
+        // Clear the upper half (user space, 256 to 511)
         let new_table = &mut *(new_pml4_phys as *mut PageTable);
-        for i in 0..256 {
+        for i in 256..512 {
             new_table.entries[i] = PageTableEntry::empty();
         }
         

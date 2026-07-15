@@ -230,7 +230,7 @@ unsafe fn spawn_process(pid: u64, filename: &[u8]) -> kernel_kit::context::Conte
     let kernel_stack_ptr = kernel_stack.as_ptr() as u64 + 4096;
     core::mem::forget(kernel_stack);
 
-    let mut tf = TrapFrame::new_user(0, 0x200000);
+    let mut tf = TrapFrame::new_user(0, 0xFFFFFFFF80100000);
     let frame_ptr = (kernel_stack_ptr - core::mem::size_of::<TrapFrame>() as u64) as *mut TrapFrame;
     
     // We pass tf.rsp via ctx.rsp so the dispatcher can find it.

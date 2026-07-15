@@ -249,9 +249,9 @@ pub fn dispatch(ctx: &mut Context, mem: &mut MemoryPool) {
                                     }
                                 }
                                 
-                                // Map User Stack (8KB ending at 0x200000)
+                                // Map User Stack (8KB ending at 0xFFFFFFFF80100000)
                                 unsafe {
-                                    let stack_vaddr = 0x200000 - 8192;
+                                    let stack_vaddr = 0xFFFFFFFF800FE000;
                                     let stack_size = 8192;
                                     let layout = core::alloc::Layout::from_size_align(stack_size, 4096).unwrap();
                                     let stack_phys = alloc::alloc::alloc(layout);
