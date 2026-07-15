@@ -281,6 +281,9 @@ pub extern "C" fn _start() -> ! {
     kernel_kit::serial::SERIAL1.lock().init();
     kernel_kit::serial::SERIAL1.unlock();
 
+    kernel_kit::serial::SERIAL1.lock().send(b'A');
+    kernel_kit::serial::SERIAL1.unlock();
+
     let mut vga = kernel_kit::vga::VgaWriter::new();
     vga.write_string("Booting Fearless Hypatia...\n");
     
@@ -290,10 +293,12 @@ pub extern "C" fn _start() -> ! {
         let heap_size = HEAP_MEM.len();
         ALLOCATOR.0.lock().init(heap_start, heap_size);
     }
-    vga.write_string("AtomHeap (Global Allocator) Initialized.\n");
+    kernel_kit::serial::SERIAL1.lock().send(b'B');
+    kernel_kit::serial::SERIAL1.unlock();
     
     inject_payloads();
-    vga.write_string("Payloads Injected into RamFS.\n");
+    kernel_kit::serial::SERIAL1.lock().send(b'C');
+    kernel_kit::serial::SERIAL1.unlock();
     
     // Test the allocator native to Rust
     let mut test_vec = alloc::vec::Vec::new();
@@ -302,6 +307,9 @@ pub extern "C" fn _start() -> ! {
         vga.write_string("Heap Allocation Test: PASS!\n");
     }
     
+    kernel_kit::serial::SERIAL1.lock().send(b'D');
+    kernel_kit::serial::SERIAL1.unlock();
+
     // 1. Setup IDT
     unsafe {
         IDT.set_handler(32, timer_interrupt_wrapper as *const () as u64);
@@ -312,7 +320,8 @@ pub extern "C" fn _start() -> ! {
         
         IDT.load();
     }
-    vga.write_string("IDT Loaded.\n");
+    kernel_kit::serial::SERIAL1.lock().send(b'E');
+    kernel_kit::serial::SERIAL1.unlock();
 
     // 2. Setup PIC
     unsafe {
