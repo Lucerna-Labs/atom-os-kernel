@@ -36,9 +36,14 @@ jobs:
           timeout 10 qemu-system-x86_64 \
             -drive format=raw,file=target/x86_64-os/release/bootimage-x86_64-kernel.bin \
             -display none \
+            -d int,cpu_reset -D qemu-int.log \
             -serial file:qemu.log || true
           
+          echo "==== SERIAL LOG ===="
           cat qemu.log || true
+          
+          echo "==== QEMU INT LOG (last 50 lines) ===="
+          tail -n 50 qemu-int.log || true
           
           # Check if our benchmark completed successfully
           if grep -q "10,000 SYS_YIELDs took" qemu.log; then

@@ -3,5 +3,5 @@ cargo:rustc-link-search=native=C:\Users\jgali\Documents\antigravity\fearless-hyp
 cargo:rustc-link-lib=static=kernel_bin-x86_64-kernel
 cargo:rerun-if-env-changed=KERNEL
 cargo:rerun-if-env-changed=KERNEL_MANIFEST
-cargo:rerun-if-changed=C:\Users\jgali\Documents\antigravity\fearless-hypatia\target\x86_64-os\debug\x86_64-kernel
+cargo:rerun-if-changed=C:\Users\jgali\Documents\antigravity\fearless-hypatia\target\x86_64-os\release\x86_64-kernel
 cargo:rerun-if-changed=build.rs
