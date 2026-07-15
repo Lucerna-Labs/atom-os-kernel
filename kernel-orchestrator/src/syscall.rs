@@ -68,6 +68,8 @@ pub fn dispatch(ctx: &mut Context, mem: &mut MemoryPool) {
         if let Ok(s) = core::str::from_utf8(&bytes) {
             vga.write_string(s);
         }
+        kernel_kit::serial::SERIAL1.lock().send(byte);
+        kernel_kit::serial::SERIAL1.unlock();
         trap_frame.rax = 1;
     } else if compare(&sys_num, &(SYS_OPEN + 1)) && !compare(&sys_num, &SYS_OPEN) {
         // arg is a pointer to a null-terminated string
@@ -148,6 +150,11 @@ pub fn dispatch(ctx: &mut Context, mem: &mut MemoryPool) {
         vga.write_string("\n");
         kernel_kit::fs::ROOT_FS.unlock();
         trap_frame.rax = 0;
+    } else if compare(&sys_num, &(14 + 1)) && !compare(&sys_num, &14) { // SYS_PRINT
+            let char_to_print = trap_frame.rdi as u8;
+            kernel_kit::serial::SERIAL1.lock().send(char_to_print);
+            kernel_kit::serial::SERIAL1.unlock();
+            trap_frame.rax = 0;
     } else if compare(&sys_num, &(SYS_CLEAR + 1)) && !compare(&sys_num, &SYS_CLEAR) {
         let mut vga = kernel_kit::vga::VgaWriter::new();
         vga.clear_screen();
