@@ -18,8 +18,8 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 #[global_allocator]
 static ALLOCATOR: AtomHeap = AtomHeap(Spinlock::new(BumpAllocator::new()));
 
-// 16MB statically allocated byte array in the `.bss` section to serve as our physical heap.
-static mut HEAP_MEM: [u8; 16 * 1024 * 1024] = [0; 16 * 1024 * 1024];
+// 1MB statically allocated byte array in the `.bss` section to serve as our physical heap.
+static mut HEAP_MEM: [u8; 1024 * 1024] = [0; 1024 * 1024];
 
 #[alloc_error_handler]
 fn alloc_error_handler(_layout: Layout) -> ! {
