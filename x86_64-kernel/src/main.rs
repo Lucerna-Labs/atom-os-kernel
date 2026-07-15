@@ -284,9 +284,6 @@ pub extern "C" fn _start() -> ! {
     let mut vga = kernel_kit::vga::VgaWriter::new();
     vga.write_string("Booting Fearless Hypatia...\n");
     
-    inject_payloads();
-    vga.write_string("Payloads Injected into RamFS.\n");
-    
     // 0.5 Setup Physical Heap Allocator
     unsafe {
         let heap_start = HEAP_MEM.as_ptr() as usize;
@@ -294,6 +291,9 @@ pub extern "C" fn _start() -> ! {
         ALLOCATOR.0.lock().init(heap_start, heap_size);
     }
     vga.write_string("AtomHeap (Global Allocator) Initialized.\n");
+    
+    inject_payloads();
+    vga.write_string("Payloads Injected into RamFS.\n");
     
     // Test the allocator native to Rust
     let mut test_vec = alloc::vec::Vec::new();
