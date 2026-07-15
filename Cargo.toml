@@ -1,0 +1,16 @@
+[workspace]
+members = ["daemon",
+    "kernel-kit",
+    "kernel-orchestrator", "payload",
+    "runner",
+    "x86_64-kernel",
+]
+resolver = "2"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+opt-level = 3
+lto = true
+panic = "abort"

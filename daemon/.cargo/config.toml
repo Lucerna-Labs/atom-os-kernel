@@ -1,0 +1,12 @@
+[build]
+target = "../x86_64-os.json"
+
+[unstable]
+build-std = ["core", "alloc", "compiler_builtins"]
+build-std-features = ["compiler-builtins-mem"]
+
+[target.'cfg(target_os = "none")']
+rustflags = [
+    "-C", "link-arg=-Tdaemon/linker.ld",
+    "-C", "relocation-model=static"
+]

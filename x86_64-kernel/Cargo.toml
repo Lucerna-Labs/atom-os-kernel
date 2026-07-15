@@ -1,0 +1,15 @@
+[package]
+name = "x86_64-kernel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bootloader = "0.9.23"
+kernel-kit = { path = "../kernel-kit" }
+kernel-orchestrator = { path = "../kernel-orchestrator" }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

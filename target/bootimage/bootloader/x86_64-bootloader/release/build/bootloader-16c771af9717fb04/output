@@ -1,0 +1,7 @@
+cargo:rerun-if-changed=C:\Users\jgali\Documents\antigravity\fearless-hypatia\x86_64-kernel\Cargo.toml
+cargo:rustc-link-search=native=C:\Users\jgali\Documents\antigravity\fearless-hypatia\target\bootimage\bootloader\x86_64-bootloader\release\build\bootloader-16c771af9717fb04\out
+cargo:rustc-link-lib=static=kernel_bin-x86_64-kernel
+cargo:rerun-if-env-changed=KERNEL
+cargo:rerun-if-env-changed=KERNEL_MANIFEST
+cargo:rerun-if-changed=C:\Users\jgali\Documents\antigravity\fearless-hypatia\target\x86_64-os\debug\x86_64-kernel
+cargo:rerun-if-changed=build.rs
