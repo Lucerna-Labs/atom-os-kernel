@@ -305,6 +305,7 @@ pub extern "C" fn _start() -> ! {
         let heap_start = HEAP_MEM.as_ptr() as usize;
         let heap_size = HEAP_MEM.len();
         ALLOCATOR.0.lock().init(heap_start, heap_size);
+        ALLOCATOR.0.unlock();
     }
     kernel_kit::serial::SERIAL1.lock().send(b'B');
     kernel_kit::serial::SERIAL1.unlock();
