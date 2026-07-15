@@ -17,4 +17,3 @@ panic = "abort"
 
 [profile.release.package.bootloader]
 opt-level = 1
-lto = false
