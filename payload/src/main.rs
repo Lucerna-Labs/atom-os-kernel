@@ -41,6 +41,40 @@ pub extern "C" fn _start() -> ! {
         let mut mode = ShellMode::Prompt;
         let mut current_fd: u64 = core::u64::MAX;
 
+        // Automatically run bench on boot for CI
+        let start = core::arch::x86_64::_rdtsc();
+        for _ in 0..10_000 {
+            core::arch::asm!("int 0x80", in("rax") 1, options(nostack, preserves_flags)); // SYS_YIELD
+        }
+        let end = core::arch::x86_64::_rdtsc();
+        let diff = end - start;
+        
+        let success = b"10,000 SYS_YIELDs took (CPU cycles): \0";
+        let mut i = 0;
+        while success[i] != 0 {
+            core::arch::asm!("int 0x80", in("rax") 5, in("rdi") success[i] as u64, options(nostack, preserves_flags));
+            i += 1;
+        }
+        
+        // Print u64
+        let mut n = diff;
+        if n == 0 {
+            core::arch::asm!("int 0x80", in("rax") 5, in("rdi") b'0' as u64, options(nostack, preserves_flags));
+        } else {
+            let mut num_buf = [0u8; 20];
+            let mut i = 0;
+            while n > 0 {
+                num_buf[i] = (n % 10) as u8 + b'0';
+                n /= 10;
+                i += 1;
+            }
+            while i > 0 {
+                i -= 1;
+                core::arch::asm!("int 0x80", in("rax") 5, in("rdi") num_buf[i] as u64, options(nostack, preserves_flags));
+            }
+        }
+        core::arch::asm!("int 0x80", in("rax") 5, in("rdi") b'\n' as u64, options(nostack, preserves_flags));
+
         // Print initial prompt
         let prompt = b"> \0";
         let mut i = 0;

@@ -5,6 +5,7 @@ pub mod atoms;
 pub mod context;
 pub mod fs;
 pub mod elf;
+pub mod serial;
 pub mod gdt;
 pub mod interrupts;
 pub mod io;

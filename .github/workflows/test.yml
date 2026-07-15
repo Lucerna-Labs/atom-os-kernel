@@ -1,0 +1,50 @@
+name: Test OS
+
+on: [push, pull_request]
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust Nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src, llvm-tools-preview
+
+      - name: Install bootimage
+        run: cargo install bootimage
+
+      - name: Install QEMU
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86
+
+      - name: Build payload
+        working-directory: ./payload
+        run: cargo +nightly build -Zjson-target-spec --release
+
+      - name: Build daemon
+        working-directory: ./daemon
+        run: cargo +nightly build -Zjson-target-spec --release
+        
+      - name: Build bootimage
+        working-directory: ./x86_64-kernel
+        run: cargo +nightly bootimage -Zjson-target-spec -Zbuild-std="core,alloc,compiler_builtins" -Zbuild-std-features="compiler-builtins-mem" --target ../x86_64-os.json
+
+      - name: Run QEMU and capture Serial Output
+        run: |
+          timeout 10 qemu-system-x86_64 \
+            -drive format=raw,file=target/x86_64-os/debug/bootimage-x86_64-kernel.bin \
+            -display none \
+            -serial stdio > qemu.log || true
+          
+          cat qemu.log
+          
+          # Check if our benchmark completed successfully
+          if grep -q "10,000 SYS_YIELDs took" qemu.log; then
+            echo "Benchmark passed!"
+            exit 0
+          else
+            echo "Benchmark failed or not found!"
+            exit 1
+          fi
