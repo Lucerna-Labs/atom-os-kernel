@@ -278,6 +278,19 @@ static mut TSS: TaskStateSegment = TaskStateSegment::new();
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
+    unsafe {
+        let mut cr0: u64;
+        let mut cr4: u64;
+        core::arch::asm!("mov {}, cr0", out(reg) cr0);
+        cr0 &= !(1 << 2); // Clear EM
+        cr0 |= 1 << 1;    // Set MP
+        core::arch::asm!("mov cr0, {}", in(reg) cr0);
+
+        core::arch::asm!("mov {}, cr4", out(reg) cr4);
+        cr4 |= 1 << 9;    // Set OSFXSR
+        cr4 |= 1 << 10;   // Set OSXMMEXCPT
+        core::arch::asm!("mov cr4, {}", in(reg) cr4);
+    }
     kernel_kit::serial::SERIAL1.lock().init();
     kernel_kit::serial::SERIAL1.unlock();
 
