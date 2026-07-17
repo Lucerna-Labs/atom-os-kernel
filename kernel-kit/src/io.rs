@@ -30,7 +30,7 @@ impl Port {
     }
 }
 
-use crate::memory::Spinlock;
+use crate::memory::IrqSpinlock;
 
 const BUFFER_SIZE: usize = 256;
 
@@ -73,4 +73,4 @@ impl RingBuffer {
 }
 
 /// A global shared instance of a Ring Buffer protected by our mathematical Spinlock.
-pub static KEYBOARD_BUFFER: Spinlock<RingBuffer> = Spinlock::new(RingBuffer::new());
+pub static KEYBOARD_BUFFER: IrqSpinlock<RingBuffer> = IrqSpinlock::new(RingBuffer::new());

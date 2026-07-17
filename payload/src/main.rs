@@ -44,7 +44,7 @@ pub extern "C" fn _start() -> ! {
         // Automatically run bench on boot for CI
         let start = core::arch::x86_64::_rdtsc();
         for _ in 0..10_000 {
-            core::arch::asm!("int 0x80", in("rax") 1, options(nostack, preserves_flags)); // SYS_YIELD
+            core::arch::asm!("int 0x80", inout("rax") 1 => _, options(nostack, preserves_flags)); // SYS_YIELD
         }
         let end = core::arch::x86_64::_rdtsc();
         let diff = end - start;
@@ -52,14 +52,14 @@ pub extern "C" fn _start() -> ! {
         let success = b"10,000 SYS_YIELDs took (CPU cycles): \0";
         let mut i = 0;
         while success[i] != 0 {
-            core::arch::asm!("int 0x80", in("rax") 5, in("rdi") success[i] as u64, options(nostack, preserves_flags));
+            core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") success[i] as u64, options(nostack, preserves_flags));
             i += 1;
         }
         
         // Print u64
         let mut n = diff;
         if n == 0 {
-            core::arch::asm!("int 0x80", in("rax") 5, in("rdi") b'0' as u64, options(nostack, preserves_flags));
+            core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") b'0' as u64, options(nostack, preserves_flags));
         } else {
             let mut num_buf = [0u8; 20];
             let mut i = 0;
@@ -70,16 +70,16 @@ pub extern "C" fn _start() -> ! {
             }
             while i > 0 {
                 i -= 1;
-                core::arch::asm!("int 0x80", in("rax") 5, in("rdi") num_buf[i] as u64, options(nostack, preserves_flags));
+                core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") num_buf[i] as u64, options(nostack, preserves_flags));
             }
         }
-        core::arch::asm!("int 0x80", in("rax") 5, in("rdi") b'\n' as u64, options(nostack, preserves_flags));
+        core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") b'\n' as u64, options(nostack, preserves_flags));
 
         // Print initial prompt
         let prompt = b"> \0";
         let mut i = 0;
         while prompt[i] != 0 {
-            core::arch::asm!("int 0x80", in("rax") 5, in("rdi") prompt[i] as u64, options(nostack, preserves_flags));
+            core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") prompt[i] as u64, options(nostack, preserves_flags));
             i += 1;
         }
 
@@ -99,33 +99,33 @@ pub extern "C" fn _start() -> ! {
                         if c == 0x1B { // ESC
                             // Save and Exit Editor
                             if current_fd != core::u64::MAX {
-                                core::arch::asm!("int 0x80", in("rax") 12, in("rdi") current_fd, options(nostack, preserves_flags)); // SYS_TRUNCATE
+                                core::arch::asm!("int 0x80", inout("rax") 12 => _, in("rdi") current_fd, options(nostack, preserves_flags)); // SYS_TRUNCATE
                                 for b in 0..buffer_len {
-                                    core::arch::asm!("int 0x80", in("rax") 8, in("rdi") current_fd, in("rsi") buffer[b] as u64, options(nostack, preserves_flags));
+                                    core::arch::asm!("int 0x80", inout("rax") 8 => _, in("rdi") current_fd, in("rsi") buffer[b] as u64, options(nostack, preserves_flags));
                                 }
-                                core::arch::asm!("int 0x80", in("rax") 9, in("rdi") current_fd, options(nostack, preserves_flags)); // SYS_CLOSE
+                                core::arch::asm!("int 0x80", inout("rax") 9 => _, in("rdi") current_fd, options(nostack, preserves_flags)); // SYS_CLOSE
                                 current_fd = core::u64::MAX;
                             }
                             mode = ShellMode::Prompt;
                             buffer_len = 0;
-                            core::arch::asm!("int 0x80", in("rax") 11, options(nostack, preserves_flags)); // SYS_CLEAR
+                            core::arch::asm!("int 0x80", inout("rax") 11 => _, options(nostack, preserves_flags)); // SYS_CLEAR
                             
                             let prompt = b"> \0";
                             let mut i = 0;
                             while prompt[i] != 0 {
-                                core::arch::asm!("int 0x80", in("rax") 5, in("rdi") prompt[i] as u64, options(nostack, preserves_flags));
+                                core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") prompt[i] as u64, options(nostack, preserves_flags));
                                 i += 1;
                             }
                         } else if c == 0x08 { // Backspace
                             if buffer_len > 0 {
                                 buffer_len -= 1;
-                                core::arch::asm!("int 0x80", in("rax") 5, in("rdi") c as u64, options(nostack, preserves_flags));
+                                core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") c as u64, options(nostack, preserves_flags));
                             }
                         } else {
                             if buffer_len < 1024 {
                                 buffer[buffer_len] = c;
                                 buffer_len += 1;
-                                core::arch::asm!("int 0x80", in("rax") 5, in("rdi") c as u64, options(nostack, preserves_flags));
+                                core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") c as u64, options(nostack, preserves_flags));
                             }
                         }
                     } else {
@@ -133,16 +133,16 @@ pub extern "C" fn _start() -> ! {
                         if c == 0x08 { // Backspace
                             if buffer_len > 0 {
                                 buffer_len -= 1;
-                                core::arch::asm!("int 0x80", in("rax") 5, in("rdi") c as u64, options(nostack, preserves_flags));
+                                core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") c as u64, options(nostack, preserves_flags));
                             }
                         } else if c == b'\n' {
-                            core::arch::asm!("int 0x80", in("rax") 5, in("rdi") c as u64, options(nostack, preserves_flags));
+                            core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") c as u64, options(nostack, preserves_flags));
                             
                             // Simple manual parsing to avoid alloc::string dependency
                             if buffer_len == 2 && buffer[0] == b'l' && buffer[1] == b's' {
-                                core::arch::asm!("int 0x80", in("rax") 10, options(nostack, preserves_flags)); // SYS_LIST_DIR
+                                core::arch::asm!("int 0x80", inout("rax") 10 => _, options(nostack, preserves_flags)); // SYS_LIST_DIR
                             } else if buffer_len == 5 && buffer[0] == b'c' && buffer[1] == b'l' && buffer[2] == b'e' && buffer[3] == b'a' && buffer[4] == b'r' {
-                                core::arch::asm!("int 0x80", in("rax") 11, options(nostack, preserves_flags)); // SYS_CLEAR
+                                core::arch::asm!("int 0x80", inout("rax") 11 => _, options(nostack, preserves_flags)); // SYS_CLEAR
                             } else if buffer_len > 5 && buffer[0] == b'e' && buffer[1] == b'd' && buffer[2] == b'i' && buffer[3] == b't' && buffer[4] == b' ' {
                                 let mut filename_buf: [u8; 64] = [0; 64];
                                 let mut f_len = 0;
@@ -159,7 +159,7 @@ pub extern "C" fn _start() -> ! {
                                 if current_fd != core::u64::MAX {
                                     mode = ShellMode::Editor;
                                     buffer_len = 0;
-                                    core::arch::asm!("int 0x80", in("rax") 11, options(nostack, preserves_flags)); // SYS_CLEAR
+                                    core::arch::asm!("int 0x80", inout("rax") 11 => _, options(nostack, preserves_flags)); // SYS_CLEAR
                                     
                                     // Load existing file into buffer
                                     loop {
@@ -169,7 +169,7 @@ pub extern "C" fn _start() -> ! {
                                         if buffer_len < 1024 {
                                             buffer[buffer_len] = byte as u8;
                                             buffer_len += 1;
-                                            core::arch::asm!("int 0x80", in("rax") 5, in("rdi") byte, options(nostack, preserves_flags)); // Print to screen
+                                            core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") byte, options(nostack, preserves_flags)); // Print to screen
                                         }
                                     }
                                     continue; // Skip prompt print
@@ -177,7 +177,7 @@ pub extern "C" fn _start() -> ! {
                                     let err = b"Failed to open file\n\0";
                                     let mut i = 0;
                                     while err[i] != 0 {
-                                        core::arch::asm!("int 0x80", in("rax") 5, in("rdi") err[i] as u64, options(nostack, preserves_flags));
+                                        core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") err[i] as u64, options(nostack, preserves_flags));
                                         i += 1;
                                     }
                                 }
@@ -200,15 +200,15 @@ pub extern "C" fn _start() -> ! {
                                         let mut byte: u64;
                                         core::arch::asm!("int 0x80", inout("rax") 7u64 => byte, in("rdi") fd, options(nostack, preserves_flags));
                                         if byte == core::u64::MAX { break; } // EOF
-                                        core::arch::asm!("int 0x80", in("rax") 5, in("rdi") byte, options(nostack, preserves_flags));
+                                        core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") byte, options(nostack, preserves_flags));
                                     }
-                                    core::arch::asm!("int 0x80", in("rax") 5, in("rdi") b'\n' as u64, options(nostack, preserves_flags));
-                                    core::arch::asm!("int 0x80", in("rax") 9, in("rdi") fd, options(nostack, preserves_flags)); // SYS_CLOSE
+                                    core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") b'\n' as u64, options(nostack, preserves_flags));
+                                    core::arch::asm!("int 0x80", inout("rax") 9 => _, in("rdi") fd, options(nostack, preserves_flags)); // SYS_CLOSE
                                 } else {
                                     let err = b"File not found\n\0";
                                     let mut i = 0;
                                     while err[i] != 0 {
-                                        core::arch::asm!("int 0x80", in("rax") 5, in("rdi") err[i] as u64, options(nostack, preserves_flags));
+                                        core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") err[i] as u64, options(nostack, preserves_flags));
                                         i += 1;
                                     }
                                 }
@@ -238,11 +238,11 @@ pub extern "C" fn _start() -> ! {
                                     
                                     if fd != core::u64::MAX {
                                         for i in 5..greater_idx {
-                                            core::arch::asm!("int 0x80", in("rax") 8, in("rdi") fd, in("rsi") buffer[i] as u64, options(nostack, preserves_flags));
+                                            core::arch::asm!("int 0x80", inout("rax") 8 => _, in("rdi") fd, in("rsi") buffer[i] as u64, options(nostack, preserves_flags));
                                         }
                                         // Append newline
-                                        core::arch::asm!("int 0x80", in("rax") 8, in("rdi") fd, in("rsi") b'\n' as u64, options(nostack, preserves_flags));
-                                        core::arch::asm!("int 0x80", in("rax") 9, in("rdi") fd, options(nostack, preserves_flags)); // SYS_CLOSE
+                                        core::arch::asm!("int 0x80", inout("rax") 8 => _, in("rdi") fd, in("rsi") b'\n' as u64, options(nostack, preserves_flags));
+                                        core::arch::asm!("int 0x80", inout("rax") 9 => _, in("rdi") fd, options(nostack, preserves_flags)); // SYS_CLOSE
                                     }
                                 }
                             } else if buffer_len > 4 && buffer[0] == b'm' && buffer[1] == b's' && buffer[2] == b'g' && buffer[3] == b' ' {
@@ -263,21 +263,21 @@ pub extern "C" fn _start() -> ! {
                                     let success = b"Message sent to Daemon\n\0";
                                     let mut i = 0;
                                     while success[i] != 0 {
-                                        core::arch::asm!("int 0x80", in("rax") 5, in("rdi") success[i] as u64, options(nostack, preserves_flags));
+                                        core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") success[i] as u64, options(nostack, preserves_flags));
                                         i += 1;
                                     }
                                 } else {
                                     let err = b"Failed to send message\n\0";
                                     let mut i = 0;
                                     while err[i] != 0 {
-                                        core::arch::asm!("int 0x80", in("rax") 5, in("rdi") err[i] as u64, options(nostack, preserves_flags));
+                                        core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") err[i] as u64, options(nostack, preserves_flags));
                                         i += 1;
                                     }
                                 }
                             } else if buffer_len == 5 && buffer[0] == b'b' && buffer[1] == b'e' && buffer[2] == b'n' && buffer[3] == b'c' && buffer[4] == b'h' {
                                 let start = unsafe { core::arch::x86_64::_rdtsc() };
                                 for _ in 0..10_000 {
-                                    core::arch::asm!("int 0x80", in("rax") 1, options(nostack, preserves_flags)); // SYS_YIELD
+                                    core::arch::asm!("int 0x80", inout("rax") 1 => _, options(nostack, preserves_flags)); // SYS_YIELD
                                 }
                                 let end = unsafe { core::arch::x86_64::_rdtsc() };
                                 let diff = end - start;
@@ -285,14 +285,14 @@ pub extern "C" fn _start() -> ! {
                                 let success = b"10,000 SYS_YIELDs took (CPU cycles): \0";
                                 let mut i = 0;
                                 while success[i] != 0 {
-                                    core::arch::asm!("int 0x80", in("rax") 5, in("rdi") success[i] as u64, options(nostack, preserves_flags));
+                                    core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") success[i] as u64, options(nostack, preserves_flags));
                                     i += 1;
                                 }
                                 
                                 // Print u64
                                 let mut n = diff;
                                 if n == 0 {
-                                    core::arch::asm!("int 0x80", in("rax") 5, in("rdi") b'0' as u64, options(nostack, preserves_flags));
+                                    core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") b'0' as u64, options(nostack, preserves_flags));
                                 } else {
                                     let mut num_buf = [0u8; 20];
                                     let mut i = 0;
@@ -303,15 +303,15 @@ pub extern "C" fn _start() -> ! {
                                     }
                                     while i > 0 {
                                         i -= 1;
-                                        core::arch::asm!("int 0x80", in("rax") 5, in("rdi") num_buf[i] as u64, options(nostack, preserves_flags));
+                                        core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") num_buf[i] as u64, options(nostack, preserves_flags));
                                     }
                                 }
-                                core::arch::asm!("int 0x80", in("rax") 5, in("rdi") b'\n' as u64, options(nostack, preserves_flags));
+                                core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") b'\n' as u64, options(nostack, preserves_flags));
                             } else if buffer_len > 0 {
                                 let err = b"Unknown command\n\0";
                                 let mut i = 0;
                                 while err[i] != 0 {
-                                    core::arch::asm!("int 0x80", in("rax") 5, in("rdi") err[i] as u64, options(nostack, preserves_flags));
+                                    core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") err[i] as u64, options(nostack, preserves_flags));
                                     i += 1;
                                 }
                             }
@@ -322,20 +322,20 @@ pub extern "C" fn _start() -> ! {
                             let prompt = b"> \0";
                             let mut i = 0;
                             while prompt[i] != 0 {
-                                core::arch::asm!("int 0x80", in("rax") 5, in("rdi") prompt[i] as u64, options(nostack, preserves_flags));
+                                core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") prompt[i] as u64, options(nostack, preserves_flags));
                                 i += 1;
                             }
                         } else {
                             if buffer_len < 1024 {
                                 buffer[buffer_len] = c;
                                 buffer_len += 1;
-                                core::arch::asm!("int 0x80", in("rax") 5, in("rdi") c as u64, options(nostack, preserves_flags));
+                                core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") c as u64, options(nostack, preserves_flags));
                             }
                         }
                     }
                 }
             } else {
-                core::arch::asm!("int 0x80", in("rax") 1, options(nostack, preserves_flags)); // SYS_YIELD
+                core::arch::asm!("int 0x80", inout("rax") 1 => _, options(nostack, preserves_flags)); // SYS_YIELD
             }
         }
     }

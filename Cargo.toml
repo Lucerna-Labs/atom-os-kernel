@@ -2,9 +2,9 @@
 members = ["daemon",
     "kernel-kit",
     "kernel-orchestrator", "payload",
-    "runner",
     "x86_64-kernel",
 ]
+exclude = ["runner"]
 resolver = "2"
 
 [profile.dev]

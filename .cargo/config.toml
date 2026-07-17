@@ -1,0 +1,15 @@
+# Cargo configuration for the atom-os-kernel workspace.
+# All workspace members are freestanding (no_std / no_main) and build for the
+# custom x86_64 kernel target, so we set it globally here.
+
+[build]
+target = "x86_64-os.json"
+
+[unstable]
+build-std = ["core", "alloc", "compiler_builtins"]
+build-std-features = ["compiler-builtins-mem"]
+json-target-spec = true
+
+# When QEMU is available, `cargo run` / `cargo bootimage run` will boot the
+# produced image. The bootimage tool wires this runner in when it runs.
+# Kept minimal: no automatic runner so `cargo check` never shells out.

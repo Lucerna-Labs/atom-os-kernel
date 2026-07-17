@@ -3,6 +3,7 @@ extern crate alloc;
 
 pub mod atoms;
 pub mod context;
+pub mod slab;
 pub mod fs;
 pub mod elf;
 pub mod serial;
