@@ -29,7 +29,7 @@ pub extern "C" fn _start() -> ! {
         loop {
             // Delay loop
             for _ in 0..500000 {
-                core::arch::asm!("int 0x80", in("rax") 1, options(nostack, preserves_flags)); // SYS_YIELD
+                core::arch::asm!("int 0x80", inout("rax") 1 => _, options(nostack, preserves_flags)); // SYS_YIELD
             }
             
             let mut ptr: u64;
@@ -39,23 +39,23 @@ pub extern "C" fn _start() -> ! {
                 let prefix = b"\n[Daemon] Received IPC: \0";
                 let mut i = 0;
                 while prefix[i] != 0 {
-                    core::arch::asm!("int 0x80", in("rax") 5, in("rdi") prefix[i] as u64, options(nostack, preserves_flags));
+                    core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") prefix[i] as u64, options(nostack, preserves_flags));
                     i += 1;
                 }
                 
                 let msg_ptr = ptr as *const u8;
                 let mut j = 0;
                 while *msg_ptr.add(j) != 0 && j < 255 {
-                    core::arch::asm!("int 0x80", in("rax") 5, in("rdi") *msg_ptr.add(j) as u64, options(nostack, preserves_flags));
+                    core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") *msg_ptr.add(j) as u64, options(nostack, preserves_flags));
                     j += 1;
                 }
                 
-                core::arch::asm!("int 0x80", in("rax") 5, in("rdi") b'\n' as u64, options(nostack, preserves_flags));
+                core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") b'\n' as u64, options(nostack, preserves_flags));
             } else {
                 let msg = b"[Daemon] Heartbeat... \0";
                 let mut i = 0;
                 while msg[i] != 0 {
-                    core::arch::asm!("int 0x80", in("rax") 5, in("rdi") msg[i] as u64, options(nostack, preserves_flags)); // SYS_WRITE
+                    core::arch::asm!("int 0x80", inout("rax") 5 => _, in("rdi") msg[i] as u64, options(nostack, preserves_flags)); // SYS_WRITE
                     i += 1;
                 }
             }

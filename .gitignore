@@ -1,0 +1,20 @@
+# Build artifacts
+/target/
+
+# Diagnostic / debug logs
+*.log
+diag-*.log
+q-*.log
+qemu-*.log
+run*.log
+
+# Backup files
+*.bak
+
+# Local session artifacts
+.zcode/
+.zcode-memory/
+
+# OS artifacts
+.DS_Store
+Thumbs.db

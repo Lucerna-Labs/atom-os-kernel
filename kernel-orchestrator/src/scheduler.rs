@@ -39,7 +39,43 @@ impl Scheduler {
     /// Called by the Timer Interrupt. Takes the interrupted task's stack pointer,
     /// saves it, and returns the next task's stack pointer.
     pub fn switch_context(&mut self, old_rsp: u64) -> u64 {
-        // Save the old stack pointer to the current task
+        // Count ALL Ready tasks (including the current one).
+        let total_ready: usize = self.tasks.iter()
+            .filter(|t| t.as_ref().map_or(false, |c| c.state == TaskState::Ready))
+            .count();
+
+        // Count OTHER ready tasks (excluding current).
+        let other_ready: usize = self.tasks.iter()
+            .enumerate()
+            .filter(|(i, t)| *i != self.current_task && t.as_ref().map_or(false, |c| c.state == TaskState::Ready))
+            .count();
+
+        // The current task's state.
+        let current_is_running = self.tasks.get(self.current_task)
+            .and_then(|t| t.as_ref())
+            .map_or(false, |c| c.state == TaskState::Running);
+
+        // Skip the save/restore ONLY when:
+        //   - current task is Running (it's the active task, not the idle loop)
+        //   - no OTHER task is Ready to switch to
+        // This avoids corrupting the running task's saved state via the
+        // timer handler's rsp save when there's nothing to switch to.
+        if current_is_running && other_ready == 0 {
+            return old_rsp;
+        }
+
+        // If the current task is Running and there IS another Ready task,
+        // save the current state before switching.
+        if current_is_running {
+            if let Some(ctx) = &mut self.tasks[self.current_task] {
+                ctx.rsp = old_rsp;
+                ctx.state = TaskState::Ready;
+            }
+        }
+
+        // Note: if current_is_running is false (e.g. kernel idle, first
+        // dispatch, or task already Ready), we don't save old_rsp — the
+        // idle loop's stack is not a task context.
         if let Some(ctx) = &mut self.tasks[self.current_task] {
             if ctx.state == TaskState::Running {
                 ctx.rsp = old_rsp;
@@ -59,7 +95,8 @@ impl Scheduler {
             }
         }
 
-        // If no other task is ready, just return the old rsp (continue executing)
+        // No ready task found despite ready_count > 0 (race edge case).
+        // Fall through without modifying state.
         old_rsp
     }
 }

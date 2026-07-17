@@ -14,6 +14,10 @@ pub struct ChainedPics {
     pic1_data: Port,
     pic2_command: Port,
     pic2_data: Port,
+    // Vector offsets captured during initialize(); used by EOI to tell master-only
+    // IRQs (offset1..offset1+7) from slave-chained IRQs (offset2..offset2+7).
+    offset1: u8,
+    offset2: u8,
 }
 
 impl ChainedPics {
@@ -23,38 +27,55 @@ impl ChainedPics {
             pic1_data: Port::new(PIC1_DATA),
             pic2_command: Port::new(PIC2_COMMAND),
             pic2_data: Port::new(PIC2_DATA),
+            offset1: 0,
+            offset2: 0,
         }
     }
 
     pub fn initialize(&mut self, offset1: u8, offset2: u8) {
-        // Save masks
-        let a1 = self.pic1_data.read();
-        let a2 = self.pic2_data.read();
+        // Record the offsets so notify_end_of_interrupt doesn't have to guess.
+        self.offset1 = offset1;
+        self.offset2 = offset2;
 
         // Start init sequence
         self.pic1_command.write(ICW1_INIT | ICW1_ICW4);
         self.pic2_command.write(ICW1_INIT | ICW1_ICW4);
-        
+
         // Setup offsets
         self.pic1_data.write(offset1);
         self.pic2_data.write(offset2);
-        
+
         // Setup cascading
         self.pic1_data.write(4);
         self.pic2_data.write(2);
-        
+
         // 8086/88 (MCS-80/85) mode
         self.pic1_data.write(ICW4_8086);
         self.pic2_data.write(ICW4_8086);
-        
-        // Restore masks
-        self.pic1_data.write(a1);
-        self.pic2_data.write(a2);
+
+        // Mask all IRQs initially; individual drivers unmask the lines they own.
+        // Restoring the pre-init mask (as the old code did) can leave IRQs masked
+        // on emulators whose reset state is 0xFF, silently dropping the timer/kbd.
+        self.pic1_data.write(0xFF);
+        self.pic2_data.write(0xFF);
     }
-    
+
+    /// Unmask a single hardware IRQ line (0..15). Used by drivers to enable the
+    /// device interrupts they actually handle.
+    pub fn unmask(&mut self, irq: u8) {
+        if irq < 8 {
+            let mask = self.pic1_data.read();
+            self.pic1_data.write(mask & !(1 << irq));
+        } else if irq < 16 {
+            let mask = self.pic2_data.read();
+            self.pic2_data.write(mask & !(1 << (irq - 8)));
+        }
+    }
+
+    /// Send End-Of-Interrupt. For slave-chained IRQs (vector >= offset2) the slave
+    /// must be acknowledged before the master, otherwise the slave stops delivering.
     pub fn notify_end_of_interrupt(&mut self, interrupt_id: u8) {
-        let pic2_offset = 40; // Assuming offset2 is 40
-        if interrupt_id >= pic2_offset {
+        if interrupt_id >= self.offset2 {
             self.pic2_command.write(0x20);
         }
         self.pic1_command.write(0x20);

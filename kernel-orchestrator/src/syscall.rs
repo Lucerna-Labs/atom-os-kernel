@@ -46,9 +46,9 @@ pub fn dispatch(ctx: &mut Context, mem: &mut MemoryPool) {
         
         // Loop until we find a valid ASCII character or the buffer is empty
         loop {
-            let buffer = kernel_kit::io::KEYBOARD_BUFFER.lock();
+            let (buffer, kb_sif) = kernel_kit::io::KEYBOARD_BUFFER.lock();
             let maybe_byte = buffer.pop();
-            kernel_kit::io::KEYBOARD_BUFFER.unlock();
+            kernel_kit::io::KEYBOARD_BUFFER.unlock(kb_sif);
             
             if let Some(scancode) = maybe_byte {
                 if let Some(ascii) = kernel_kit::keyboard::scancode_to_ascii(scancode) {
@@ -63,13 +63,13 @@ pub fn dispatch(ctx: &mut Context, mem: &mut MemoryPool) {
         trap_frame.rax = found_ascii as u64; // 0 means no data ready
     } else if compare(&sys_num, &(SYS_WRITE + 1)) && !compare(&sys_num, &SYS_WRITE) {
         let byte = arg as u8;
+        // VgaWriter::write_byte already sends to serial, so we don't
+        // need a separate serial send here (that was causing doubled output).
         let mut vga = kernel_kit::vga::VgaWriter::new();
         let bytes = [byte];
         if let Ok(s) = core::str::from_utf8(&bytes) {
             vga.write_string(s);
         }
-        kernel_kit::serial::SERIAL1.lock().send(byte);
-        kernel_kit::serial::SERIAL1.unlock();
         trap_frame.rax = 1;
     } else if compare(&sys_num, &(SYS_OPEN + 1)) && !compare(&sys_num, &SYS_OPEN) {
         // arg is a pointer to a null-terminated string
@@ -152,8 +152,9 @@ pub fn dispatch(ctx: &mut Context, mem: &mut MemoryPool) {
         trap_frame.rax = 0;
     } else if compare(&sys_num, &(14 + 1)) && !compare(&sys_num, &14) { // SYS_PRINT
             let char_to_print = trap_frame.rdi as u8;
-            kernel_kit::serial::SERIAL1.lock().send(char_to_print);
-            kernel_kit::serial::SERIAL1.unlock();
+            let (sport, sif) = kernel_kit::serial::SERIAL1.lock();
+            sport.send(char_to_print);
+            kernel_kit::serial::SERIAL1.unlock(sif);
             trap_frame.rax = 0;
     } else if compare(&sys_num, &(SYS_CLEAR + 1)) && !compare(&sys_num, &SYS_CLEAR) {
         let mut vga = kernel_kit::vga::VgaWriter::new();
@@ -208,58 +209,96 @@ pub fn dispatch(ctx: &mut Context, mem: &mut MemoryPool) {
                             
                             let active_cr3 = kernel_kit::paging::Cr3::read();
                             if let Some(new_cr3) = kernel_kit::paging::duplicate_pml4(active_cr3) {
-                                for i in 0..phnum {
-                                    let phdr_ptr = unsafe { elf_bytes.as_ptr().add(phoff + i * core::mem::size_of::<kernel_kit::elf::Elf64_Phdr>()) as *const kernel_kit::elf::Elf64_Phdr };
-                                    let phdr = unsafe { &*phdr_ptr };
-                                    
-                                    if phdr.p_type == 1 { // PT_LOAD
-                                        let vaddr = phdr.p_vaddr;
-                                        let offset = phdr.p_offset as usize;
-                                        let filesz = phdr.p_filesz as usize;
-                                        let memsz = phdr.p_memsz as usize;
-                                        
-                                        unsafe {
-                                            // Allocate physical memory for this segment
-                                            let memsz_aligned = (memsz + 4095) & !4095;
-                                            let layout = core::alloc::Layout::from_size_align(memsz_aligned, 4096).unwrap();
-                                            let phys_ptr = alloc::alloc::alloc(layout);
-                                            
-                                            if phys_ptr.is_null() {
-                                                panic!("OOM during SYS_EXEC PT_LOAD allocation");
-                                            }
-
-                                            // Copy data directly to the physical memory block
+                                // PASS 1: scan phdrs to find the virtual span [vmin, vmax).
+                            let mut vmin: u64 = u64::MAX;
+                            let mut vmax: u64 = 0;
+                            for i in 0..phnum {
+                                let phdr_ptr = unsafe { elf_bytes.as_ptr().add(phoff + i * core::mem::size_of::<kernel_kit::elf::Elf64_Phdr>()) as *const kernel_kit::elf::Elf64_Phdr };
+                                let phdr = unsafe { &*phdr_ptr };
+                                if phdr.p_type == 1 { // PT_LOAD
+                                    let v = phdr.p_vaddr;
+                                    let m = phdr.p_memsz;
+                                    if v < vmin { vmin = v; }
+                                    if v + m > vmax { vmax = v + m; }
+                                }
+                            }
+                            // Allocate ONE contiguous run of frames covering the
+                            // whole span, page-aligned. This avoids the bug where
+                            // two PT_LOADs share a boundary page (e.g. .text ends
+                            // at 0x801024c5, .rodata starts at 0x801024d0, both
+                            // in page 0x80102000-0x80103000). Mapping them
+                            // separately overwrites the leaf PTE for the shared
+                            // page; mapping the whole span with one call writes
+                            // each leaf PTE exactly once.
+                            let span_start_vaddr = vmin & !0xFFF;
+                            let span_end_vaddr = (vmax + 0xFFF) & !0xFFF;
+                            let span_bytes = (span_end_vaddr - span_start_vaddr) as usize;
+                            let span_nframes = (span_bytes + 0xFFF) / 0x1000;
+                            let span_phys = {
+                                let (fa, sif) = kernel_kit::memory::FRAME_ALLOCATOR.lock();
+                                let r = fa.alloc_contiguous(span_nframes);
+                                kernel_kit::memory::FRAME_ALLOCATOR.unlock(sif);
+                                match r {
+                                    Some(f) => f,
+                                    None => panic!("OOM (contig span) SYS_EXEC"),
+                                }
+                            };
+                            // PASS 2: copy each PT_LOAD's bytes at its offset.
+                            let span_virt = kernel_kit::paging::phys_to_virt(span_phys) as *mut u8;
+                            for i in 0..phnum {
+                                let phdr_ptr = unsafe { elf_bytes.as_ptr().add(phoff + i * core::mem::size_of::<kernel_kit::elf::Elf64_Phdr>()) as *const kernel_kit::elf::Elf64_Phdr };
+                                let phdr = unsafe { &*phdr_ptr };
+                                if phdr.p_type == 1 {
+                                    let vaddr = phdr.p_vaddr;
+                                    let offset = phdr.p_offset as usize;
+                                    let filesz = phdr.p_filesz as usize;
+                                    let memsz = phdr.p_memsz as usize;
+                                    let off_in_span = (vaddr - span_start_vaddr) as usize;
+                                    unsafe {
+                                        if filesz > 0 {
                                             core::ptr::copy_nonoverlapping(
                                                 elf_bytes.as_ptr().add(offset),
-                                                phys_ptr,
-                                                filesz
+                                                span_virt.add(off_in_span),
+                                                filesz,
                                             );
-                                            // Zero bss
-                                            if memsz > filesz {
-                                                core::ptr::write_bytes(
-                                                    phys_ptr.add(filesz),
-                                                    0,
-                                                    memsz - filesz
-                                                );
-                                            }
-                                            
-                                            // Map the newly allocated physical block to the requested Virtual Address
-                                            kernel_kit::paging::map_segment(new_cr3, vaddr, phys_ptr as u64, memsz);
+                                        }
+                                        if memsz > filesz {
+                                            core::ptr::write_bytes(
+                                                span_virt.add(off_in_span + filesz),
+                                                0,
+                                                memsz - filesz,
+                                            );
                                         }
                                     }
                                 }
-                                
+                            }
+                            // Map the whole span in one call. Each leaf PTE is
+                            // written exactly once; no boundary-page overwrite.
+                            kernel_kit::paging::map_segment(
+                                new_cr3, span_start_vaddr, span_phys, span_bytes,
+                            );
+
                                 // Map User Stack (8KB ending at 0xFFFFFFFF80100000)
                                 unsafe {
                                     let stack_vaddr = 0xFFFFFFFF800FE000;
                                     let stack_size = 8192;
-                                    let layout = core::alloc::Layout::from_size_align(stack_size, 4096).unwrap();
-                                    let stack_phys = alloc::alloc::alloc(layout);
-                                    if stack_phys.is_null() { panic!("OOM allocating user stack"); }
-                                    core::ptr::write_bytes(stack_phys, 0, stack_size);
-                                    kernel_kit::paging::map_segment(new_cr3, stack_vaddr, stack_phys as u64, stack_size);
+                                    // Use a CONTIGUOUS run of frames for the user stack — same
+                                    // reason as PT_LOAD: map_segment assumes phys_base + i*4K.
+                                    let stack_phys = {
+                                        let (fa, sif) = kernel_kit::memory::FRAME_ALLOCATOR.lock();
+                                        let r = fa.alloc_contiguous(2); // 8 KiB = 2 frames
+                                        kernel_kit::memory::FRAME_ALLOCATOR.unlock(sif);
+                                        match r {
+                                            Some(f) => f,
+                                            None => panic!("OOM (contig 2) user stack"),
+                                        }
+                                    };
+                                    core::ptr::write_bytes(
+                                        kernel_kit::paging::phys_to_virt(stack_phys) as *mut u8,
+                                        0, stack_size,
+                                    );
+                                    kernel_kit::paging::map_segment(new_cr3, stack_vaddr, stack_phys, stack_size);
                                 }
-                                
                                 // Context Switch setup
                                 trap_frame.rip = ehdr.e_entry;
                                 ctx.page_table_root = new_cr3; // Give the process its new virtual memory space!
@@ -321,7 +360,7 @@ pub fn dispatch(ctx: &mut Context, mem: &mut MemoryPool) {
                     core::ptr::write_bytes(phys_ptr.add(len), 0, memsz_aligned - len);
                     
                     let vaddr = 0x300000;
-                    kernel_kit::paging::map_segment(ctx.page_table_root, vaddr, phys_ptr as u64, len);
+                    kernel_kit::paging::map_segment(ctx.page_table_root, vaddr, kernel_kit::paging::virt_to_phys(phys_ptr as u64), len);
                     trap_frame.rax = vaddr;
                 } else {
                     trap_frame.rax = 0;

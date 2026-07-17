@@ -1,5 +1,5 @@
 use crate::io::Port;
-use crate::memory::Spinlock;
+use crate::memory::IrqSpinlock;
 use core::arch::asm;
 
 pub struct SerialPort {
@@ -45,4 +45,4 @@ impl SerialPort {
     }
 }
 
-pub static SERIAL1: Spinlock<SerialPort> = Spinlock::new(SerialPort::new(0x3F8));
+pub static SERIAL1: IrqSpinlock<SerialPort> = IrqSpinlock::new(SerialPort::new(0x3F8));

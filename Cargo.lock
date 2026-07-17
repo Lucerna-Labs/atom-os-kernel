@@ -28,14 +28,6 @@ name = "payload"
 version = "0.1.0"
 
 [[package]]
-name = "runner"
-version = "0.1.0"
-dependencies = [
- "kernel-kit",
- "kernel-orchestrator",
-]
-
-[[package]]
 name = "x86_64-kernel"
 version = "0.1.0"
 dependencies = [
