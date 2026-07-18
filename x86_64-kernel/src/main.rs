@@ -288,6 +288,37 @@ EXC_VEC_EC 14
 EXC_VEC_EC 17
 "#);
 
+#[inline]
+pub unsafe fn wrmsr(msr: u32, value: u64) {
+    let low = value as u32;
+    let high = (value >> 32) as u32;
+    unsafe {
+        core::arch::asm!("wrmsr", in("ecx") msr, in("eax") low, in("edx") high, options(nostack, preserves_flags));
+    }
+}
+
+#[inline]
+pub unsafe fn rdmsr(msr: u32) -> u64 {
+    let low: u32;
+    let high: u32;
+    unsafe {
+        core::arch::asm!("rdmsr", in("ecx") msr, out("eax") low, out("edx") high, options(nostack, preserves_flags));
+    }
+    (low as u64) | ((high as u64) << 32)
+}
+
+unsafe fn setup_syscall_msr() {
+    let efer_addr: u32 = 0xC0000080;
+    let mut efer = rdmsr(efer_addr);
+    efer |= 1 << 12;
+    wrmsr(efer_addr, efer);
+    let star: u64 = (0x08u64 << 32) | (0x1Bu64 << 48);
+    wrmsr(0xC0000081, star);
+    wrmsr(0xC0000082, syscall_entry as u64);
+    let fmask: u64 = (1 << 9) | (1 << 8);
+    wrmsr(0xC0000084, fmask);
+}
+
 extern "C" {
     fn timer_interrupt_wrapper();
     fn syscall_interrupt_wrapper();
@@ -325,6 +356,7 @@ extern "C" {
     fn exception_entry_29();
     fn exception_entry_30();
     fn exception_entry_31();
+    fn syscall_entry();
 }
 
 static mut SYSTEM: Option<System> = None;
@@ -397,6 +429,44 @@ pub extern "C" fn syscall_interrupt_handler(rsp: u64) -> u64 {
         // NOTE: int 0x80 is a software interrupt, not PIC-sourced, so no EOI is
         // issued here. The old code sent a spurious EOI to PIC2 (vector 0x80 >= 40)
         // which desynchronized the slave PIC and dropped subsequent hardware IRQs.
+    }
+
+    new_rsp
+}
+
+/// Fast syscall handler for the syscall/sysret path (GAP 3).
+/// Same dispatch logic as syscall_interrupt_handler but entered via the
+/// `syscall` instruction (no IDT, no interrupt-gate stack switch).
+#[no_mangle]
+pub extern "C" fn syscall_fast_handler(rsp: u64) -> u64 {
+    let mut new_rsp = rsp;
+
+    unsafe {
+        if let Some(sys) = &mut *(&raw mut SYSTEM) {
+            if let Some(task) = sys.scheduler.current_task_mut() {
+                let frame_ptr = rsp as *mut kernel_kit::trap::TrapFrame;
+                let sys_num = (*frame_ptr).rax;
+                let mut mem = kernel_kit::memory::MemoryPool::new();
+
+                kernel_orchestrator::syscall::dispatch(task, &mut mem);
+                new_rsp = rsp;
+
+                if sys_num == 1 || sys_num == 3 {
+                    task.rsp = rsp;
+                    new_rsp = sys.scheduler.switch_context(rsp);
+                }
+            }
+
+            if new_rsp != rsp {
+                if let Some(next_task) = sys.scheduler.current_task() {
+                    if kernel_kit::paging::Cr3::read() != next_task.page_table_root {
+                        kernel_kit::paging::Cr3::load(next_task.page_table_root);
+                    }
+                    TSS.privilege_stack_table[0] = next_task.kernel_stack;
+                    KERNEL_STACK_PTR = next_task.kernel_stack;
+                }
+            }
+        }
     }
 
     new_rsp
@@ -526,6 +596,66 @@ use kernel_kit::gdt::{GlobalDescriptorTable, TaskStateSegment};
 
 static mut GDT: GlobalDescriptorTable = GlobalDescriptorTable::new();
 static mut TSS: TaskStateSegment = TaskStateSegment::new();
+
+/// Kernel stack pointer for syscall entry. Updated by the timer handler
+/// and _start so the syscall trampoline can find the kernel stack.
+#[no_mangle]
+pub static mut KERNEL_STACK_PTR: u64 = 0;
+
+// ──────────────── GAP 3: syscall/sysret fast entry ────────────────
+global_asm!(r#"
+.global syscall_entry
+syscall_entry:
+    // On entry: RCX = user RIP, R11 = user RFLAGS, RAX = syscall number.
+    // CPU did NOT push anything. We are on the user stack.
+    // Switch to kernel stack via KERNEL_STACK_PTR global.
+    mov rax, [KERNEL_STACK_PTR]
+    mov rsp, rax
+
+    // Push TrapFrame (same layout as the int 0x80 wrapper).
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+    push rbp
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
+
+    // Call Rust handler with rdi = rsp (pointer to TrapFrame).
+    mov rdi, rsp
+    call syscall_fast_handler
+
+    // Handler returns new rsp in rax.
+    mov rsp, rax
+
+    // Restore GPRs.
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rbp
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+
+    // Return to user mode. RCX has user RIP, R11 has user RFLAGS.
+    sysretq
+"#);
 
 #[no_mangle]
 pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
@@ -718,6 +848,9 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
         GDT.set_tss(&raw const TSS);
         GDT.load();
         GDT.load_tss();
+        // GAP 3: configure syscall/sysret MSRs after GDT is loaded.
+        setup_syscall_msr();
+        KERNEL_STACK_PTR = TSS.privilege_stack_table[0];
     }
 
     // Spawn User Tasks (Ring 3)
