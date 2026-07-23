@@ -114,11 +114,11 @@ All substrate tests pass with the new bootloader:
 
 The bootloader is functional but can be enhanced with:
 
-1. **Disk I/O**: Implement actual disk reading using BIOS/EFI
-2. **Filesystem**: Add support for reading kernel from filesystem
-3. **Graphics**: Set up framebuffer for graphical boot
-4. **ACPI**: Parse ACPI tables for hardware information
-5. **UEFI**: Add UEFI boot protocol support
+1. **UEFI Support**: Add UEFI boot protocol support (currently BIOS-only)
+2. **Graphics**: Set up framebuffer for graphical boot
+3. **ACPI**: Parse ACPI tables for hardware information
+4. **Advanced Filesystems**: Add ext2/ext4 or other filesystem support
+5. **Network Boot**: Implement PXE/network booting capability
 
 ## Status
 
@@ -126,8 +126,10 @@ The bootloader is functional but can be enhanced with:
 - ✅ Kernel compiles with zero bootloader dependencies
 - ✅ All substrate tests pass
 - ✅ Pure Rust implementation with inline assembly
-- ⚠️ Disk I/O needs implementation (currently uses placeholder)
-- ⚠️ Memory map needs actual BIOS/EFI data
+- ✅ Disk I/O implemented (BIOS interrupt 0x13)
+- ✅ Memory map retrieval implemented (BIOS interrupt 0x15 E820)
+- ✅ Filesystem support implemented (FAT12/16/32 detection and kernel loading)
+- ⚠️ UEFI support not yet implemented (BIOS-only currently)
 
 ## Philosophy
 
