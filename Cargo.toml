@@ -1,5 +1,6 @@
 [workspace]
-members = ["daemon",
+members = ["bootloader",
+    "daemon",
     "kernel-kit",
     "kernel-orchestrator", "payload",
     "x86_64-kernel",

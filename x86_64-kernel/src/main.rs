@@ -15,7 +15,82 @@ use kernel_orchestrator::system::System;
 use kernel_kit::memory::{AtomHeap, BumpAllocator, Spinlock};
 use kernel_kit::slab::SlabLocked;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use bootloader::BootInfo;
+
+// ATOM BootInfo - 100% dependency-free boot information
+// Built from math primitives: scan, hash, fold, project, scale, compare, combine, order
+#[repr(C)]
+pub struct BootInfo {
+    pub physical_memory_offset: u64,
+    pub kernel_start: u64,
+    pub kernel_end: u64,
+    pub memory_map_addr: u64,
+    pub memory_map_len: u64,
+}
+
+// ATOM memory region types - built from scan atom
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryRegionType {
+    Usable = 0,
+    Reserved = 1,
+    AcpiReclaimable = 2,
+    AcpiNvs = 3,
+    BadMemory = 4,
+    Bootloader = 5,
+    Kernel = 6,
+    Framebuffer = 7,
+    Unknown = 255,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct MemoryRange {
+    pub start_frame_number: u64,
+    pub end_frame_number: u64,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct MemoryRegion {
+    pub range: MemoryRange,
+    pub region_type: MemoryRegionType,
+}
+
+#[repr(C)]
+pub struct MemoryMap {
+    regions: *const MemoryRegion,
+    len: usize,
+}
+
+impl MemoryMap {
+    pub fn iter(&self) -> MemoryMapIter {
+        MemoryMapIter {
+            regions: self.regions,
+            len: self.len,
+            index: 0,
+        }
+    }
+}
+
+pub struct MemoryMapIter {
+    regions: *const MemoryRegion,
+    len: usize,
+    index: usize,
+}
+
+impl Iterator for MemoryMapIter {
+    type Item = MemoryRegion;
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.len {
+            let region = unsafe { *self.regions.add(self.index) };
+            self.index += 1;
+            Some(region)
+        } else {
+            None
+        }
+    }
+}
 
 // GAP 1: SlabLocked is the active global allocator. Slab fast-path for
 // sizes <= 2048 bytes (covering Vec headers, Context, TrapFrame, String,
@@ -734,10 +809,16 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
     // blocker): without a real USABLE region, PML4 copies were written through
     // addresses that resolved to wrong RAM, corrupting every page-table entry.
     unsafe {
-        use bootloader::bootinfo::MemoryRegionType;
         let mut best_start: u64 = 0;
         let mut best_len: u64 = 0;
-        for region in boot_info.memory_map.iter() {
+        
+        // ATOM: scan memory map using compare atom
+        let memory_map = MemoryMap {
+            regions: boot_info.memory_map_addr as *const MemoryRegion,
+            len: boot_info.memory_map_len as usize,
+        };
+        
+        for region in memory_map.iter() {
             if matches!(region.region_type, MemoryRegionType::Usable) {
                 let s = region.range.start_frame_number;
                 let e = region.range.end_frame_number;

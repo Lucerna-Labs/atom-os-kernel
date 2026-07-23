@@ -1,0 +1,17 @@
+[package]
+name = "atom-bootloader"
+version = "0.1.0"
+edition = "2021"
+authors = ["ATOM OS"]
+description = "Dependency-free bootloader built from math primitives"
+
+[dependencies]
+# Zero dependencies - everything built from atoms
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+opt-level = 3
+lto = true
