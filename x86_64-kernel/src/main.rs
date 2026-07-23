@@ -488,7 +488,7 @@ pub extern "C" fn syscall_interrupt_handler(rsp: u64) -> u64 {
                 let did_switch = if sys_num == 1 || sys_num == 3 {
                     // NOW it's safe to save the task's rsp for the switch.
                     task.rsp = rsp;
-                    let _new = sys.scheduler.switch_context(rsp);
+                    new_rsp = sys.scheduler.switch_context(rsp);
                     true
                 } else {
                     false
