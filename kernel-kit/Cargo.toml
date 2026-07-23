@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+field-core = { path = "../../ATOM OS/substrate/field-core", default-features = false }
+kernel-glue = { path = "../../ATOM OS/substrate/kernel-glue", default-features = false }
+libm = "0.2"
+spin = { version = "0.9", default-features = false, features = ["spin_mutex"] }

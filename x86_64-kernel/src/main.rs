@@ -363,7 +363,13 @@ static mut SYSTEM: Option<System> = None;
 
 #[no_mangle]
 pub extern "C" fn timer_interrupt_handler(rsp: u64) -> u64 {
-    TIMER_TICKS.fetch_add(1, Ordering::SeqCst);
+    let tick = TIMER_TICKS.fetch_add(1, Ordering::SeqCst);
+
+    // Advance the radiation/dissipation field substrate once every
+    // EVOLUTION_DIVISOR ticks. Field evolution is the substrate that drives
+    // the field-driven scheduler (when feature-gated) and provides the data
+    // for SYS_FIELD_OBSERVE and SYS_FIELD_MEASUREMENTS.
+    kernel_kit::scheduler_glue::maybe_evolve(tick as u64);
 
     let mut new_rsp = rsp;
 
@@ -842,6 +848,14 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
         SYSTEM = Some(System::new());
     }
     vga.write_string("Orchestrator Initialized.\n");
+
+    // Initialise the radiation/dissipation field substrate. The field becomes
+    // the computational substrate for IPC and (when feature-gated) the
+    // scheduler. The timer IRQ advances it once every EVOLUTION_DIVISOR
+    // ticks. See kernel_kit::scheduler_glue and ARCHITECTURE.md in the
+    // ATOM OS substrate workspace.
+    kernel_kit::scheduler_glue::init();
+    vga.write_string("Field substrate Initialized.\n");
     
     // Setup TSS and GDT
     unsafe {

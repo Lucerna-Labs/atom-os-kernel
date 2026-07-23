@@ -17,6 +17,19 @@ pub const SYS_LIST_DIR: u64 = 10;
 pub const SYS_CLEAR: u64 = 11;
 pub const SYS_TRUNCATE: u64 = 12;
 pub const SYS_EXEC: u64 = 13;
+// 14 = SYS_PRINT (legacy inline constant).
+// 15 = SYS_IPC_SEND (rewired to field-based propagation; ABI unchanged).
+// 16 = SYS_IPC_RECV (rewired to field-based radiation absorption; ABI unchanged).
+
+/// Field substrate syscalls (new).
+/// 17: SYS_FIELD_STIMULATE  rdi=pid, rsi=magnitude_f32_bits -> 0/1
+/// 18: SYS_FIELD_EVOLVE     rdi=moments                       -> age
+/// 19: SYS_FIELD_OBSERVE    rdi=pid                           -> trace_peak_f32_bits
+/// 20: SYS_FIELD_MEASUREMENTS                                  -> introduced<<0 (just returns introduced as f64 bits for now; full struct via /field/meas region in a later patch)
+pub const SYS_FIELD_STIMULATE: u64 = 17;
+pub const SYS_FIELD_EVOLVE: u64 = 18;
+pub const SYS_FIELD_OBSERVE: u64 = 19;
+pub const SYS_FIELD_MEASUREMENTS: u64 = 20;
 
 /// The syscall dispatcher reads from the physical TrapFrame saved on the hardware stack.
 pub fn dispatch(ctx: &mut Context, mem: &mut MemoryPool) {
@@ -329,44 +342,133 @@ pub fn dispatch(ctx: &mut Context, mem: &mut MemoryPool) {
         } else {
             trap_frame.rax = u64::MAX;
         }
-    } else if compare(&sys_num, &(15 + 1)) && !compare(&sys_num, &15) { // SYS_IPC_SEND
+    } else if compare(&sys_num, &(SYS_FIELD_STIMULATE + 1))
+        && !compare(&sys_num, &SYS_FIELD_STIMULATE)
+    {
+        // SYS_FIELD_STIMULATE: rdi = pid, rsi = f32 magnitude bits.
+        // Injects energy at the site mapped to `pid`. Returns 0 on success,
+        // u64::MAX on out-of-range pid.
+        let pid = arg as usize;
+        let magnitude_bits = arg1 as u32;
+        let magnitude = f32::from_bits(magnitude_bits);
+        let spectrum = kernel_kit::field::Spectrum::new(magnitude, magnitude * 0.5, magnitude * 0.25);
+        let ok = kernel_kit::scheduler_glue::with_field(|f| f.stimulate(pid, spectrum))
+            .unwrap_or(false);
+        trap_frame.rax = if ok { 0 } else { u64::MAX };
+    } else if compare(&sys_num, &(SYS_FIELD_EVOLVE + 1))
+        && !compare(&sys_num, &SYS_FIELD_EVOLVE)
+    {
+        // SYS_FIELD_EVOLVE: rdi = moments. Returns the new field age.
+        let moments = arg;
+        kernel_kit::scheduler_glue::with_field(|f| f.evolve_for(moments));
+        trap_frame.rax = kernel_kit::scheduler_glue::age();
+    } else if compare(&sys_num, &(SYS_FIELD_OBSERVE + 1))
+        && !compare(&sys_num, &SYS_FIELD_OBSERVE)
+    {
+        // SYS_FIELD_OBSERVE: rdi = pid. Returns the trace-peak delta as f32
+        // bits in rax (since the previous call for this pid). 0 if pid is out
+        // of range or no new radiation has accumulated.
+        let pid = arg as usize;
+        let delta = kernel_kit::scheduler_glue::with_field(|f| f.ipc_recv_as_radiation(pid))
+            .unwrap_or(0.0);
+        trap_frame.rax = delta.to_bits() as u64;
+    } else if compare(&sys_num, &(SYS_FIELD_MEASUREMENTS + 1))
+        && !compare(&sys_num, &SYS_FIELD_MEASUREMENTS)
+    {
+        // SYS_FIELD_MEASUREMENTS: returns the introduced energy total as f64
+        // bits in rax. Full struct surface (resident, radiated, dissipated,
+        // channel_information_bits, ...) will follow via a mapped region in a
+        // later patch; for now this is the smallest useful observer entry.
+        let introduced = kernel_kit::scheduler_glue::with_field(|f| f.measurements().introduced)
+            .unwrap_or(0.0);
+        trap_frame.rax = introduced.to_bits();
+    } else if compare(&sys_num, &(15 + 1)) && !compare(&sys_num, &15) {
+        // SYS_IPC_SEND (rewired through the field substrate).
+        //
+        // ABI preserved: rdi=target_pid, rsi=ptr (NUL-terminated). The byte
+        // payload is no longer copied into a mailbox; instead the message is
+        // converted to an energy magnitude and injected at the sender's site
+        // biased toward the target via `ipc_send_as_energy`. The field's
+        // existing exchange law propagates it; the closed invariant still
+        // holds because the injection counts as `introduced`.
         let target_pid = arg as usize;
         let ptr = arg1 as *const u8;
-        let mut len = 0;
-        unsafe { while *ptr.add(len) != 0 && len < 255 { len += 1; } }
-        let slice = unsafe { core::slice::from_raw_parts(ptr, len) };
-        let mut msg_vec = alloc::vec::Vec::new();
-        msg_vec.extend_from_slice(slice);
-        
+        let mut len = 0_usize;
         unsafe {
-            if target_pid < 16 {
-                IPC_MAILBOXES[target_pid] = Some(msg_vec);
-                trap_frame.rax = 0;
-            } else {
-                trap_frame.rax = u64::MAX;
+            while *ptr.add(len) != 0 && len < 255 {
+                len += 1;
             }
         }
-    } else if compare(&sys_num, &(16 + 1)) && !compare(&sys_num, &16) { // SYS_IPC_RECV
+        // Magnitude: 0.02 per byte, capped so a max-length message injects
+        // at most ~5.0 energy units per call. Tunable.
+        let magnitude = (len as f32 * 0.02).min(5.0);
+        let src_pid = ctx.id;
+        let ok = kernel_kit::scheduler_glue::with_field(|f| {
+            f.ipc_send_as_energy(src_pid, target_pid, magnitude)
+        })
+        .unwrap_or(false);
+        trap_frame.rax = if ok { 0 } else { u64::MAX };
+    } else if compare(&sys_num, &(16 + 1)) && !compare(&sys_num, &16) {
+        // SYS_IPC_RECV (rewired through the field substrate).
+        //
+        // ABI preserved: returns either 0 (nothing ready) or a vaddr (we use
+        // 0x300000 as before, mapped to a freshly-allocated page). "Ready"
+        // means the trace-peak delta for this pid exceeds a small threshold
+        // (RADIATION_READY_THRESHOLD); the receiver is observing accumulated
+        // radiation transported to its site by the field's exchange law.
+        const RADIATION_READY_THRESHOLD: f32 = 0.001;
         let pid = ctx.id;
-        unsafe {
-            if pid < 16 {
-                if let Some(msg) = IPC_MAILBOXES[pid].take() {
-                    // We allocate a physical block, put the msg there, map it to 0x300000 
-                    let len = msg.len();
-                    let memsz_aligned = (len + 4095) & !4095;
-                    let layout = core::alloc::Layout::from_size_align(memsz_aligned, 4096).unwrap();
-                    let phys_ptr = alloc::alloc::alloc(layout);
-                    core::ptr::copy_nonoverlapping(msg.as_ptr(), phys_ptr, len);
-                    core::ptr::write_bytes(phys_ptr.add(len), 0, memsz_aligned - len);
-                    
-                    let vaddr = 0x300000;
-                    kernel_kit::paging::map_segment(ctx.page_table_root, vaddr, kernel_kit::paging::virt_to_phys(phys_ptr as u64), len);
-                    trap_frame.rax = vaddr;
-                } else {
-                    trap_frame.rax = 0;
-                }
-            } else {
+        let delta = kernel_kit::scheduler_glue::with_field(|f| f.ipc_recv_as_radiation(pid))
+            .unwrap_or(0.0);
+        if delta < RADIATION_READY_THRESHOLD {
+            trap_frame.rax = 0;
+        } else {
+            // Encode the delta as an 8-byte ASCII decimal string into a
+            // freshly-allocated page mapped at 0x300000. This keeps the
+            // RECV signature returning a vaddr; payloads that previously
+            // read bytes now read a printable magnitude.
+            const BUF_BYTES: usize = 4096;
+            let layout = core::alloc::Layout::from_size_align(BUF_BYTES, 4096).unwrap();
+            let phys_ptr = unsafe { alloc::alloc::alloc(layout) };
+            if phys_ptr.is_null() {
                 trap_frame.rax = u64::MAX;
+            } else {
+                unsafe {
+                    core::ptr::write_bytes(phys_ptr, 0, BUF_BYTES);
+                    // Write the magnitude as a simple decimal. The buffer is
+                    // 4096 bytes; we use a tiny fixed-width format.
+                    let buf = core::slice::from_raw_parts_mut(phys_ptr, BUF_BYTES);
+                    let mut written = 0_usize;
+                    let whole = delta as u64;
+                    let mut s = [0u8; 20];
+                    let mut n = 0_usize;
+                    if whole == 0 {
+                        s[0] = b'0';
+                        n = 1;
+                    } else {
+                        let mut w = whole;
+                        while w > 0 {
+                            s[n] = b'0' + (w % 10) as u8;
+                            w /= 10;
+                            n += 1;
+                        }
+                    }
+                    for i in (0..n).rev() {
+                        buf[written] = s[i];
+                        written += 1;
+                    }
+                    buf[written] = b'\n';
+                    written += 1;
+                    buf[written] = 0;
+                }
+                let vaddr = 0x300000;
+                kernel_kit::paging::map_segment(
+                    ctx.page_table_root,
+                    vaddr,
+                    kernel_kit::paging::virt_to_phys(phys_ptr as u64),
+                    BUF_BYTES,
+                );
+                trap_frame.rax = vaddr;
             }
         }
     } else {
@@ -374,5 +476,8 @@ pub fn dispatch(ctx: &mut Context, mem: &mut MemoryPool) {
     }
 }
 
-const INIT_MAILBOX: Option<alloc::vec::Vec<u8>> = None;
-pub static mut IPC_MAILBOXES: [Option<alloc::vec::Vec<u8>>; 16] = [INIT_MAILBOX; 16];
+// The flat `IPC_MAILBOXES` array that previously backed SYS_IPC_SEND /
+// SYS_IPC_RECV has been removed. IPC now routes through the radiation/
+// dissipation field substrate (see kernel_kit::scheduler_glue and
+// kernel_glue::ipc_send_as_energy / ipc_recv_as_radiation). The syscall
+// numbers (15, 16) are preserved so existing payloads still link.

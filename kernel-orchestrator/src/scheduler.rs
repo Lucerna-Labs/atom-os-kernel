@@ -37,13 +37,8 @@ impl Scheduler {
     }
 
     /// Called by the Timer Interrupt. Takes the interrupted task's stack pointer,
-    /// saves it, and returns the next task's stack pointer.
+    /// saves the full TrapFrame, and returns the next task's stack pointer.
     pub fn switch_context(&mut self, old_rsp: u64) -> u64 {
-        // Count ALL Ready tasks (including the current one).
-        let total_ready: usize = self.tasks.iter()
-            .filter(|t| t.as_ref().map_or(false, |c| c.state == TaskState::Ready))
-            .count();
-
         // Count OTHER ready tasks (excluding current).
         let other_ready: usize = self.tasks.iter()
             .enumerate()
@@ -58,27 +53,22 @@ impl Scheduler {
         // Skip the save/restore ONLY when:
         //   - current task is Running (it's the active task, not the idle loop)
         //   - no OTHER task is Ready to switch to
-        // This avoids corrupting the running task's saved state via the
-        // timer handler's rsp save when there's nothing to switch to.
         if current_is_running && other_ready == 0 {
             return old_rsp;
         }
 
         // If the current task is Running and there IS another Ready task,
-        // save the current state before switching.
+        // save the full TrapFrame before switching (GAP-5 fix).
         if current_is_running {
             if let Some(ctx) = &mut self.tasks[self.current_task] {
+                // Save rsp first (needed for stack location)
                 ctx.rsp = old_rsp;
-                ctx.state = TaskState::Ready;
-            }
-        }
-
-        // Note: if current_is_running is false (e.g. kernel idle, first
-        // dispatch, or task already Ready), we don't save old_rsp — the
-        // idle loop's stack is not a task context.
-        if let Some(ctx) = &mut self.tasks[self.current_task] {
-            if ctx.state == TaskState::Running {
-                ctx.rsp = old_rsp;
+                // GAP-5 fix: Copy the entire TrapFrame from the stack into saved_state.
+                // This preserves rip, rflags, and all GPRs across context switches.
+                let trapframe_ptr = old_rsp as *const kernel_kit::trap::TrapFrame;
+                unsafe {
+                    ctx.saved_state = Some(*trapframe_ptr);
+                }
                 ctx.state = TaskState::Ready;
             }
         }
@@ -90,13 +80,20 @@ impl Scheduler {
                 if ctx.state == TaskState::Ready {
                     self.current_task = next_idx;
                     ctx.state = TaskState::Running;
+                    // GAP-5 fix: If we have a saved TrapFrame, copy it back to the stack
+                    // before returning the rsp. This ensures the full state is restored.
+                    if let Some(saved) = ctx.saved_state {
+                        let trapframe_ptr = ctx.rsp as *mut kernel_kit::trap::TrapFrame;
+                        unsafe {
+                            *trapframe_ptr = saved;
+                        }
+                    }
                     return ctx.rsp;
                 }
             }
         }
 
         // No ready task found despite ready_count > 0 (race edge case).
-        // Fall through without modifying state.
         old_rsp
     }
 }

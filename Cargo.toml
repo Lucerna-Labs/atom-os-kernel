@@ -7,6 +7,16 @@ members = ["daemon",
 exclude = ["runner"]
 resolver = "2"
 
+# External path dependencies pulled in by the field-substrate bridge.
+# These point at the ATOM OS substrate workspace. When the kernel is cloned
+# alone (without ATOM OS present), the operator must either clone ATOM OS
+# alongside it or adjust these paths. See APPLY.md.
+[workspace.dependencies]
+field-core = { path = "../ATOM OS/substrate/field-core", default-features = false }
+kernel-glue = { path = "../ATOM OS/substrate/kernel-glue", default-features = false }
+libm = "0.2"
+spin = { version = "0.9", default-features = false, features = ["spin_mutex"] }
+
 [profile.dev]
 panic = "abort"
 

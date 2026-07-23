@@ -10,12 +10,16 @@ pub enum TaskState {
 
 #[derive(Debug, Clone)]
 pub struct Context {
-    pub rsp: u64, // Physical stack pointer saving the TrapFrame
+    pub rsp: u64, // Physical stack pointer to the full TrapFrame
     pub kernel_stack: u64, // The top of the kernel stack assigned to this process
     pub state: TaskState,
     pub id: usize,
     pub page_table_root: u64, // Physical address of the PageTable root (PML4)
     pub open_files: [(u64, usize); 16], // (Pointer to Vec<u8>, Cursor)
+    // GAP-5 fix: Store the full saved TrapFrame, not just a pointer.
+    // This ensures the complete task state (rip, rflags, all GPRs) is preserved
+    // across context switches, even if the stack is modified or overwritten.
+    pub saved_state: Option<super::trap::TrapFrame>,
 }
 
 impl Context {
@@ -27,6 +31,7 @@ impl Context {
             id,
             page_table_root,
             open_files: [(0, 0); 16],
+            saved_state: None,
         }
     }
 
