@@ -27,3 +27,7 @@ panic = "abort"
 
 [profile.release.package.bootloader]
 opt-level = 1
+
+[workspace.metadata.bootimage]
+# Tell bootimage which workspace member is the kernel binary.
+kernel-package = "x86_64-kernel"
