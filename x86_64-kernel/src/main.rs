@@ -490,8 +490,11 @@ fn inject_payloads() {
     let worker_bytes = include_bytes!("../../target/x86_64-os/release/worker");
     let fault_bytes = include_bytes!("../../target/x86_64-os/release/fault-probe");
     let fs_bytes = include_bytes!("../../target/x86_64-os/release/fs-probe");
+    let spider_bytes = include_bytes!("../../target/x86_64-os/release/spider");
+    let rogue_bytes = include_bytes!("../../target/x86_64-os/release/rogue");
     let fs = kernel_kit::fs::ROOT_FS.lock();
     for (name, bytes) in [("shell.elf", &shell_bytes[..]), ("daemon.elf", &daemon_bytes[..]),
+        ("spider.elf", &spider_bytes[..]), ("rogue.elf", &rogue_bytes[..]),
                           ("worker.elf", &worker_bytes[..]), ("fault.elf", &fault_bytes[..]), ("fs-probe.elf", &fs_bytes[..])] {
         fs.insert_builtin(name, bytes).expect("embedded program");
     }

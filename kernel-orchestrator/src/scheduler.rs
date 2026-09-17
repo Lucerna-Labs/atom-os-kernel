@@ -36,6 +36,14 @@ impl Scheduler {
             let index = (start + step) % MAX_TASKS;
             if let Some(task) = &mut self.tasks[index] {
                 if task.state == TaskState::Ready {
+                    // E21 spider: a pid the normality cone has
+                    // condemned is never scheduled. A task that never
+                    // runs cannot act — the veil dial as policy. The
+                    // sensor consults only task-side state here, so
+                    // this read cannot reenter the syscall tap.
+                    if kernel_sense::quarantined(task.id as u64) {
+                        continue;
+                    }
                     task.state = TaskState::Running;
                     self.current = Some(index);
                     return task.rsp;

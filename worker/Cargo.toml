@@ -17,3 +17,11 @@ path = "src/fault.rs"
 [[bin]]
 name = "fs-probe"
 path = "src/fs_probe.rs"
+
+[[bin]]
+name = "spider"
+path = "src/spider.rs"
+
+[[bin]]
+name = "rogue"
+path = "src/rogue.rs"

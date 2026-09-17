@@ -199,5 +199,8 @@ fn execute(command: &str) {
 fn main() {
     rt::print("ATOM OS kernel shell\n");
     heap_test(); bench();
+    // E21: launch the shadow-web spider probe after the clean boot.
+    let spider = rt::spawn("spider.elf");
+    if spider == ERROR { rt::print("shell: spider.elf not found\n"); }
     loop { rt::print("> "); let command = line(); execute(command.trim()); }
 }

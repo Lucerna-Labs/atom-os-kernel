@@ -24,3 +24,6 @@ Thumbs.db
 
 # Python helper bytecode
 __pycache__/
+
+# Host-build artifacts of the excluded runner crate
+/runner/target/

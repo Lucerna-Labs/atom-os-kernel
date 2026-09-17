@@ -59,6 +59,8 @@ pub const SYS_EXEC_ARGS: u64 = 40;
 pub const SYS_ARGS: u64 = 41;
 pub const SYS_PROCESSES: u64 = 42;
 pub const SYS_KILL: u64 = 43;
+/// E21 shadow web: status / freeze the normality cone / query foreign budget.
+pub const SYS_SENSE: u64 = 44;
 pub const MAX_ARGS: usize = 16;
 pub const MAX_ARG_BYTES: usize = 1024;
 pub const MAX_PROCESSES: usize = 16;

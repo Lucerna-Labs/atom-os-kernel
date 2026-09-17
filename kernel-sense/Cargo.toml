@@ -1,0 +1,15 @@
+[package]
+name = "kernel-sense"
+version = "0.1.0"
+edition = "2021"
+description = "E21: the shadow web — syscall vibrations, substrate scars, and the quarantine spider for atom-os-kernel (no_std; std feature for host tests)"
+
+[lib]
+name = "kernel_sense"
+path = "src/lib.rs"
+
+[dependencies]
+
+[features]
+default = []
+std = []

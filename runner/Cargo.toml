@@ -6,3 +6,8 @@ edition = "2021"
 [dependencies]
 kernel-kit = { path = "../kernel-kit" }
 kernel-orchestrator = { path = "../kernel-orchestrator" }
+kernel-sense = { path = "../kernel-sense" }
+
+[[bin]]
+name = "e21"
+path = "src/bin/e21.rs"

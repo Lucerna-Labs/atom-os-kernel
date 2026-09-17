@@ -46,6 +46,11 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
     let arg2 = frame.rdx;
     frame.rax = ERROR;
     let mut switch = false;
+    // E21 shadow web: every syscall is a vibration at the kernel's
+    // single chokepoint. The sensor learns who talks to whom; after
+    // its cone freezes, foreign conversations spend quarantine budget.
+    // Never a payload — class, pid, target, weight only.
+    kernel_sense::record(pid as u64, number, arg, 1.0);
     if is(number, SYS_YIELD) {
         frame.rax = 0; switch = true;
     } else if is(number, SYS_ALLOC) {
@@ -246,6 +251,22 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         frame.rax = system.scheduler.tasks.iter().flatten().filter(|t| t.state != TaskState::Terminated).count() as u64;
     } else if is(number, SYS_TICKS) {
         frame.rax = system.scheduler.ticks;
+    } else if is(number, SYS_SENSE) {
+        // E21 shadow-web control surface. Subcommands arrive in arg
+        // (rdi) — user-rt's call3(number, arg, arg1, arg2):
+        //   0 = status: (trained<<63) | (events<<32) | raised_sites
+        //   1 = freeze the normality cone now
+        //   2 = foreign budget of pid `arg1` (x 1e6, truncated)
+        let sub = arg;
+        if sub == 0 {
+            let (trained, events, raised, _readable) = kernel_sense::status();
+            frame.rax = (u64::from(trained) << 63) | ((events & 0x7FFF_FFFF) << 32) | raised as u64;
+        } else if sub == 1 {
+            kernel_sense::freeze();
+            frame.rax = 0;
+        } else if sub == 2 {
+            frame.rax = (kernel_sense::foreign_budget(arg1) * 1e6) as u64;
+        }
     } else if is(number, SYS_REBOOT) {
         if kernel_kit::storage::sync().is_ok() {
             let status = kernel_kit::io::Port::new(0x64);

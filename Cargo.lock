@@ -24,7 +24,12 @@ name = "kernel-orchestrator"
 version = "0.1.0"
 dependencies = [
  "kernel-kit",
+ "kernel-sense",
 ]
+
+[[package]]
+name = "kernel-sense"
+version = "0.1.0"
 
 [[package]]
 name = "payload"
