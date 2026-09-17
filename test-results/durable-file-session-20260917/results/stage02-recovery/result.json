@@ -1,0 +1,33 @@
+{
+  "image_sha256": "7b44dd2dcf66e3428a35f41199e25a24c048dd995ec155a0cb8a892ca5d42fe8",
+  "acceleration": "kvm",
+  "nonce": "4a766d6fc1684da0",
+  "snapshot_bytes": 524288,
+  "files": 8,
+  "cases": {
+    "payload-write": {
+      "passed": true,
+      "completed_write_flush_delta": [
+        0,
+        0
+      ],
+      "recovered_generation": 1,
+      "recovered_phase": "old",
+      "disk_sha256": "4d6642b84c274d0980ab3a54ea08b888d55eb74b6ba4bb3250119a4f995d40a3"
+    },
+    "payload-flush": {
+      "passed": true,
+      "completed_write_flush_delta": [
+        1024,
+        0
+      ],
+      "recovered_generation": 1,
+      "recovered_phase": "old",
+      "disk_sha256": "80aaf751f5217f343bb5fa45e78c7d17243a902ff89e9f77b2bf6cb1b1397d41"
+    }
+  },
+  "success": false,
+  "seed_generation": 1,
+  "error": "TimeoutError('timed out')",
+  "elapsed_seconds": 18.306
+}

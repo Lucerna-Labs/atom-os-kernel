@@ -489,21 +489,11 @@ fn inject_payloads() {
     
     let worker_bytes = include_bytes!("../../target/x86_64-os/release/worker");
     let fault_bytes = include_bytes!("../../target/x86_64-os/release/fault-probe");
-    // Inject the payloads into the Root RamFS
-    let mut fs = kernel_kit::fs::ROOT_FS.lock();
-    if let kernel_kit::fs::AtomNode::Directory(children) = &mut *fs {
-        use alloc::string::String;
-        use alloc::vec::Vec;
-        
-        children.push((String::from("worker.elf"), kernel_kit::fs::AtomNode::File(alloc::boxed::Box::new(worker_bytes.to_vec()))));
-        children.push((String::from("fault.elf"), kernel_kit::fs::AtomNode::File(alloc::boxed::Box::new(fault_bytes.to_vec()))));
-        let mut shell_data = Vec::new();
-        shell_data.extend_from_slice(shell_bytes);
-        children.push((String::from("shell.elf"), kernel_kit::fs::AtomNode::File(alloc::boxed::Box::new(shell_data))));
-        
-        let mut daemon_data = Vec::new();
-        daemon_data.extend_from_slice(daemon_bytes);
-        children.push((String::from("daemon.elf"), kernel_kit::fs::AtomNode::File(alloc::boxed::Box::new(daemon_data))));
+    let fs_bytes = include_bytes!("../../target/x86_64-os/release/fs-probe");
+    let fs = kernel_kit::fs::ROOT_FS.lock();
+    for (name, bytes) in [("shell.elf", &shell_bytes[..]), ("daemon.elf", &daemon_bytes[..]),
+                          ("worker.elf", &worker_bytes[..]), ("fault.elf", &fault_bytes[..]), ("fs-probe.elf", &fs_bytes[..])] {
+        fs.insert_builtin(name, bytes).expect("embedded program");
     }
     kernel_kit::fs::ROOT_FS.unlock();
 }

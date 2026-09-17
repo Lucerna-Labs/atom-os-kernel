@@ -7,10 +7,12 @@ use abi::*;
 use core::alloc::{GlobalAlloc, Layout};
 
 #[inline]
-pub fn call(number: u64, arg: u64, arg1: u64) -> u64 {
+pub fn call(number: u64, arg: u64, arg1: u64) -> u64 { call3(number, arg, arg1, 0) }
+#[inline]
+pub fn call3(number: u64, arg: u64, arg1: u64, arg2: u64) -> u64 {
     let result: u64;
     unsafe { core::arch::asm!("int 0x80", inout("rax") number => result,
-        in("rdi") arg, in("rsi") arg1, options(nostack, preserves_flags)); }
+        in("rdi") arg, in("rsi") arg1, in("rdx") arg2, options(nostack, preserves_flags)); }
     result
 }
 pub fn yield_now() { call(SYS_YIELD, 0, 0); }
@@ -39,11 +41,24 @@ pub fn path_call(number: u64, path: &str) -> u64 {
     call(number, buffer.as_ptr() as u64, 0)
 }
 pub fn open(path: &str) -> u64 { path_call(SYS_OPEN, path) }
+pub fn open_existing(path: &str) -> u64 { path_call(SYS_OPEN_EXISTING, path) }
 pub fn close(fd: u64) { call(SYS_CLOSE, fd, 0); }
 pub fn read(fd: u64) -> Option<u8> { let byte = call(SYS_READ_FILE, fd, 0); if byte == ERROR { None } else { Some(byte as u8) } }
 pub fn write(fd: u64, bytes: &[u8]) -> bool {
-    bytes.iter().all(|&byte| call(SYS_WRITE_FILE, fd, byte as u64) == 1)
+    call3(SYS_WRITE_FILE_BUFFER, fd, bytes.as_ptr() as u64, bytes.len() as u64) == bytes.len() as u64
 }
+pub fn replace(fd: u64, bytes: &[u8]) -> bool {
+    call3(SYS_REPLACE_FILE, fd, bytes.as_ptr() as u64, bytes.len() as u64) == bytes.len() as u64
+}
+pub fn remove(path: &str) -> bool { path_call(SYS_REMOVE, path) == 0 }
+pub fn rename(old: &str, new: &str) -> bool {
+    if old.is_empty() || old.len() > 63 || new.is_empty() || new.len() > 63 { return false; }
+    let mut from = [0; 64]; let mut to = [0; 64];
+    from[..old.len()].copy_from_slice(old.as_bytes()); to[..new.len()].copy_from_slice(new.as_bytes());
+    call(SYS_RENAME, from.as_ptr() as u64, to.as_ptr() as u64) == 0
+}
+pub fn fs_error() -> u64 { call(SYS_FS_ERROR, 0, 0) }
+pub fn fs_stat(which: u64) -> u64 { call(SYS_FS_STAT, which, 0) }
 pub fn spawn(path: &str) -> u64 { path_call(SYS_SPAWN, path) }
 pub fn wait(pid: u64) -> u64 { call(SYS_WAIT, pid, 0) }
 pub fn send(pid: u64, text: &str) -> bool {

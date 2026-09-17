@@ -5,7 +5,7 @@ use crate::virtio_blk::{BlockDevice, DiskError, VirtioBlock};
 use crate::memory::Spinlock;
 
 const MAGIC: &[u8; 8] = b"ATOMFS01";
-pub const PAYLOAD_SECTORS: u64 = 1024;
+pub const PAYLOAD_SECTORS: u64 = (crate::fs::MAX_SNAPSHOT_BYTES / 512) as u64;
 pub const REQUIRED_SECTORS: u64 = (PAYLOAD_SECTORS + 1) * 2;
 pub type Files = Vec<(String, Vec<u8>)>;
 
@@ -14,14 +14,14 @@ fn checksum(bytes: &[u8]) -> u64 {
 }
 fn u32_at(bytes: &[u8], at: usize) -> u32 { u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) }
 fn u64_at(bytes: &[u8], at: usize) -> u64 { u64::from_le_bytes(bytes[at..at + 8].try_into().unwrap()) }
-pub fn builtin(name: &str) -> bool { matches!(name, "shell.elf" | "daemon.elf" | "worker.elf" | "fault.elf") }
+pub use crate::fs::builtin;
 
 pub fn encode(files: &Files) -> Result<Vec<u8>, DiskError> {
-    if files.len() > 128 { return Err(DiskError::Full); }
+    if files.len() > crate::fs::MAX_FILES { return Err(DiskError::Full); }
     let mut bytes = (files.len() as u32).to_le_bytes().to_vec();
     for (index, (name, data)) in files.iter().enumerate() {
-        if name.is_empty() || name.len() > 63 || name.bytes().any(|b| b < 32 || b == b'/')
-            || builtin(name) || data.len() > 65536 || files[..index].iter().any(|(old, _)| old == name) {
+        if name.is_empty() || name.len() > crate::fs::MAX_NAME_BYTES || name.bytes().any(|b| b < 32 || b == b'/')
+            || builtin(name) || data.len() > crate::fs::MAX_FILE_BYTES || files[..index].iter().any(|(old, _)| old == name) {
             return Err(DiskError::Corrupt);
         }
         if bytes.len() + 6 + name.len() + data.len() > PAYLOAD_SECTORS as usize * 512 { return Err(DiskError::Full); }
@@ -34,7 +34,7 @@ pub fn encode(files: &Files) -> Result<Vec<u8>, DiskError> {
 pub fn decode(bytes: &[u8]) -> Result<Files, DiskError> {
     if bytes.len() < 4 || bytes.len() > PAYLOAD_SECTORS as usize * 512 { return Err(DiskError::Corrupt); }
     let count = u32_at(bytes, 0) as usize;
-    if count > 128 { return Err(DiskError::Corrupt); }
+    if count > crate::fs::MAX_FILES { return Err(DiskError::Corrupt); }
     let mut cursor = 4;
     let mut files: Files = Vec::new();
     for _ in 0..count {
@@ -42,7 +42,7 @@ pub fn decode(bytes: &[u8]) -> Result<Files, DiskError> {
         let name_len = u16::from_le_bytes(bytes[cursor..cursor + 2].try_into().unwrap()) as usize;
         let data_len = u32_at(bytes, cursor + 2) as usize;
         cursor += 6;
-        if name_len == 0 || name_len > 63 || data_len > 65536 || name_len + data_len > bytes.len() - cursor { return Err(DiskError::Corrupt); }
+        if name_len == 0 || name_len > crate::fs::MAX_NAME_BYTES || data_len > crate::fs::MAX_FILE_BYTES || name_len + data_len > bytes.len() - cursor { return Err(DiskError::Corrupt); }
         let name = core::str::from_utf8(&bytes[cursor..cursor + name_len]).map_err(|_| DiskError::Corrupt)?;
         if name.bytes().any(|b| b < 32 || b == b'/') || builtin(name) || files.iter().any(|(old, _)| old == name) {
             return Err(DiskError::Corrupt);
@@ -117,31 +117,33 @@ static STORE: Spinlock<Option<Journal<VirtioBlock>>> = Spinlock::new(None);
 pub fn mount() -> Result<u64, DiskError> {
     let (journal, files) = Journal::open(VirtioBlock::discover()?)?;
     let generation = journal.generation;
-    let fs = crate::fs::ROOT_FS.lock();
-    let result = (|| {
-        for (name, contents) in files {
-            let target = fs.get_or_create_file(&name).ok_or(DiskError::Full)?;
-            unsafe { *target = contents; }
-        }
-        Ok(())
-    })();
+    let restored = crate::fs::FileSystem::restored(files, generation).map_err(|_| DiskError::Corrupt)?;
+    *crate::fs::ROOT_FS.lock() = restored;
     crate::fs::ROOT_FS.unlock();
-    result?;
     *STORE.lock() = Some(journal); STORE.unlock();
     Ok(generation)
 }
+pub fn available() -> bool {
+    let result = STORE.lock().as_ref().is_some_and(|store| store.device.is_online());
+    STORE.unlock(); result
+}
 pub fn sync() -> Result<(), DiskError> {
     let fs = crate::fs::ROOT_FS.lock();
-    let files: Files = match fs {
-        crate::fs::AtomNode::Directory(children) => children.iter().filter_map(|(name, node)| {
-            if builtin(name) { return None; }
-            if let crate::fs::AtomNode::File(bytes) = node { Some((name.clone(), (**bytes).clone())) } else { None }
-        }).collect(),
-        _ => Vec::new(),
-    };
+    let revision = fs.usage().revision;
+    let files = fs.snapshot();
     crate::fs::ROOT_FS.unlock();
     let store = STORE.lock();
-    let result = store.as_mut().ok_or(DiskError::Missing).and_then(|store| store.commit(&files));
+    let result = store.as_mut().ok_or(DiskError::Missing).and_then(|store| {
+        store.commit(&files)?;
+        Ok(store.generation)
+    });
     STORE.unlock();
-    result
+    match result {
+        Ok(generation) => {
+            crate::fs::ROOT_FS.lock().mark_saved(revision, generation);
+            crate::fs::ROOT_FS.unlock();
+            Ok(())
+        }
+        Err(error) => Err(error),
+    }
 }

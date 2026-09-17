@@ -6,5 +6,4 @@ pub mod syscall;
 pub mod system;
 pub mod process;
 
-#[path = "../../abi.rs"]
-pub mod abi;
+pub use kernel_kit::abi;

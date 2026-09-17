@@ -1,0 +1,28 @@
+ABooting Fearless Hypatia...
+oom_after_n: slab=100000 (oom=no , capped=100000)  bump=4096 (oom=yes)
+oom_after_n: GATE PASS — slab reached the 100000-round cap, bump OOMed
+BSTORAGE_READY generation=1
+CHeap Allocation Test: PASS!
+DEPIC Initialized.
+Orchestrator Initialized.
+Ring 3 Multi-Tasking Spawned.
+System running autonomously. Awaiting hardware events...
+ATOM OS kernel shell
+HEAP_OK
+[Daemon] Started
+10,000 SYS_YIELDs took (CPU cycles): 8474887
+> storageprobe mutate a09ce70b94bf4bbc
+STORAGE_NEXT_READY files=8 bytes=524288
+> sync
+SYNC_FAILED
+sync: disk unavailable or I/O failed
+> status
+FS_STATUS unsaved files=8/128 bytes=524288/524288 buffers=524044/1048576 generation=1 disk=1
+> help
+commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run selftest pairtest churn faulttest fstest storageprobe rm mv df status sync reboot
+> sync
+SYNC_OK
+FS_STATUS saved files=8/128 bytes=524288/524288 buffers=524044/1048576 generation=2 disk=1
+> status
+FS_STATUS saved files=8/128 bytes=524288/524288 buffers=524044/1048576 generation=2 disk=1
+> 

@@ -18,7 +18,10 @@ fn main() {
         }
         let ticks = rt::call(SYS_TICKS, 0, 0);
         if ticks.saturating_sub(heartbeat) >= 100 {
-            rt::print_args(format_args!("[Daemon] Heartbeat... tasks={}\n", rt::call(SYS_TASK_COUNT, 0, 0)));
+            let tasks = rt::call(SYS_TASK_COUNT, 0, 0);
+            // Keep the interactive prompt quiet. When the shell exits, the
+            // heartbeat still proves the daemon survives as the remaining task.
+            if tasks == 1 { rt::print_args(format_args!("[Daemon] Heartbeat... tasks={}\n", tasks)); }
             heartbeat = ticks;
         }
         rt::sleep(5);

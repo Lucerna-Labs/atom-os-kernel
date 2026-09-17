@@ -1,0 +1,32 @@
+
+running 27 tests
+test detached_file_memory_is_bounded_and_returned_on_last_close ... ok
+test durable_file_count_is_checked_before_creation_and_recovered_by_remove ... ok
+test elf_gate_accepts_x86_64_and_rejects_bad_magic ... ok
+test elf_gate_rejects_unsupported_byte_order ... ok
+test elf_gate_rejects_wrong_architecture ... ok
+test elf_loader_checks_offsets_lengths_and_permissions ... ok
+test frame_contiguous_allocation_handles_fragmentation ... ok
+test frame_exhaustion_and_reclamation ... ok
+test frame_free_rejects_unaligned_and_out_of_pool_addresses ... ok
+test full_snapshot_rejects_append_replace_and_longer_rename_without_changes ... ok
+test interrupted_commit_retains_the_previous_generation ... ok
+test journal_preserves_exact_binary_data_across_power_cycle ... ok
+test journal_recovers_from_corrupt_newest_header ... ok
+test journal_rejects_unknown_disk_and_invalid_file_metadata ... ok
+test keyboard_basic_input_and_release_scancodes ... ok
+test ramfs_file_handle_survives_directory_growth ... ok
+test rename_and_builtin_protection_preserve_all_existing_contents ... ok
+test saved_status_tracks_the_committed_revision_and_ignores_detached_writes ... ok
+test scheduler_capacity_limit_is_enforced ... ok
+test scheduler_reuses_terminated_slots ... ok
+test scheduler_round_robin_preserves_saved_stack_pointers ... ok
+test scheduler_uses_idle_when_all_tasks_are_blocked ... ok
+test slab_honors_requested_alignment ... ok
+test slab_live_allocations_remain_disjoint ... ok
+test slab_reuses_small_allocations_for_100000_rounds ... ok
+test tagged_fallback_reuses_large_aligned_allocations ... ok
+test unlink_and_rename_preserve_open_handles_without_aliasing_recreated_names ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+

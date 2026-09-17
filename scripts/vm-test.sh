@@ -18,7 +18,7 @@ for attempt in {1..30}; do
 done
 if [ "$ready" -ne 1 ]; then echo "Cannot reach the existing $vm SSH configuration" >&2; exit 1; fi
 ssh -o BatchMode=yes "$vm" "mkdir -p '$remote/source' '$remote/results'"
-rsync -a --exclude=.git --exclude=target --exclude=test-results --exclude=.zcode \
+rsync -a --exclude=.git --exclude=target --exclude=test-results --exclude=__pycache__ --exclude=.zcode \
   --exclude=.zcode-memory --exclude='*.log' --exclude=_build_err.txt \
   "$root/" "$vm:$remote/source/"
 printf '%s\n' "$remote" > "$local_results/vm-path.txt"
@@ -45,6 +45,8 @@ cat "$run/results/native.log"
 cp target/native-tests/compile.log "$run/results/native-compile.log"
 cp target/x86_64-os/release/bootimage-x86_64-kernel.bin "$run/results/bootimage.bin"
 python3 scripts/boot-test.py --accel "$accel" --output "$run/results/acceptance"
+python3 scripts/test-storage-recovery.py --accel "$accel" --output "$run/results/recovery"
+python3 scripts/test-console.py --accel "$accel" --output "$run/results/console"
 SH
 status=$?
 set -e

@@ -1,0 +1,58 @@
+{
+  "native_passed": 29,
+  "native_failed": 0,
+  "snapshot_files": 72,
+  "changed_since_test": [
+    "BACKUP.md",
+    "README.md"
+  ],
+  "backends": {
+    "kvm": {
+      "acceptance_checks": 18,
+      "recovery_cases": 7,
+      "interactive_sessions": 2,
+      "image_sha256": "062e9bcbd6013768567495670609defe393e95199a5fb4ee4f385d10dd09e4f3",
+      "churn": {
+        "rounds": 48,
+        "free_before": 16324,
+        "free_after": 16324,
+        "tasks": 2
+      },
+      "recovered_phases": {
+        "payload-write": "old",
+        "payload-flush": "old",
+        "header-write": "old",
+        "header-flush": "new",
+        "write-error": "retry succeeded",
+        "flush-error": "retry succeeded",
+        "host-no-space": "retry succeeded"
+      }
+    },
+    "tcg": {
+      "acceptance_checks": 18,
+      "recovery_cases": 7,
+      "interactive_sessions": 2,
+      "image_sha256": "062e9bcbd6013768567495670609defe393e95199a5fb4ee4f385d10dd09e4f3",
+      "churn": {
+        "rounds": 48,
+        "free_before": 16324,
+        "free_after": 16324,
+        "tasks": 2
+      },
+      "recovered_phases": {
+        "payload-write": "old",
+        "payload-flush": "old",
+        "header-write": "old",
+        "header-flush": "new",
+        "write-error": "retry succeeded",
+        "flush-error": "retry succeeded",
+        "host-no-space": "retry succeeded"
+      }
+    }
+  },
+  "documentation_only_changes_after_test": [
+    "BACKUP.md",
+    "README.md"
+  ],
+  "compiled_sources_and_test_scripts_unchanged": true
+}

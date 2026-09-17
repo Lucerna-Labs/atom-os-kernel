@@ -136,13 +136,14 @@ fn scheduler_reuses_terminated_slots() {
 
 #[test]
 fn ramfs_file_handle_survives_directory_growth() {
-    let mut root = fs::AtomNode::Directory(Vec::with_capacity(1));
-    let original = root.get_or_create_file("held.txt").unwrap() as usize;
+    let mut root = fs::FileSystem::new();
+    let original = root.open("held.txt").unwrap();
+    root.append(&original, b"kept").unwrap();
     for index in 0..64 {
-        root.get_or_create_file(&format!("new-{index}.txt")).unwrap();
-        let current = root.get_or_create_file("held.txt").unwrap() as usize;
-        assert_eq!(original, current,
-            "creating file {index} relocated the Vec object referenced by the existing FD");
+        root.open(&format!("new-{index}.txt")).unwrap();
+        let current = root.file("held.txt").unwrap();
+        assert!(std::sync::Arc::ptr_eq(&original, &current));
+        assert_eq!(current.with_bytes(|bytes| bytes.to_vec()), b"kept");
     }
 }
 
@@ -315,4 +316,128 @@ fn scheduler_uses_idle_when_all_tasks_are_blocked() {
     assert_eq!(s.switch_context(0x1100), 0x9000);
     assert_eq!(s.timer_tick(0x9100), 0x9100);
     assert_eq!(s.timer_tick(0x9200), 0x1100);
+}
+
+
+#[test]
+fn unlink_and_rename_preserve_open_handles_without_aliasing_recreated_names() {
+    let mut root = fs::FileSystem::new();
+    let old = root.open("before").unwrap(); root.append(&old, b"original").unwrap();
+    root.rename("before", "after").unwrap();
+    assert!(root.file("before").is_none());
+    assert!(std::sync::Arc::ptr_eq(&old, &root.file("after").unwrap()));
+    root.remove("after").unwrap();
+    assert_eq!(root.usage().files, 0);
+    assert_eq!(root.usage().live_bytes, 8);
+    let new = root.open("after").unwrap(); root.append(&new, b"new").unwrap();
+    root.append(&old, b" detached").unwrap();
+    assert_eq!(new.with_bytes(|b| b.to_vec()), b"new");
+    assert_eq!(old.with_bytes(|b| b.to_vec()), b"original detached");
+    assert_eq!(root.snapshot(), vec![("after".into(), b"new".to_vec())]);
+    drop(old); assert_eq!(root.usage().live_bytes, 4);
+}
+
+#[test]
+fn durable_file_count_is_checked_before_creation_and_recovered_by_remove() {
+    let mut root = fs::FileSystem::new();
+    for n in 0..fs::MAX_FILES { root.open(&format!("f{n}")).unwrap(); }
+    let before = root.usage();
+    assert_eq!(root.open("overflow").unwrap_err(), fs::FsError::NoSpace);
+    assert_eq!(root.usage(), before);
+    root.remove("f0").unwrap(); root.open("replacement").unwrap();
+    assert_eq!(root.usage().files, fs::MAX_FILES);
+    assert!(kernel_kit::storage::encode(&root.snapshot()).is_ok());
+}
+
+#[test]
+fn full_snapshot_rejects_append_replace_and_longer_rename_without_changes() {
+    let mut root = fs::FileSystem::new();
+    let mut files = Vec::new();
+    for n in 0..7 {
+        let f = root.open(&format!("f{n}")).unwrap(); root.append(&f, &vec![n as u8; fs::MAX_FILE_BYTES]).unwrap(); files.push(f);
+    }
+    let tail = root.open("z").unwrap();
+    let remaining = fs::MAX_SNAPSHOT_BYTES - root.usage().serialized_bytes;
+    root.append(&tail, &vec![0x5a; remaining]).unwrap();
+    assert_eq!(root.usage().serialized_bytes, fs::MAX_SNAPSHOT_BYTES);
+    assert_eq!(kernel_kit::storage::encode(&root.snapshot()).unwrap().len(), fs::MAX_SNAPSHOT_BYTES);
+    let before = root.snapshot(); let stats = root.usage();
+    assert_eq!(root.append(&tail, b"x"), Err(fs::FsError::NoSpace));
+    assert_eq!(root.replace(&tail, &vec![0; fs::MAX_FILE_BYTES]), Err(fs::FsError::NoSpace));
+    assert_eq!(root.rename("z", "longer-name"), Err(fs::FsError::NoSpace));
+    assert_eq!(root.snapshot(), before); assert_eq!(root.usage(), stats);
+    root.remove("f0").unwrap(); root.append(&tail, b"x").unwrap();
+    assert!(kernel_kit::storage::encode(&root.snapshot()).is_ok());
+}
+
+#[test]
+fn detached_file_memory_is_bounded_and_returned_on_last_close() {
+    let mut root = fs::FileSystem::new(); let mut held = Vec::new();
+    for _ in 0..fs::MAX_LIVE_BYTES / fs::MAX_FILE_BYTES {
+        let f = root.open("temporary").unwrap(); root.append(&f, &vec![1; fs::MAX_FILE_BYTES]).unwrap();
+        root.remove("temporary").unwrap(); held.push(f);
+    }
+    let new = root.open("new").unwrap();
+    assert_eq!(root.append(&new, b"x"), Err(fs::FsError::Memory));
+    assert_eq!(new.len(), 0);
+    held.pop(); root.append(&new, b"x").unwrap();
+    drop(held); assert_eq!(root.usage().live_bytes, 1);
+}
+
+#[test]
+fn rename_and_builtin_protection_preserve_all_existing_contents() {
+    let mut root = fs::FileSystem::new(); root.insert_builtin("shell.elf", b"code").unwrap();
+    let builtin = root.open("shell.elf").unwrap();
+    assert_eq!(root.append(&builtin, b"x"), Err(fs::FsError::ReadOnly));
+    assert_eq!(root.remove("shell.elf"), Err(fs::FsError::ReadOnly));
+    assert_eq!(root.rename("shell.elf", "other"), Err(fs::FsError::ReadOnly));
+    let a = root.open("a").unwrap(); root.append(&a, b"a").unwrap();
+    let b = root.open("b").unwrap(); root.append(&b, b"b").unwrap();
+    let before = root.snapshot();
+    assert_eq!(root.rename("a", "b"), Err(fs::FsError::Exists));
+    assert_eq!(root.rename("a", "shell.elf"), Err(fs::FsError::ReadOnly));
+    assert_eq!(root.rename("a", "../escape"), Err(fs::FsError::InvalidName));
+    assert_eq!(root.snapshot(), before);
+    assert_eq!(root.usage().files, 2);
+}
+
+#[test]
+fn saved_status_tracks_the_committed_revision_and_ignores_detached_writes() {
+    let mut root = fs::FileSystem::new(); assert!(!root.usage().dirty);
+    let file = root.open("a").unwrap(); root.append(&file, b"first").unwrap();
+    let old_revision = root.usage().revision;
+    root.append(&file, b" later").unwrap(); root.mark_saved(old_revision, 1);
+    assert!(root.usage().dirty);
+    root.mark_saved(root.usage().revision, 2); assert!(!root.usage().dirty);
+    root.remove("a").unwrap(); root.mark_saved(root.usage().revision, 3);
+    root.append(&file, b" unlinked").unwrap();
+    assert!(!root.usage().dirty); assert!(root.snapshot().is_empty());
+    let restored = fs::FileSystem::restored(vec![("saved".into(), b"content".to_vec())], 9).unwrap();
+    assert!(!restored.usage().dirty); assert_eq!(restored.usage().generation, 9);
+}
+
+#[test]
+fn opening_a_missing_file_for_read_never_creates_it() {
+    let root = fs::FileSystem::new(); let before = root.usage();
+    assert_eq!(root.open_existing("missing").unwrap_err(), fs::FsError::NotFound);
+    assert_eq!(root.open_existing("../invalid").unwrap_err(), fs::FsError::InvalidName);
+    assert_eq!(root.usage(), before);
+}
+
+
+#[test]
+fn truncation_releases_buffer_capacity_even_for_unlinked_open_files() {
+    let mut root = fs::FileSystem::new(); let mut held = Vec::new();
+    for _ in 0..64 {
+        let file = root.open("temporary").unwrap();
+        root.append(&file, &vec![7; fs::MAX_FILE_BYTES]).unwrap();
+        root.replace(&file, &[]).unwrap();
+        root.remove("temporary").unwrap(); held.push(file);
+        assert_eq!(root.usage().live_bytes, 0);
+    }
+    let file = root.open("bounded").unwrap();
+    root.replace(&file, &vec![3; 65000]).unwrap();
+    root.append(&file, &vec![4; 536]).unwrap();
+    assert_eq!(file.len(), 65536);
+    assert_eq!(root.usage().live_bytes, 65536);
 }

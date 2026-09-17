@@ -1,5 +1,10 @@
 # Atom OS backup checkpoint
 
+This document records the pre-file-management backup at commit `2f2ccf4`, with
+additional raw evidence in `e180a0e`. Later feature branches contain further
+work; see the [current filesystem/session report](test-results/durable-file-session-20260917/REPORT.md)
+for the September 17 development milestone.
+
 Prepared on September 17, 2026 from `codex/kernel-vm-hardening` for the
 Rekonquest GitHub account. This checkpoint contains the complete local kernel
 source, userspace runtime and programs, build/test tooling, documentation and

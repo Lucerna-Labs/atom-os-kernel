@@ -29,8 +29,9 @@ been validated.
   allocations, plus a Rust userspace allocator backed by mapped private pages.
 - **Scheduling and syscalls:** round-robin preemption, `int 0x80` and fast
   `syscall/sysret` paths, and saved integer/x87/SSE/MXCSR context.
-- **Files and IPC:** a flat in-memory filesystem with stable open-file objects,
-  read-only embedded executables, and bounded per-process message queues.
+- **Files and IPC:** a flat filesystem with owned open handles, safe removal and
+  rename, pre-write durable-capacity checks, saved-state reporting, read-only
+  embedded executables, and bounded per-process message queues.
 - **Persistent storage:** a legacy/transitional virtio-blk PCI driver with
   FLUSH support and two checksummed snapshot slots.
 - **Diagnostics:** serial crash reports and containment of user faults, with a
@@ -38,34 +39,42 @@ been validated.
 
 ## Verified results
 
-The latest committed acceptance evidence is from **September 5, 2026**. These
-are recorded results from the development VM, not a claim that every later CI
-run has passed.
+The latest VM verification was completed on **September 17, 2026**. These are
+recorded results from the development VM, not a claim that every later CI run
+has passed. The earlier September 5 baseline remains preserved in test history.
 
 | Verification | Recorded result |
 |---|---|
-| Native regression suite | **21 passed, 0 failed** |
-| QEMU with KVM | **16 acceptance checks passed**; acceleration confirmed by QMP |
-| QEMU with TCG software emulation | **16 acceptance checks passed** on the same boot image |
+| Native regression suite | **29 passed, 0 failed** |
+| QEMU with KVM | **18 acceptance checks passed**; acceleration confirmed by QMP |
+| QEMU with TCG software emulation | **18 acceptance checks passed** on the same boot image |
 | Process creation, wait, and reaping | **48 measured cycles** per backend, following warmup |
-| Free frames after those cycles | **16,326 before → 16,326 after** on both backends |
+| Free frames after those cycles | **16,324 before → 16,324 after** on both backends |
 | Persistent files | Exact generated text survived a warm OS reboot and a fresh QEMU cold boot |
 | Executable replacement | Worker replaced the shell, exited, and left the daemon running |
+| Interrupted storage / I/O failures | **7 cases passed per backend**, at a full 512 KiB serialized snapshot |
+| Interactive console | **2 sessions per backend**, exact retained contents and exclusive-image locking |
 
 The acceptance suite also exercises keyboard input, file reads/writes, exact IPC
 delivery, concurrent processes, invalid-pointer/ELF rejection, fast syscalls,
 SIMD state across timer preemption, and a contained user page fault.
-Interrupted-write/flush recovery is covered by **native fault-injection tests**;
-real-VM interruption during a save is a planned extension.
+The recovery suite additionally suspends actual virtio requests at QEMU block
+breakpoints, terminates the OS guest, and cold-boots the same test disk. It
+checks payload writes, payload flushes, header writes and header flushes, plus
+retry after injected I/O and host-space errors. This exercises abrupt guest
+termination; it does not model a physical host losing its disk cache.
 
 Evidence:
 
-- [Combined verification record](test-results/run-20260905T221621361972313Z/verification.json)
-- [Native test output](test-results/run-20260905T221621361972313Z/native.log)
-- [KVM acceptance result](test-results/run-20260905T221621361972313Z/acceptance/result.json)
-- [TCG acceptance result](test-results/run-20260905T221621361972313Z/tcg/result.json)
-- [Cold-boot serial transcript](test-results/run-20260905T221621361972313Z/acceptance/cold/serial.log)
-- [Implementation report](test-results/implementation-20260905/REPORT.md)
+- [Combined verification record](test-results/run-20260917T202346184712688Z/verification.json)
+- [Native test output](test-results/run-20260917T202346184712688Z/native.log)
+- [KVM acceptance result](test-results/run-20260917T202346184712688Z/acceptance/result.json)
+- [TCG acceptance result](test-results/run-20260917T202346184712688Z/tcg-acceptance/result.json)
+- [Cold-boot serial transcript](test-results/run-20260917T202346184712688Z/acceptance/cold/serial.log)
+- [Filesystem and session implementation report](test-results/durable-file-session-20260917/REPORT.md)
+- [KVM recovery cases](test-results/run-20260917T202346184712688Z/recovery/result.json)
+- [TCG recovery cases](test-results/run-20260917T202346184712688Z/tcg-recovery/result.json)
+- [Interactive console results](test-results/run-20260917T202346184712688Z/console/result.json)
 
 The reference environment was Ubuntu 24.04.4 on x86-64 with QEMU 8.2.2,
 bootimage 0.10.5, and Rust `1.100.0-nightly (8fa1c96cf 2026-08-17)` from the
@@ -105,6 +114,8 @@ cd atom-os-kernel
 bash scripts/build.sh
 bash scripts/test-native.sh
 python3 scripts/boot-test.py --accel tcg --output test-results/local-tcg
+python3 scripts/test-storage-recovery.py --accel tcg --output test-results/local-recovery
+python3 scripts/test-console.py --accel tcg --output test-results/local-console
 ```
 
 [`build.sh`](scripts/build.sh) builds the shell, daemon, worker and fault probe
@@ -154,8 +165,33 @@ builds and tests it, and retrieves the results under `test-results/run-*`.
 
 The wrapper is specific to that existing setup; the direct Linux commands above
 are the starting point for another machine. It preserves previous runs and the
-original VM workspace. A reusable interactive session with a continuing data
-disk is planned separately from this acceptance harness.
+original VM workspace, and runs native, boot, recovery and console checks.
+
+### Interactive session with a continuing disk
+
+From the configured host:
+
+```sh
+bash scripts/vm-run.sh
+```
+
+This builds the current tree in `atom-os-dev` and opens the OS serial console.
+Type commands normally, including `>` for redirection. The default data disk is
+`~/.local/share/atom-os-kernel/data.img` **inside the VM**, reused across launches.
+Use `sync` to save; press **Ctrl-a, then x** to leave QEMU. An existing image is
+never truncated, and a second simultaneous session using that image is refused.
+The default session starts with an empty 8 MiB image when none exists.
+
+Inside a prepared build environment, the equivalent launcher is:
+
+```sh
+python3 scripts/run.py --accel kvm
+```
+
+Both launchers accept `--disk /path/to/data.img` and `--accel tcg`. Disk paths
+passed to `vm-run.sh` refer to the VM. Changes made after the last successful
+`sync` remain in RAM and are lost on exit. The daemon keeps an active shell's
+prompt quiet; its standalone heartbeat remains available after the shell exits.
 
 ## Shell commands
 
@@ -165,6 +201,9 @@ disk is planned separately from this acceptance harness.
 | `cat file` | Read a file |
 | `echo text > file` | Append text and a newline |
 | `edit file` | Edit up to 64 KiB; Esc saves the RAM copy |
+| `rm file` | Remove a writable name; already-open handles retain the file until closed |
+| `mv old new` | Rename two whitespace-separated writable names; an existing destination is rejected |
+| `df`, `status` | Show file/snapshot/buffer capacity, saved state, generation and disk availability |
 | `msg text` | Send a message to the daemon; a full mailbox returns an error |
 | `bench`, `heaptest`, `stats` | Exercise yields/heap or show free frames and live tasks |
 | `spawn worker.elf` | Start a child while the shell continues; print its PID |
@@ -172,18 +211,24 @@ disk is planned separately from this acceptance harness.
 | `run worker.elf` | Replace the shell process with the executable |
 | `selftest`, `pairtest` | Run one worker or two concurrent workers and check their exits |
 | `churn 48` | Exercise repeated process creation/reaping and compare free-frame counts |
+| `fstest` | Exercise file lifecycle and full-capacity checks on an empty filesystem with a disk |
 | `faulttest` | Confirm a user page fault terminates that worker while the shell survives |
 | `sync` | Commit writable files to the data disk |
 | `reboot` | Sync successfully, then reboot the OS |
 
-The current [PS/2 keyboard mapping](kernel-kit/src/keyboard.rs) uses the numpad
-`+` key to enter `>` for redirection.
+The serial console accepts normal terminal input. The optional VGA/PS/2 path
+uses the [basic keyboard mapping](kernel-kit/src/keyboard.rs), where numpad `+`
+enters `>` for redirection.
 
-The kernel embeds four read-only programs: `shell.elf`, `daemon.elf`,
-`worker.elf`, and `fault.elf`. The diagnostic worker checks heap contents,
+The kernel embeds five read-only programs: `shell.elf`, `daemon.elf`,
+`worker.elf`, `fault.elf`, and `fs-probe.elf`. The diagnostic worker checks heap contents,
 untrusted pointers, file handles, fast syscalls, SIMD context and IPC, then exits
 with status **37**. The fault probe touches a stack guard page and produces
-status **142**, which its parent checks.
+status **142**, which its parent checks. `fs-probe.elf` exercises deletion with
+open handles, name reuse, protected files, count/byte limits and saved-state
+tracking. The `storageprobe` diagnostic command supports `seed`, `mutate` and
+`verify` with a 16-hex-digit nonce for isolated recovery-test disks; `seed`
+requires an empty writable filesystem and fills one complete snapshot.
 
 The shared syscall definitions are in [`abi.rs`](abi.rs). Existing byte-I/O and
 IPC calls remain available alongside the newer process and memory operations.
@@ -236,35 +281,44 @@ with `virtio-blk-pci,disable-modern=on`; the storage contracts follow the
 | Physical frame pool | Capped at 64 MiB |
 | Open file descriptors | 16 per process |
 | IPC queue | 4 messages per recipient; up to 255 message bytes |
-| RAM directory | 256 entries, including embedded programs |
-| Persistent writable files | 128 |
+| Writable names in RAM and on disk | 128 |
+| Embedded read-only programs | 5 |
+| Live writable-file buffer capacity | 1 MiB, including unlinked-but-open files |
 | Filename | 63 bytes; flat names |
 | File contents | Up to 64 KiB per writable file |
 | Serialized snapshot | 512 KiB total, including filenames and metadata |
 
-**RAM edits are durable only after `sync` succeeds.** The RAM directory and disk
-format have different capacity limits, so a RAM write may succeed even when a
-later `sync` cannot save everything. Capacity reporting and file removal are
-planned improvements. Without a compatible disk, the kernel reports
-`STORAGE_UNAVAILABLE` and continues with RAM files. The disk format is specific
-to Atom OS.
+**RAM edits are durable only after `sync` succeeds.** Creation, append, replacement
+and rename enforce the serialized snapshot budget before mutation. Rejected
+writes preserve existing contents; the editor uses atomic replacement rather
+than truncating before a save. `cat` opens existing files without creating them.
+
+Unlinking releases a file's name and snapshot capacity immediately. Open handles
+still reference its original data; recreating the same name makes a separate
+file. Its memory is released on the last close. Live buffer capacity is bounded,
+and truncation returns unused buffer capacity. Built-in files cannot be removed,
+renamed or written.
+
+`status` reports `saved` or `unsaved` for namespace changes, the last committed
+generation and disk availability. A failed sync keeps the RAM state unsaved.
+Completed virtio I/O errors can be retried; timed-out or invalid queue operations
+leave the device offline. Without a compatible disk, the kernel reports
+`STORAGE_UNAVAILABLE` and continues with RAM files. The disk format remains
+`ATOMFS01`; existing valid snapshots are compatible.
 
 ## Next milestones
 
 These are proposed work, not currently implemented features:
 
-- Safe file removal/rename, consistent durable-capacity enforcement, and clear
-  saved/unsaved status.
-- Recovery tests that interrupt actual virtio writes and flushes in the VM.
-- An interactive launcher that reuses a persistent development disk.
 - Program arguments and process inspection/control commands such as `ps` and
   `kill`.
+- Further storage development beyond the current flat, bounded snapshot format.
 
 ## CI and preserved history
 
 The [Test OS workflow](.github/workflows/test.yml) builds all bundled programs
-and the boot image, runs native regressions and TCG acceptance, and retains
-failure artifacts. Check [GitHub Actions](https://github.com/Rekonquest/atom-os-kernel/actions)
+and the boot image, runs native regressions, TCG acceptance, interrupted-storage
+recovery and interactive-console checks, and retains failure artifacts. Check [GitHub Actions](https://github.com/Rekonquest/atom-os-kernel/actions)
 for the status of a particular commit.
 
 Selected reports and raw logs are committed under [`test-results/`](test-results),

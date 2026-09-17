@@ -6,8 +6,10 @@ use kernel_kit::trap::TrapFrame;
 
 pub fn load_image(name: &str, kernel_root: u64) -> Result<(AddressSpace, u64), MapError> {
     let fs = kernel_kit::fs::ROOT_FS.lock();
-    let result = (|| {
-        let bytes = fs.file(name).ok_or(MapError::Address)?;
+    let file = fs.file(name);
+    kernel_kit::fs::ROOT_FS.unlock();
+    let file = file.ok_or(MapError::Address)?;
+    file.with_bytes(|bytes| {
         let image = Image::parse(bytes).map_err(|_| MapError::Address)?;
         let mut space = AddressSpace::new(kernel_root)?;
         let pages = ((image.end - image.start) / 4096) as usize;
@@ -25,9 +27,7 @@ pub fn load_image(name: &str, kernel_root: u64) -> Result<(AddressSpace, u64), M
         space.allocate_region(STACK_TOP - STACK_BYTES as u64, STACK_BYTES / 4096, false)?;
         space.allocate_region(RECV_BASE, 1, false)?;
         Ok((space, image.entry))
-    })();
-    kernel_kit::fs::ROOT_FS.unlock();
-    result
+    })
 }
 
 pub fn create(pid: usize, parent: usize, name: &str, kernel_root: u64) -> Result<Context, MapError> {

@@ -3,6 +3,7 @@
 extern crate alloc;
 use alloc::{string::String, vec::Vec, format};
 use user_rt::{self as rt, abi::*};
+mod storage_probe;
 user_rt::entry!(main);
 
 fn line() -> String {
@@ -19,7 +20,7 @@ fn line() -> String {
     }
 }
 fn read_file(name: &str) -> Result<Vec<u8>, ()> {
-    let fd = rt::open(name); if fd == ERROR { return Err(()); }
+    let fd = rt::open_existing(name); if fd == ERROR { return Err(()); }
     let mut bytes = Vec::new();
     while let Some(byte) = rt::read(fd) {
         if bytes.len() == 65536 { rt::close(fd); return Err(()); }
@@ -66,7 +67,11 @@ fn churn(rounds: usize) {
         if before == after && tasks == 2 { "OK" } else { "FAIL" }, rounds, before, after, tasks));
 }
 fn edit(name: &str) {
-    let Ok(mut bytes) = read_file(name) else { rt::print("cannot open editor\n"); return; };
+    let mut bytes = match read_file(name) {
+        Ok(bytes) => bytes,
+        Err(()) if rt::fs_error() == FsError::NotFound as u64 => Vec::new(),
+        Err(()) => { fs_error("edit"); return; }
+    };
     rt::print("Editor: Esc saves; Backspace deletes.\n");
     if let Ok(text) = core::str::from_utf8(&bytes) { rt::print(text); }
     loop {
@@ -77,30 +82,54 @@ fn edit(name: &str) {
         else if bytes.len() < 65536 { bytes.push(byte); rt::call(SYS_WRITE, byte as u64, 0); }
     }
     let fd = rt::open(name);
-    let ok = fd != ERROR && rt::call(SYS_TRUNCATE, fd, 0) == 0 && rt::write(fd, &bytes);
-    rt::close(fd);
-    rt::print(if ok { "\nSaved in RAM; use sync to save to disk.\n" } else { "\nSave failed\n" });
+    let ok = fd != ERROR && rt::replace(fd, &bytes);
+    let error = rt::fs_error(); rt::close(fd);
+    if ok { rt::print("\nUpdated in RAM; use sync to save to disk.\n"); }
+    else { rt::print_args(format_args!("\nSave rejected: {} (previous contents preserved)\n", fs_error_message(error))); }
+}
+fn fs_error(operation: &str) {
+    let error = rt::fs_error();
+    rt::print_args(format_args!("{}: {}\n", operation, fs_error_message(error)));
+}
+fn fs_status() {
+    rt::print_args(format_args!("FS_STATUS {} files={}/{} bytes={}/{} buffers={}/{} generation={} disk={}\n",
+        if rt::fs_stat(4) == 0 { "saved" } else { "unsaved" },
+        rt::fs_stat(0), rt::fs_stat(1), rt::fs_stat(2), rt::fs_stat(3),
+        rt::fs_stat(6), rt::fs_stat(7), rt::fs_stat(5), rt::fs_stat(10)));
 }
 fn execute(command: &str) {
     let (verb, argument) = command.split_once(' ').unwrap_or((command, ""));
     let argument = argument.trim();
     match verb {
         "" => {}
-        "help" => rt::print("commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run selftest pairtest churn faulttest sync reboot\n"),
+        "help" => rt::print("commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run selftest pairtest churn faulttest fstest storageprobe rm mv df status sync reboot\n"),
         "ls" => { rt::call(SYS_LIST_DIR, 0, 0); }
         "clear" => { rt::call(SYS_CLEAR, 0, 0); }
         "bench" => bench(),
         "heaptest" => heap_test(),
         "cat" => match read_file(argument) {
             Ok(bytes) => { if let Ok(text) = core::str::from_utf8(&bytes) { rt::print(text); } else { rt::print("binary file"); } rt::print("\n"); }
-            Err(()) => rt::print("cannot read file\n"),
+            Err(()) => fs_error("cat"),
         },
         "edit" => edit(argument),
         "echo" => if let Some((text, name)) = argument.split_once(" > ") {
             let fd = rt::open(name.trim());
-            if fd == ERROR || !rt::write(fd, text.as_bytes()) || !rt::write(fd, b"\n") { rt::print("write failed\n"); }
+            let line = format!("{}\n", text);
+            if fd == ERROR || !rt::write(fd, line.as_bytes()) { fs_error("echo"); }
             rt::close(fd);
         } else { rt::print("usage: echo text > file\n"); },
+        "rm" => { if rt::remove(argument) { rt::print("REMOVED\n"); } else { fs_error("rm"); } }
+        "mv" => {
+            let words: Vec<_> = argument.split_whitespace().collect();
+            if words.len() != 2 { rt::print("usage: mv old-name new-name\n"); }
+            else if rt::rename(words[0], words[1]) { rt::print("RENAMED\n"); } else { fs_error("mv"); }
+        }
+        "df" | "status" => fs_status(),
+        "fstest" => {
+            let pid = rt::spawn("fs-probe.elf");
+            if pid != ERROR && rt::wait(pid) == 0 { rt::print("FSTEST_OK\n"); } else { rt::print("FSTEST_FAIL\n"); }
+        }
+        "storageprobe" => storage_probe::run(argument),
         "msg" => rt::print(if rt::send(2, argument) { "Message sent to Daemon\n" } else { "message rejected or mailbox full\n" }),
         "spawn" => { let pid = rt::spawn(argument); if pid == ERROR { rt::print("spawn failed\n"); }
             else { rt::print(&format!("spawned pid {}\n", pid)); } }
@@ -125,7 +154,10 @@ fn execute(command: &str) {
         }
         "stats" => { let free = rt::call(SYS_FREE_FRAMES, 0, 0); let tasks = rt::call(SYS_TASK_COUNT, 0, 0);
             rt::print(&format!("FREE_FRAMES {} TASKS {}\n", free, tasks)); }
-        "sync" => rt::print(if rt::call(SYS_SYNC, 0, 0) == 0 { "SYNC_OK\n" } else { "SYNC_FAILED\n" }),
+        "sync" => {
+            if rt::call(SYS_SYNC, 0, 0) == 0 { rt::print("SYNC_OK\n"); fs_status(); }
+            else { rt::print("SYNC_FAILED\n"); fs_error("sync"); }
+        },
         "reboot" => { rt::call(SYS_REBOOT, 0, 0); rt::print("reboot failed (sync required)\n"); }
         _ => rt::print("Unknown command\n"),
     }

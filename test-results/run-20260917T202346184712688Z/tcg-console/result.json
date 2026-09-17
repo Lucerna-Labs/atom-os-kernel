@@ -1,0 +1,18 @@
+{
+  "nonce": "console-7ee7b80bb21144c2",
+  "success": true,
+  "sessions": [
+    {
+      "number": 1,
+      "passed": true,
+      "disk_sha256": "cd0a1e7e0639a6ffa570136268d658acfc0fbe77df5cb54f694503833ad689f2"
+    },
+    {
+      "number": 2,
+      "passed": true,
+      "disk_sha256": "cd0a1e7e0639a6ffa570136268d658acfc0fbe77df5cb54f694503833ad689f2"
+    }
+  ],
+  "acceleration": "tcg",
+  "exclusive_session_lock": true
+}

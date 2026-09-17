@@ -35,6 +35,7 @@ fn pci_write(bus: u32, slot: u32, function: u32, offset: u32, value: u32) {
 }
 
 impl VirtioBlock {
+    pub fn is_online(&self) -> bool { self.online }
     pub fn discover() -> Result<Self, DiskError> {
         for bus in 0..256 {
             for slot in 0..32 {
@@ -109,7 +110,10 @@ impl VirtioBlock {
             let head = read_volatile((used as *const u8).add(4 + (self.consumed % self.size) as usize * 8) as *const u32);
             self.consumed = self.consumed.wrapping_add(1);
             let _ = Port::new(self.io + 19).read();
-            if head != 0 || read_volatile(request.add(1024)) != 0 { self.online = false; return Err(DiskError::Io); }
+            if head != 0 { self.online = false; return Err(DiskError::Io); }
+            // A completed request with an I/O error still returned its queue
+            // entry. Preserve the usable queue so a transient error can retry.
+            if read_volatile(request.add(1024)) != 0 { return Err(DiskError::Io); }
             if kind == 0 { core::ptr::copy_nonoverlapping(request.add(512), bytes.as_mut_ptr(), 512); }
         }
         Ok(())

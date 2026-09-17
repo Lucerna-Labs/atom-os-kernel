@@ -33,6 +33,10 @@ impl SerialPort {
         self.modem_control.write(0x0B);       // IRQs enabled, RTS/DSR set
     }
 
+    pub fn receive(&self) -> Option<u8> {
+        if self.line_status.read() & 1 != 0 { Some(self.data.read()) } else { None }
+    }
+
     fn is_transmit_empty(&self) -> bool {
         self.line_status.read() & 0x20 != 0
     }

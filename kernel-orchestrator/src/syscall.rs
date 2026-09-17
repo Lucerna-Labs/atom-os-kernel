@@ -24,7 +24,12 @@ pub fn user_string(context: &Context, address: u64, limit: usize) -> Result<Stri
     Err(())
 }
 
-pub fn builtin(name: &str) -> bool { matches!(name, "shell.elf" | "daemon.elf" | "worker.elf" | "fault.elf") }
+fn fs_result(context: &mut Context, frame: &mut TrapFrame, result: Result<u64, FsError>) {
+    match result {
+        Ok(value) => { frame.rax = value; context.fs_error = 0; }
+        Err(error) => { frame.rax = ERROR; context.fs_error = error as u64; }
+    }
+}
 
 /// Called with interrupts disabled and the actual interrupted frame registered
 /// in the current context. Never dispatch through an earlier saved frame.
@@ -38,6 +43,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
     let number = frame.rax;
     let arg = frame.rdi;
     let arg1 = frame.rsi;
+    let arg2 = frame.rdx;
     frame.rax = ERROR;
     let mut switch = false;
     if is(number, SYS_YIELD) {
@@ -49,7 +55,12 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
     } else if is(number, SYS_EXIT) {
         system.exit_current(arg); switch = true;
     } else if is(number, SYS_READ) {
-        loop {
+        let (serial, flags) = kernel_kit::serial::SERIAL1.lock();
+        let byte = serial.receive();
+        kernel_kit::serial::SERIAL1.unlock(flags);
+        if let Some(byte) = byte {
+            frame.rax = match byte { b'\r' => b'\n', 127 => 8, b => b } as u64;
+        } else { loop {
             let (buffer, flags) = kernel_kit::io::KEYBOARD_BUFFER.lock();
             let code = buffer.pop();
             kernel_kit::io::KEYBOARD_BUFFER.unlock(flags);
@@ -57,6 +68,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                 Some(code) => if let Some(byte) = kernel_kit::keyboard::scancode_to_ascii(code) { frame.rax = byte as u64; break; },
                 None => { frame.rax = 0; break; }
             }
+        }
         }
     } else if is(number, SYS_WRITE) || is(number, 14) {
         kernel_kit::vga::VgaWriter::new().write_byte(arg as u8); frame.rax = 1;
@@ -67,37 +79,81 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             for &byte in bytes { writer.write_byte(byte); }
             frame.rax = arg1;
         }
-    } else if is(number, SYS_OPEN) {
-        if let Ok(name) = user_string(context, arg, 64) {
-            if let Some(fd) = context.open_files.iter().position(|entry| entry.0 == 0) {
-                let fs = kernel_kit::fs::ROOT_FS.lock();
-                if let Some(data) = fs.get_or_create_file(&name) {
-                    context.open_files[fd] = (data as u64, 0);
-                    if builtin(&name) { context.readonly_files |= 1 << fd; } else { context.readonly_files &= !(1 << fd); }
-                    frame.rax = fd as u64;
-                }
-                kernel_kit::fs::ROOT_FS.unlock();
-            }
-        }
+    } else if is(number, SYS_OPEN) || is(number, SYS_OPEN_EXISTING) {
+        let result = (|| {
+            let name = user_string(context, arg, 64).map_err(|_| FsError::BadBuffer)?;
+            let fd = context.open_files.iter().position(|entry| entry.is_none()).ok_or(FsError::BadHandle)?;
+            let fs = kernel_kit::fs::ROOT_FS.lock();
+            let file = if is(number, SYS_OPEN_EXISTING) { fs.open_existing(&name) } else { fs.open(&name) };
+            kernel_kit::fs::ROOT_FS.unlock();
+            context.open_files[fd] = Some(kernel_kit::fs::OpenFile { file: file?, cursor: 0 });
+            Ok(fd as u64)
+        })();
+        fs_result(context, frame, result);
     } else if is(number, SYS_READ_FILE) || is(number, SYS_WRITE_FILE) || is(number, SYS_TRUNCATE) {
-        if arg < 16 && context.open_files[arg as usize].0 != 0 {
-            let (pointer, cursor) = context.open_files[arg as usize];
-            let data = unsafe { &mut *(pointer as *mut Vec<u8>) };
+        let result = (|| {
+            let opened = context.open_files.get_mut(arg as usize).and_then(Option::as_mut).ok_or(FsError::BadHandle)?;
             if is(number, SYS_READ_FILE) {
-                if let Some(&byte) = data.get(cursor) { context.open_files[arg as usize].1 += 1; frame.rax = byte as u64; }
-            } else if context.readonly_files & (1 << arg) == 0 {
-                if is(number, SYS_TRUNCATE) { data.clear(); context.open_files[arg as usize].1 = 0; frame.rax = 0; }
-                else if data.len() < 65536 { data.push(arg1 as u8); frame.rax = 1; }
+                if let Some(byte) = opened.file.byte(opened.cursor) { opened.cursor += 1; Ok(byte as u64) }
+                else { Ok(ERROR) } // EOF preserves the original byte-I/O ABI.
+            } else {
+                let fs = kernel_kit::fs::ROOT_FS.lock();
+                let result = if is(number, SYS_TRUNCATE) { fs.replace(&opened.file, &[]) }
+                             else { fs.append(&opened.file, &[arg1 as u8]) };
+                kernel_kit::fs::ROOT_FS.unlock();
+                result?;
+                if is(number, SYS_TRUNCATE) { opened.cursor = 0; Ok(0) } else { Ok(1) }
             }
-        }
+        })();
+        fs_result(context, frame, result);
+    } else if is(number, SYS_WRITE_FILE_BUFFER) || is(number, SYS_REPLACE_FILE) {
+        let result = (|| {
+            if arg2 > kernel_kit::fs::MAX_FILE_BYTES as u64 { return Err(FsError::FileTooLarge); }
+            if arg2 != 0 && !context.space.as_ref().unwrap().valid_user_range(arg1, arg2 as usize, false) {
+                return Err(FsError::BadBuffer);
+            }
+            let input = if arg2 == 0 { &[][..] } else { unsafe { core::slice::from_raw_parts(arg1 as *const u8, arg2 as usize) } };
+            let opened = context.open_files.get_mut(arg as usize).and_then(Option::as_mut).ok_or(FsError::BadHandle)?;
+            let fs = kernel_kit::fs::ROOT_FS.lock();
+            let result = if is(number, SYS_REPLACE_FILE) { fs.replace(&opened.file, input) } else { fs.append(&opened.file, input) };
+            kernel_kit::fs::ROOT_FS.unlock();
+            result?;
+            if is(number, SYS_REPLACE_FILE) { opened.cursor = 0; }
+            Ok(arg2)
+        })();
+        fs_result(context, frame, result);
+    } else if is(number, SYS_REMOVE) || is(number, SYS_RENAME) {
+        let result = (|| {
+            let old = user_string(context, arg, 64).map_err(|_| FsError::BadBuffer)?;
+            let new = if is(number, SYS_RENAME) { Some(user_string(context, arg1, 64).map_err(|_| FsError::BadBuffer)?) } else { None };
+            let fs = kernel_kit::fs::ROOT_FS.lock();
+            let result = if let Some(new) = new { fs.rename(&old, &new) } else { fs.remove(&old) };
+            kernel_kit::fs::ROOT_FS.unlock();
+            result.map(|()| 0)
+        })();
+        fs_result(context, frame, result);
     } else if is(number, SYS_CLOSE) {
-        if arg < 16 { context.open_files[arg as usize] = (0, 0); context.readonly_files &= !(1 << arg); frame.rax = 0; }
+        let result = if let Some(slot) = context.open_files.get_mut(arg as usize) {
+            if slot.take().is_some() { Ok(0) } else { Err(FsError::BadHandle) }
+        } else { Err(FsError::BadHandle) };
+        fs_result(context, frame, result);
+    } else if is(number, SYS_FS_ERROR) {
+        frame.rax = context.fs_error;
+    } else if is(number, SYS_FS_STAT) {
+        let usage = kernel_kit::fs::ROOT_FS.lock().usage();
+        kernel_kit::fs::ROOT_FS.unlock();
+        frame.rax = match arg {
+            0 => usage.files as u64, 1 => kernel_kit::fs::MAX_FILES as u64,
+            2 => usage.serialized_bytes as u64, 3 => kernel_kit::fs::MAX_SNAPSHOT_BYTES as u64,
+            4 => usage.dirty as u64, 5 => usage.generation,
+            6 => usage.live_bytes as u64, 7 => kernel_kit::fs::MAX_LIVE_BYTES as u64,
+            8 => usage.revision, 9 => usage.saved_revision,
+            10 => kernel_kit::storage::available() as u64, _ => ERROR,
+        };
     } else if is(number, SYS_LIST_DIR) {
         let fs = kernel_kit::fs::ROOT_FS.lock();
         let mut writer = kernel_kit::vga::VgaWriter::new();
-        if let kernel_kit::fs::AtomNode::Directory(children) = fs {
-            for (name, _) in children { writer.write_string(name); writer.write_string("  "); }
-        }
+        for (name, _) in fs.entries() { writer.write_string(name); writer.write_string("  "); }
         writer.write_string("\n"); kernel_kit::fs::ROOT_FS.unlock(); frame.rax = 0;
     } else if is(number, SYS_CLEAR) {
         kernel_kit::vga::VgaWriter::new().clear_screen(); frame.rax = 0;
@@ -110,7 +166,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                 unsafe { Cr3::load(space.root); }
                 context.page_table_root = space.root;
                 context.space = Some(space);
-                context.open_files = [(0, 0); 16]; context.readonly_files = 0;
+                context.open_files = [const { None }; 16]; context.fs_error = 0;
                 *frame = TrapFrame::new_user(entry, STACK_TOP);
                 unsafe { crate::process::reset_fpu(rsp); }
             }
@@ -151,7 +207,8 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             frame.rax = RECV_BASE;
         }
     } else if is(number, SYS_SYNC) {
-        if kernel_kit::storage::sync().is_ok() { frame.rax = 0; }
+        let result = kernel_kit::storage::sync().map(|()| 0).map_err(|_| FsError::Io);
+        fs_result(context, frame, result);
     } else if is(number, SYS_FREE_FRAMES) {
         let (pool, flags) = kernel_kit::memory::FRAME_ALLOCATOR.lock();
         frame.rax = pool.free_count() as u64;
@@ -165,7 +222,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             let status = kernel_kit::io::Port::new(0x64);
             for _ in 0..100000 { if status.read() & 2 == 0 { break; } core::hint::spin_loop(); }
             kernel_kit::io::Port::new(0x64).write(0xfe);
-        }
+        } else { context.fs_error = FsError::Io as u64; }
     }
     system.scheduler.collect();
     if switch { system.scheduler.switch_context(rsp) } else { rsp }

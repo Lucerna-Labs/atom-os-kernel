@@ -1,0 +1,70 @@
+{
+  "image_sha256": "062e9bcbd6013768567495670609defe393e95199a5fb4ee4f385d10dd09e4f3",
+  "acceleration": "kvm",
+  "nonce": "a09ce70b94bf4bbc",
+  "snapshot_bytes": 524288,
+  "files": 8,
+  "cases": {
+    "payload-write": {
+      "passed": true,
+      "completed_write_flush_delta": [
+        0,
+        0
+      ],
+      "recovered_generation": 1,
+      "recovered_phase": "old",
+      "disk_sha256": "01cb80cfae7105bb757c812d2f00fe7da56bbd85065d2864f778cbf9bde851f6"
+    },
+    "payload-flush": {
+      "passed": true,
+      "completed_write_flush_delta": [
+        1024,
+        0
+      ],
+      "recovered_generation": 1,
+      "recovered_phase": "old",
+      "disk_sha256": "7313ca8e608ae65c7ed8b5746ea3238241bd88b12e2a4f2884af7739ade88cc3"
+    },
+    "header-write": {
+      "passed": true,
+      "completed_write_flush_delta": [
+        1024,
+        1
+      ],
+      "recovered_generation": 1,
+      "recovered_phase": "old",
+      "disk_sha256": "7313ca8e608ae65c7ed8b5746ea3238241bd88b12e2a4f2884af7739ade88cc3"
+    },
+    "header-flush": {
+      "passed": true,
+      "completed_write_flush_delta": [
+        1025,
+        1
+      ],
+      "recovered_generation": 2,
+      "recovered_phase": "new",
+      "disk_sha256": "f918c9fe3417299118f0d273e378f5cb0d2f038892120d470c5ee3afbf889547"
+    },
+    "write-error": {
+      "passed": true,
+      "injected_errno": 5,
+      "retry_generation": 2,
+      "previous_acknowledged_snapshot_preserved": true
+    },
+    "flush-error": {
+      "passed": true,
+      "injected_errno": 5,
+      "retry_generation": 2,
+      "previous_acknowledged_snapshot_preserved": true
+    },
+    "host-no-space": {
+      "passed": true,
+      "injected_errno": 28,
+      "retry_generation": 2,
+      "previous_acknowledged_snapshot_preserved": true
+    }
+  },
+  "success": true,
+  "seed_generation": 1,
+  "elapsed_seconds": 36.284
+}

@@ -1,0 +1,196 @@
+ABooting Fearless Hypatia...
+oom_after_n: slab=100000 (oom=no , capped=100000)  bump=4096 (oom=yes)
+oom_after_n: GATE PASS — slab reached the 100000-round cap, bump OOMed
+BSTORAGE_READY generation=0
+CHeap Allocation Test: PASS!
+DEPIC Initialized.
+Orchestrator Initialized.
+Ring 3 Multi-Tasking Spawned.
+System running autonomously. Awaiting hardware events...
+ATOM OS kernel shell
+HEAP_OK
+[Daemon] Started
+10,000 SYS_YIELDs took (CPU cycles): 141897185
+> fstest
+FILE_LIFECYCLE_OK
+DURABLE_QUOTAS_OK
+FS_STATE_OK
+FSTEST_OK
+> status
+FS_STATUS saved files=0/128 bytes=4/524288 buffers=0/1048576 generation=2 disk=1
+> echo kept > move.txt
+> mv move.txt renamed.txt
+RENAMED
+> cat renamed.txt
+kept
+
+> rm renamed.txt
+REMOVED
+> cat renamed.txt
+cat: file not found
+> df
+FS_STATUS unsaved files=0/128 bytes=4/524288 buffers=0/1048576 generation=2 disk=1
+> help
+commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run selftest pairtest churn faulttest fstest storageprobe rm mv df status sync reboot
+> ls
+shell.elf  daemon.elf  worker.elf  fault.elf  fs-probe.elf  
+> echo persist-08c4a59885f144ef > durable.txt
+> cat durable.txt
+persist-08c4a59885f144ef
+
+> msg acceptance ipc
+Message sent to Daemon
+> [Daemon] Received IPC: acceptance ipc
+heaptest
+HEAP_OK
+> selftest
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+SELFTEST_OK
+> [Daemon] Received IPC: worker delivered
+pairtest
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+PAIRTEST_OK
+> [Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+spawn worker.elf
+spawned pid 7
+> WORKER_OK heap pointers fd fast-syscall xmm ipc
+w[Daemon] Received IPC: worker delivered
+ait 7
+wait pid=7 status=37
+> wait 7
+wait failed
+> echo invalid > malformed.elf
+> spawn malformed.elf
+spawn failed
+> churn 48
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+CHURN_OK rounds=48 free_before=16324 free_after=16324 tasks=2
+> faulttest
+FAULT_PROBE_START
+
+USER_FAULT vector=14 error=0x6 rip=0xffffffff80100022 rsp=0xffffffff800ffff0 cr2=0xffffffff800f7000
+FAULT_ISOLATION_OK status=142
+> sync
+SYNC_OK
+FS_STATUS saved files=50/128 bytes=1093/524288 buffers=296/1048576 generation=3 disk=1
+> reboot
+ABooting Fearless Hypatia...
+oom_after_n: slab=100000 (oom=no , capped=100000)  bump=4096 (oom=yes)
+oom_after_n: GATE PASS — slab reached the 100000-round cap, bump OOMed
+BSTORAGE_READY generation=4
+CHeap Allocation Test: PASS!
+DEPIC Initialized.
+Orchestrator Initialized.
+Ring 3 Multi-Tasking Spawned.
+System running autonomously. Awaiting hardware events...
+ATOM OS kernel shell
+HEAP_OK
+[Daemon] Started
+10,000 SYS_YIELDs took (CPU cycles): 147816813
+> cat durable.txt
+persist-08c4a59885f144ef
+
+> echo second-persist-08c4a59885f144ef > durable.txt
+> sync
+SYNC_OK
+FS_STATUS saved files=50/128 bytes=1125/524288 buffers=280/1048576 generation=5 disk=1
+> 

@@ -1,0 +1,507 @@
+warning: unused import: `core::ptr`
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:620:9
+    |
+620 |     use core::ptr;
+    |         ^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `compare`
+ --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/memory.rs:5:29
+  |
+5 | use crate::atoms::{combine, compare};
+  |                             ^^^^^^^
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:178:24
+    |
+178 |             let next = *((node.add(HEADER_BYTES)) as *mut *mut u8);
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:171:5
+    |
+171 |     unsafe fn free_list_pop(bucket: &mut Bucket) -> Option<*mut u8> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+    = note: `#[warn(unsafe_op_in_unsafe_fn)]` (part of `#[warn(rust_2024_compatibility)]`) on by default
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::add` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:178:26
+    |
+178 |             let next = *((node.add(HEADER_BYTES)) as *mut *mut u8);
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::add` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:182:18
+    |
+182 |             Some(node.add(HEADER_BYTES))
+    |                  ^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::sub` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:193:26
+    |
+193 |         let header_ptr = (user_ptr.sub(HEADER_BYTES)) as *mut SlabHeader;
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:192:5
+    |
+192 |     unsafe fn avalanche_tag_write(user_ptr: *mut u8, layout: &Layout, bucket_idx: usize) {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:194:9
+    |
+194 |         (*header_ptr).tag = avalanche_hash(layout.size(), layout.align());
+    |         ^^^^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:195:9
+    |
+195 |         (*header_ptr).bucket_plus_one = bucket_idx.wrapping_add(1) as u8;
+    |         ^^^^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::sub` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:205:26
+    |
+205 |         let header_ptr = (user_ptr.sub(HEADER_BYTES)) as *mut SlabHeader;
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:204:5
+    |
+204 |     unsafe fn avalanche_tag_verify(user_ptr: *mut u8, layout: &Layout) -> (bool, u8) {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:207:22
+    |
+207 |         let actual = (*header_ptr).tag;
+    |                      ^^^^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:208:32
+    |
+208 |         ((actual == expected), (*header_ptr).bucket_plus_one)
+    |                                ^^^^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::sub` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:218:20
+    |
+218 |         let node = user_ptr.sub(HEADER_BYTES);
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:217:5
+    |
+217 |     unsafe fn free_list_push(bucket: &mut Bucket, user_ptr: *mut u8) {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::add` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:219:25
+    |
+219 |         let next_slot = (node.add(HEADER_BYTES)) as *mut *mut u8;
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:220:9
+    |
+220 |         *next_slot = bucket.head;
+    |         ^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:224:9
+    |
+224 |         (*header_ptr).tag = 0;
+    |         ^^^^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:225:9
+    |
+225 |         (*header_ptr).bucket_plus_one = 0;
+    |         ^^^^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::large_alloc` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:247:24
+    |
+247 |                 return self.large_alloc(layout, bump);
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:238:5
+    |
+238 |     pub unsafe fn alloc(&mut self, layout: Layout, bump: &mut BumpAllocator) -> *mut u8 {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::free_list_pop` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:252:30
+    |
+252 |         let user_ptr = match Self::free_list_pop(&mut self.buckets[bucket_idx]) {
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::<impl memory::BumpAllocator>::bump_alloc_bytes` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:261:28
+    |
+261 |                 let node = bump.bump_alloc_bytes(total, 16);
+    |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::add` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:265:17
+    |
+265 |                 node.add(HEADER_BYTES)
+    |                 ^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::avalanche_tag_write` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:270:9
+    |
+270 |         Self::avalanche_tag_write(user_ptr, &layout, bucket_idx);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:278:16
+    |
+278 |         while !(*link).is_null() {
+    |                ^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:276:5
+    |
+276 |     unsafe fn large_alloc(&mut self, layout: Layout, bump: &mut BumpAllocator) -> *mut u8 {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:279:24
+    |
+279 |             let node = *link;
+    |                        ^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:280:24
+    |
+280 |             let user = (*node).user;
+    |                        ^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:281:16
+    |
+281 |             if (*node).capacity >= layout.size() && (user as usize & (layout.align() - 1)) == 0 {
+    |                ^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:282:17
+    |
+282 |                 *link = (*node).next;
+    |                 ^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:282:25
+    |
+282 |                 *link = (*node).next;
+    |                         ^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::avalanche_tag_write` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:283:17
+    |
+283 |                 Self::avalanche_tag_write(user, &layout, usize::MAX);
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:286:25
+    |
+286 |             link = &mut (*node).next;
+    |                         ^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::<impl memory::BumpAllocator>::bump_alloc_bytes` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:293:20
+    |
+293 |         let base = bump.bump_alloc_bytes(total, 16);
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::write` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:297:9
+    |
+297 |         core::ptr::write(node, LargeNode { next: core::ptr::null_mut(), capacity: layout.size(), user });
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::write_unaligned` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:298:9
+    |
+298 |         core::ptr::write_unaligned(user.sub(HEADER_BYTES + 8) as *mut *mut LargeNode, node);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::sub` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:298:36
+    |
+298 |         core::ptr::write_unaligned(user.sub(HEADER_BYTES + 8) as *mut *mut LargeNode, node);
+    |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::avalanche_tag_write` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:299:9
+    |
+299 |         Self::avalanche_tag_write(user, &layout, usize::MAX);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::avalanche_tag_verify` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:307:37
+    |
+307 |         let (ok, bucket_plus_one) = Self::avalanche_tag_verify(ptr, &layout);
+    |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:303:5
+    |
+303 |     pub unsafe fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::read_unaligned` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:324:24
+    |
+324 |             let node = core::ptr::read_unaligned(ptr.sub(HEADER_BYTES + 8) as *const *mut LargeNode);
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::sub` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:324:50
+    |
+324 |             let node = core::ptr::read_unaligned(ptr.sub(HEADER_BYTES + 8) as *const *mut LargeNode);
+    |                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:325:13
+    |
+325 |             (*(ptr.sub(HEADER_BYTES) as *mut SlabHeader)).tag = 0;
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::sub` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:325:16
+    |
+325 |             (*(ptr.sub(HEADER_BYTES) as *mut SlabHeader)).tag = 0;
+    |                ^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:326:13
+    |
+326 |             (*node).next = self.large_free;
+    |             ^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::free_list_push` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:332:9
+    |
+332 |         Self::free_list_push(&mut self.buckets[bucket_idx], ptr);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::alloc` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:399:19
+    |
+399 |         let ptr = heap.alloc(layout, bump);
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:393:5
+    |
+393 |     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::dealloc` is unsafe and requires unsafe block
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:406:9
+    |
+406 |         inner.heap.dealloc(ptr, layout);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:404:5
+    |
+404 |     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning: variable does not need to be mutable
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:521:9
+    |
+521 |     let mut hits2 = 0usize;
+    |         ----^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `hits2`
+   --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:521:9
+    |
+521 |     let mut hits2 = 0usize;
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_hits2`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+  --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/paging.rs:41:17
+   |
+41 |     let pml4 = &*(phys_to_virt(cr3_phys) as *const PageTable);
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ dereference of raw pointer
+   |
+   = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+  --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/paging.rs:39:1
+   |
+39 | pub unsafe fn walk(cr3_phys: u64, vaddr: u64) -> (u64, u8) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+  --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/paging.rs:44:17
+   |
+44 |     let pdpt = &*(phys_to_virt(p4 & 0x000FFFFFFFFFF000) as *const PageTable);
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ dereference of raw pointer
+   |
+   = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+   = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+  --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/paging.rs:48:15
+   |
+48 |     let pd = &*(phys_to_virt(p3 & 0x000FFFFFFFFFF000) as *const PageTable);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ dereference of raw pointer
+   |
+   = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+   = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+  --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/paging.rs:52:15
+   |
+52 |     let pt = &*(phys_to_virt(p2 & 0x000FFFFFFFFFF000) as *const PageTable);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ dereference of raw pointer
+   |
+   = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+   = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning: variable does not need to be mutable
+  --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/vga.rs:30:13
+   |
+30 |         let mut c = CURSOR.lock();
+   |             ----^
+   |             |
+   |             help: remove this `mut`
+
+warning: constant `SLAB_PREALLOC_PER_BUCKET` is never used
+  --> /home/jesse/atom-os-kernel-tests/run-20260917T202346184712688Z/source/kernel-kit/src/slab.rs:46:7
+   |
+46 | const SLAB_PREALLOC_PER_BUCKET: usize = 32;
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: 51 warnings emitted
+
+For more information about this error, try `rustc --explain E0133`.

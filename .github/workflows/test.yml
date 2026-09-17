@@ -24,6 +24,10 @@ jobs:
         run: bash scripts/test-native.sh
       - name: Boot, process, IPC and persistent-storage acceptance
         run: python3 scripts/boot-test.py --accel tcg --output test-results/ci
+      - name: Interrupted virtio writes and flush recovery
+        run: python3 scripts/test-storage-recovery.py --accel tcg --output test-results/ci-recovery
+      - name: Reusable interactive console and disk
+        run: python3 scripts/test-console.py --accel tcg --output test-results/ci-console
       - name: Retain diagnostics even when acceptance fails
         if: always()
         uses: actions/upload-artifact@v4
@@ -31,5 +35,7 @@ jobs:
           name: atom-os-test-results
           path: |
             test-results/ci/
+            test-results/ci-recovery/
+            test-results/ci-console/
             target/native-tests/compile.log
           retention-days: 7
