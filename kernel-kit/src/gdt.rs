@@ -53,7 +53,7 @@ impl TaskStateSegment {
             interrupt_stack_table: [0; 7],
             reserved_3: 0,
             reserved_4: 0,
-            iomap_base: 0,
+            iomap_base: 104,
         }
     }
 }
@@ -86,8 +86,8 @@ pub struct GlobalDescriptorTable {
     pub null: GdtEntry,
     pub kcode: GdtEntry,
     pub kdata: GdtEntry,
-    pub ucode: GdtEntry,
     pub udata: GdtEntry,
+    pub ucode: GdtEntry,
     pub tss: TssDescriptor,
 }
 
@@ -133,6 +133,7 @@ impl GlobalDescriptorTable {
                 "mov ds, ax",
                 "mov es, ax",
                 "mov ss, ax",
+                out("ax") _,
                 options(nostack, preserves_flags)
             );
         }

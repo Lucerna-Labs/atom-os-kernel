@@ -17,3 +17,7 @@ pub mod paging;
 pub mod pic;
 pub mod trap;
 pub mod vga;
+
+pub mod address_space;
+pub mod virtio_blk;
+pub mod storage;

@@ -1,11 +1,12 @@
 //! Mathematical Virtual File System (RamFS)
 use alloc::vec::Vec;
+use alloc::boxed::Box;
 use alloc::string::String;
 use crate::memory::Spinlock;
 
 /// An abstract mathematical node representing data or a branch in the file system tree.
 pub enum AtomNode {
-    File(Vec<u8>),
+    File(Box<Vec<u8>>),
     Directory(Vec<(String, AtomNode)>),
 }
 
@@ -14,16 +15,29 @@ impl AtomNode {
         AtomNode::Directory(Vec::new())
     }
 
+    pub fn file(&self, filename: &str) -> Option<&Vec<u8>> {
+        match self {
+            Self::Directory(children) => children.iter().find_map(|(name, node)| {
+                if name == filename { if let Self::File(data) = node { return Some(&**data); } }
+                None
+            }),
+            _ => None,
+        }
+    }
+
     /// Searches for a file and returns its data buffer as a mutable reference.
     /// In a real OS, paths would be split by '/'. For this proof of concept, we support flat filenames in the root.
     pub fn get_or_create_file(&mut self, filename: &str) -> Option<*mut Vec<u8>> {
+        if filename.is_empty() || filename.len() > 63 || filename.bytes().any(|b| b < 32 || b == b'/') {
+            return None;
+        }
         match self {
             AtomNode::Directory(children) => {
                 // Find existing
                 for (name, node) in children.iter_mut() {
                     if name == filename {
                         if let AtomNode::File(data) = node {
-                            return Some(data as *mut Vec<u8>);
+                            return Some(&mut **data as *mut Vec<u8>);
                         } else {
                             return None; // Exists but is a directory
                         }
@@ -31,9 +45,10 @@ impl AtomNode {
                 }
                 
                 // If not found, create a new file
-                children.push((String::from(filename), AtomNode::File(Vec::new())));
+                if children.len() >= 256 { return None; }
+                children.push((String::from(filename), AtomNode::File(Box::new(Vec::new()))));
                 if let AtomNode::File(data) = &mut children.last_mut().unwrap().1 {
-                    Some(data as *mut Vec<u8>)
+                    Some(&mut **data as *mut Vec<u8>)
                 } else {
                     None
                 }

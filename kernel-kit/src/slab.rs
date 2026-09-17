@@ -19,7 +19,7 @@
 
 use core::alloc::{GlobalAlloc, Layout};
 use core::sync::atomic::{AtomicUsize, Ordering};
-use crate::memory::{IrqSpinlock, BumpAllocator, AtomHeap};
+use crate::memory::BumpAllocator;
 
 // ─────────────────────────── configuration ───────────────────────────
 
@@ -46,7 +46,7 @@ const SLAB_CLASSES: [usize; 8] = [
 const SLAB_PREALLOC_PER_BUCKET: usize = 32;
 
 /// Header prepended to every slab node. 16 bytes keeps user data aligned
-/// to 16 bytes (sufficient for any rust type).
+/// to 16 bytes; stronger alignment uses the tagged fallback.
 #[repr(C)]
 struct SlabHeader {
     /// Avalanche hash of (layout.size, layout.align, caller_rip) — used by
@@ -62,6 +62,13 @@ struct SlabHeader {
 }
 
 const HEADER_BYTES: usize = 16;
+
+#[repr(C)]
+struct LargeNode {
+    next: *mut LargeNode,
+    capacity: usize,
+    user: *mut u8,
+}
 
 /// A bucket is just the head pointer of its free-list. Nodes on the
 /// free-list use the bytes after SlabHeader to store `next: *mut u8`.
@@ -81,6 +88,7 @@ impl Bucket {
 /// SLAB_PREALLOC_PER_BUCKET allocs per bucket don't pay bump cost.
 pub struct SlabHeap {
     buckets: [Bucket; SLAB_CLASSES.len()],
+    large_free: *mut LargeNode,
     /// Counters for the VERIFY currency (measured at runtime).
     alloc_count: AtomicUsize,
     dealloc_count: AtomicUsize,
@@ -130,6 +138,7 @@ impl SlabHeap {
                 Bucket::new(), Bucket::new(), Bucket::new(), Bucket::new(),
                 Bucket::new(), Bucket::new(), Bucket::new(), Bucket::new(),
             ],
+            large_free: core::ptr::null_mut(),
             alloc_count: AtomicUsize::new(0),
             dealloc_count: AtomicUsize::new(0),
             slab_hits: AtomicUsize::new(0),
@@ -148,7 +157,7 @@ impl SlabHeap {
         out_shape:   Option<bucket_idx>
     */
     fn bucket_route(layout: &Layout) -> Option<usize> {
-        bucket_of(layout.size())
+        if layout.align() > 16 { None } else { bucket_of(layout.size()) }
     }
 
     /*
@@ -183,7 +192,7 @@ impl SlabHeap {
     unsafe fn avalanche_tag_write(user_ptr: *mut u8, layout: &Layout, bucket_idx: usize) {
         let header_ptr = (user_ptr.sub(HEADER_BYTES)) as *mut SlabHeader;
         (*header_ptr).tag = avalanche_hash(layout.size(), layout.align());
-        (*header_ptr).bucket_plus_one = (bucket_idx + 1) as u8;
+        (*header_ptr).bucket_plus_one = bucket_idx.wrapping_add(1) as u8;
     }
 
     /*
@@ -235,7 +244,7 @@ impl SlabHeap {
             None => {
                 // Too big for any slab bucket — fall through to bump.
                 self.slab_misses.fetch_add(1, Ordering::Relaxed);
-                return bump.bump_alloc_bytes(layout.size(), layout.align());
+                return self.large_alloc(layout, bump);
             }
         };
 
@@ -262,6 +271,35 @@ impl SlabHeap {
         user_ptr
     }
 
+    // The fallback keeps the original bump backing, but freed large/aligned
+    // blocks are now reusable. Every route installs the common tag header.
+    unsafe fn large_alloc(&mut self, layout: Layout, bump: &mut BumpAllocator) -> *mut u8 {
+        let mut link = &mut self.large_free as *mut *mut LargeNode;
+        while !(*link).is_null() {
+            let node = *link;
+            let user = (*node).user;
+            if (*node).capacity >= layout.size() && (user as usize & (layout.align() - 1)) == 0 {
+                *link = (*node).next;
+                Self::avalanche_tag_write(user, &layout, usize::MAX);
+                return user;
+            }
+            link = &mut (*node).next;
+        }
+        let alignment = layout.align().max(16);
+        let prefix = core::mem::size_of::<LargeNode>() + HEADER_BYTES + 8;
+        let Some(total) = prefix.checked_add(alignment - 1).and_then(|n| n.checked_add(layout.size().max(1))) else {
+            return core::ptr::null_mut();
+        };
+        let base = bump.bump_alloc_bytes(total, 16);
+        if base.is_null() { return base; }
+        let user = ((base as usize + prefix + alignment - 1) & !(alignment - 1)) as *mut u8;
+        let node = base as *mut LargeNode;
+        core::ptr::write(node, LargeNode { next: core::ptr::null_mut(), capacity: layout.size(), user });
+        core::ptr::write_unaligned(user.sub(HEADER_BYTES + 8) as *mut *mut LargeNode, node);
+        Self::avalanche_tag_write(user, &layout, usize::MAX);
+        user
+    }
+
     pub unsafe fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
         self.dealloc_count.fetch_add(1, Ordering::Relaxed);
 
@@ -282,6 +320,13 @@ impl SlabHeap {
             return;
         }
 
+        if bucket_plus_one == 0 {
+            let node = core::ptr::read_unaligned(ptr.sub(HEADER_BYTES + 8) as *const *mut LargeNode);
+            (*(ptr.sub(HEADER_BYTES) as *mut SlabHeader)).tag = 0;
+            (*node).next = self.large_free;
+            self.large_free = node;
+            return;
+        }
         // STAGE free_list_push
         let bucket_idx = (bucket_plus_one - 1) as usize;
         Self::free_list_push(&mut self.buckets[bucket_idx], ptr);
@@ -639,7 +684,7 @@ pub fn oom_after_n_benchmark(
 
     // Explicit verdict.
     if !slab_oom && bump_oom {
-        let msg = "oom_after_n: GATE PASS — slab ran indefinitely, bump OOMed\n";
+        let msg = "oom_after_n: GATE PASS — slab reached the 100000-round cap, bump OOMed\n";
         print_fn(msg);
     } else if slab_oom && bump_oom && n_slab > n_bump {
         let msg = "oom_after_n: GATE PARTIAL — both OOMed but slab outlasted bump\n";

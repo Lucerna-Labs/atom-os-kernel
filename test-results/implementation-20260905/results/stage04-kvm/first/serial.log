@@ -1,0 +1,187 @@
+ABooting Fearless Hypatia...
+oom_after_n: slab=100000 (oom=no , capped=100000)  bump=4096 (oom=yes)
+oom_after_n: GATE PASS — slab reached the 100000-round cap, bump OOMed
+BSTORAGE_READY generation=0
+CHeap Allocation Test: PASS!
+DEPIC Initialized.
+Orchestrator Initialized.
+Ring 3 Multi-Tasking Spawned.
+System running autonomously. Awaiting hardware events...
+ATOM OS kernel shell
+HEAP_OK
+[Daemon] Started
+10,000 SYS_YIELDs took (CPU cycles): 7978850
+> help
+commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run selftest pairtest churn faulttest sync reboot
+> ls
+worker.elf  fault.elf  shell.elf  daemon.elf  
+> echo persist-a35[Daemon] Heartbeat... tasks=2
+389fc22694eb1 > durable.[Daemon] Heartbeat... tasks=2
+txt
+> cat durable.txt
+persist-a35389fc22694eb1
+
+> msg a[Daemon] Heartbeat... tasks=2
+cceptance ipc
+Message sent to Daemon
+> [Daemon] Received IPC: acceptance ipc
+heaptest
+HEAP_OK
+> [Daemon] Heartbeat... tasks=2
+selftest
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+SELFTEST_OK
+> [Daemon] Received IPC: worker delivered
+pairtest
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+PAIRTEST_OK
+> s[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+pawn w[Daemon] Heartbeat... tasks=2
+orker.elf
+spawned pid 6
+> WORKER_OK heap pointers fd fast-syscall xmm ipc
+w[Daemon] Received IPC: worker delivered
+ait 6
+wait pid=6 status=37
+> wait 6
+wait failed
+> [Daemon] Heartbeat... tasks=2
+echo invalid > malformed.[Daemon] Heartbeat... tasks=2
+elf
+> spawn malformed.elf
+spawn failed
+> c[Daemon] Heartbeat... tasks=2
+hurn 48
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Heartbeat... tasks=3
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+CHURN_OK rounds=48 free_before=16326 free_after=16326 tasks=2
+> faulttest
+FAULT_PROBE_START
+
+USER_FAULT vector=14 error=0x6 rip=0xffffffff80100022 rsp=0xffffffff800ffff0 cr2=0xffffffff800f7000
+FAULT_ISOLATION_OK status=142
+> sync
+SYNC_OK
+> r[Daemon] Heartbeat... tasks=2
+eboot
+ABooting Fearless Hypatia...
+oom_after_n: slab=100000 (oom=no , capped=100000)  bump=4096 (oom=yes)
+oom_after_n: GATE PASS — slab reached the 100000-round cap, bump OOMed
+BSTORAGE_READY generation=2
+CHeap Allocation Test: PASS!
+DEPIC Initialized.
+Orchestrator Initialized.
+Ring 3 Multi-Tasking Spawned.
+System running autonomously. Awaiting hardware events...
+ATOM OS kernel shell
+HEAP_OK
+[Daemon] Started
+10,000 SYS_YIELDs took (CPU cycles): 7999219
+> cat durable.txt
+persist-a35389fc22694eb1
+
+> echo sec[Daemon] Heartbeat... tasks=2
+ond-persist-a35389fc22694[Daemon] Heartbeat... tasks=2
+eb1 > durable.txt
+> sync
+SYNC_OK
+> 

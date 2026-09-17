@@ -1,0 +1,48 @@
+
+running 14 tests
+test elf_gate_accepts_x86_64_and_rejects_bad_magic ... ok
+test elf_gate_rejects_unsupported_byte_order ... 
+thread 'elf_gate_rejects_unsupported_byte_order' (3331) panicked at core_probe.rs:187:5:
+the only ELF validity gate accepts big-endian headers
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test elf_gate_rejects_wrong_architecture ... 
+thread 'elf_gate_rejects_wrong_architecture' (3332) panicked at core_probe.rs:180:5:
+the only ELF validity gate accepts AArch64
+FAILED
+test frame_contiguous_allocation_handles_fragmentation ... ok
+test frame_exhaustion_and_reclamation ... ok
+test frame_free_rejects_unaligned_and_out_of_pool_addresses ... ok
+test keyboard_basic_input_and_release_scancodes ... ok
+test ramfs_file_handle_survives_directory_growth ... 
+thread 'ramfs_file_handle_survives_directory_growth' (3337) panicked at core_probe.rs:152:9:
+assertion `left == right` failed: creating file 0 relocated the Vec object referenced by the existing FD
+  left: 137936565712160
+ right: 137936565712288
+FAILED
+test scheduler_capacity_limit_is_enforced ... ok
+test scheduler_reuses_terminated_slots ... 
+thread 'scheduler_reuses_terminated_slots' (3339) panicked at core_probe.rs:141:5:
+a terminated task permanently occupies its slot
+FAILED
+test scheduler_round_robin_preserves_saved_stack_pointers ... ok
+test slab_honors_requested_alignment ... 
+thread 'slab_honors_requested_alignment' (3341) panicked at core_probe.rs:90:9:
+assertion `left == right` failed: requested align=32, returned 0x7d73dc004010
+  left: 16
+ right: 0
+FAILED
+test slab_live_allocations_remain_disjoint ... ok
+test slab_reuses_small_allocations_for_100000_rounds ... ok
+
+failures:
+
+failures:
+    elf_gate_rejects_unsupported_byte_order
+    elf_gate_rejects_wrong_architecture
+    ramfs_file_handle_survives_directory_growth
+    scheduler_reuses_terminated_slots
+    slab_honors_requested_alignment
+
+test result: FAILED. 9 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

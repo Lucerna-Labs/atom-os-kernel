@@ -38,10 +38,12 @@ static mut HEAP_MEM: [u8; 16 * 1024 * 1024] = [0; 16 * 1024 * 1024];
 const HEAP_BYTES: usize = 16 * 1024 * 1024;
 
 #[alloc_error_handler]
-fn alloc_error_handler(_layout: Layout) -> ! {
-    let mut vga = VgaWriter::new();
-    vga.write_string("ALLOCATION ERROR: OUT OF MEMORY!");
-    loop {}
+fn alloc_error_handler(layout: Layout) -> ! {
+    use core::fmt::Write;
+    let _ = writeln!(EmergencySerial, "ALLOCATION ERROR size={} align={}", layout.size(), layout.align());
+    kernel_kit::io::Port::new(0xf4).write32(0x11);
+    unsafe { core::arch::asm!("cli"); }
+    loop { unsafe { core::arch::asm!("hlt"); } }
 }
 
 static mut IDT: Idt = Idt::new();
@@ -51,10 +53,12 @@ static mut KEYBOARD: Keyboard = Keyboard::new();
 static TIMER_TICKS: AtomicUsize = AtomicUsize::new(0);
 
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    let mut vga = VgaWriter::new();
-    vga.write_string("KERNEL PANIC!");
-    loop {}
+fn panic(info: &PanicInfo) -> ! {
+    use core::fmt::Write;
+    let _ = writeln!(EmergencySerial, "KERNEL_PANIC {info}");
+    kernel_kit::io::Port::new(0xf4).write32(0x11);
+    unsafe { core::arch::asm!("cli"); }
+    loop { unsafe { core::arch::asm!("hlt"); } }
 }
 
 // Our true hardware interrupt wrapper that pushes the state, swaps the stack, and pops the state.
@@ -80,11 +84,26 @@ timer_interrupt_wrapper:
 
     // Pass the current stack pointer (rsp) as the first argument (rdi) to the Rust handler
     mov rdi, rsp
+    sub rsp, 512
+    and rsp, -16
+    fxsave64 [rsp]
+    fninit
+    ldmxcsr [rip + KERNEL_MXCSR]
+    cld
     call timer_interrupt_handler
+    lea rsp, [rax - 512]
+    and rsp, -16
+    fxrstor64 [rsp]
 
     // The Rust handler returns the new stack pointer in rax. Switch stacks!
     mov rsp, rax
 
+.global restore_interrupt_context
+restore_interrupt_context:
+    lea rsp, [rax - 512]
+    and rsp, -16
+    fxrstor64 [rsp]
+    mov rsp, rax
     // Pop all general purpose registers from the new task's TrapFrame
     pop r15
     pop r14
@@ -127,7 +146,16 @@ syscall_interrupt_wrapper:
     push r15
 
     mov rdi, rsp
+    sub rsp, 512
+    and rsp, -16
+    fxsave64 [rsp]
+    fninit
+    ldmxcsr [rip + KERNEL_MXCSR]
+    cld
     call syscall_interrupt_handler
+    lea rsp, [rax - 512]
+    and rsp, -16
+    fxrstor64 [rsp]
 
     // The handler doesn't change the stack pointer for a syscall, it just returns it
     mov rsp, rax
@@ -175,7 +203,16 @@ keyboard_interrupt_wrapper:
     push r15
 
     mov rdi, rsp
+    sub rsp, 512
+    and rsp, -16
+    fxsave64 [rsp]
+    fninit
+    ldmxcsr [rip + KERNEL_MXCSR]
+    cld
     call keyboard_interrupt_handler
+    lea rsp, [rax - 512]
+    and rsp, -16
+    fxrstor64 [rsp]
 
     mov rsp, rax
 
@@ -227,7 +264,14 @@ exception_common:
     // rdi = frame pointer (the 15 GPRs we just pushed). rsi already holds the
     // vector number set by the per-vector trampoline; pushes don't touch it.
     mov rdi, rsp
+    sub rsp, 512
+    and rsp, -16
+    fxsave64 [rsp]
+    fninit
+    ldmxcsr [rip + KERNEL_MXCSR]
+    cld
     call exception_handler
+    jmp restore_interrupt_context
 
     // Exceptions are fatal in this kernel: never return. Halt with ints off.
     cli
@@ -310,9 +354,9 @@ pub unsafe fn rdmsr(msr: u32) -> u64 {
 unsafe fn setup_syscall_msr() {
     let efer_addr: u32 = 0xC0000080;
     let mut efer = rdmsr(efer_addr);
-    efer |= 1 << 12;
+    efer |= 1; // EFER.SCE: bit 12 is reserved on Intel, SVME on AMD.
     wrmsr(efer_addr, efer);
-    let star: u64 = (0x08u64 << 32) | (0x1Bu64 << 48);
+    let star: u64 = (0x08u64 << 32) | (0x13u64 << 48);
     wrmsr(0xC0000081, star);
     wrmsr(0xC0000082, syscall_entry as u64);
     let fmask: u64 = (1 << 9) | (1 << 8);
@@ -361,157 +405,81 @@ extern "C" {
 
 static mut SYSTEM: Option<System> = None;
 
+unsafe fn activate(sys: &System) {
+    let root = if let Some(task) = sys.scheduler.current_task() {
+        TSS.privilege_stack_table[0] = task.kernel_stack;
+        KERNEL_STACK_PTR = task.kernel_stack;
+        task.page_table_root
+    } else { sys.kernel_root };
+    if kernel_kit::paging::Cr3::read() != root { kernel_kit::paging::Cr3::load(root); }
+}
+
 #[no_mangle]
 pub extern "C" fn timer_interrupt_handler(rsp: u64) -> u64 {
-    TIMER_TICKS.fetch_add(1, Ordering::SeqCst);
-
-    let mut new_rsp = rsp;
-
+    TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
+    let mut next = rsp;
     unsafe {
         if let Some(sys) = &mut *(&raw mut SYSTEM) {
-            new_rsp = sys.scheduler.switch_context(rsp);
-            if new_rsp != rsp {
-                if let Some(next_task) = sys.scheduler.current_task() {
-                    if kernel_kit::paging::Cr3::read() != next_task.page_table_root {
-                        kernel_kit::paging::Cr3::load(next_task.page_table_root);
-                    }
-                    TSS.privilege_stack_table[0] = next_task.kernel_stack;
-                }
-            }
+            next = sys.schedule_tick(rsp);
+            activate(sys);
         }
         PICS.notify_end_of_interrupt(32);
     }
-
-    new_rsp
+    next
 }
 
 #[no_mangle]
 pub extern "C" fn syscall_interrupt_handler(rsp: u64) -> u64 {
-    let mut new_rsp = rsp;
-    
     unsafe {
         if let Some(sys) = &mut *(&raw mut SYSTEM) {
-            if let Some(task) = sys.scheduler.current_task_mut() {
-                // Read the syscall number from the trap frame on the stack.
-                // Do NOT save task.rsp here — only the timer handler owns
-                // task.rsp for context switching. Overwriting it here
-                // corrupts the saved state when the timer later fires.
-                let frame_ptr = rsp as *mut kernel_kit::trap::TrapFrame;
-                let sys_num = (*frame_ptr).rax;
-                let mut mem = kernel_kit::memory::MemoryPool::new();
-                kernel_orchestrator::syscall::dispatch(task, &mut mem);
-                // Return the SAME rsp — the syscall didn't switch stacks.
-                new_rsp = rsp;
-
-                // Only SYS_YIELD (1) and SYS_EXIT (3) trigger a context switch.
-                let did_switch = if sys_num == 1 || sys_num == 3 {
-                    // NOW it's safe to save the task's rsp for the switch.
-                    task.rsp = rsp;
-                    let _new = sys.scheduler.switch_context(rsp);
-                    true
-                } else {
-                    false
-                };
-            }
-
-            // Only reload CR3 / TSS if a context switch actually occurred.
-            // Doing this on every syscall corrupts the TSS.esp0 that the
-            // timer handler relies on for its trap frame placement.
-            if new_rsp != rsp {
-                if let Some(next_task) = sys.scheduler.current_task() {
-                    if kernel_kit::paging::Cr3::read() != next_task.page_table_root {
-                        kernel_kit::paging::Cr3::load(next_task.page_table_root);
-                    }
-                    TSS.privilege_stack_table[0] = next_task.kernel_stack;
-                }
-            }
+            let next = kernel_orchestrator::syscall::dispatch(sys, rsp);
+            activate(sys);
+            return next;
         }
-        // NOTE: int 0x80 is a software interrupt, not PIC-sourced, so no EOI is
-        // issued here. The old code sent a spurious EOI to PIC2 (vector 0x80 >= 40)
-        // which desynchronized the slave PIC and dropped subsequent hardware IRQs.
     }
-
-    new_rsp
+    rsp
 }
 
-/// Fast syscall handler for the syscall/sysret path (GAP 3).
-/// Same dispatch logic as syscall_interrupt_handler but entered via the
-/// `syscall` instruction (no IDT, no interrupt-gate stack switch).
 #[no_mangle]
-pub extern "C" fn syscall_fast_handler(rsp: u64) -> u64 {
-    let mut new_rsp = rsp;
-
-    unsafe {
-        if let Some(sys) = &mut *(&raw mut SYSTEM) {
-            if let Some(task) = sys.scheduler.current_task_mut() {
-                let frame_ptr = rsp as *mut kernel_kit::trap::TrapFrame;
-                let sys_num = (*frame_ptr).rax;
-                let mut mem = kernel_kit::memory::MemoryPool::new();
-
-                kernel_orchestrator::syscall::dispatch(task, &mut mem);
-                new_rsp = rsp;
-
-                if sys_num == 1 || sys_num == 3 {
-                    task.rsp = rsp;
-                    new_rsp = sys.scheduler.switch_context(rsp);
-                }
-            }
-
-            if new_rsp != rsp {
-                if let Some(next_task) = sys.scheduler.current_task() {
-                    if kernel_kit::paging::Cr3::read() != next_task.page_table_root {
-                        kernel_kit::paging::Cr3::load(next_task.page_table_root);
-                    }
-                    TSS.privilege_stack_table[0] = next_task.kernel_stack;
-                    KERNEL_STACK_PTR = next_task.kernel_stack;
-                }
-            }
-        }
-    }
-
-    new_rsp
-}
+pub extern "C" fn syscall_fast_handler(rsp: u64) -> u64 { syscall_interrupt_handler(rsp) }
 
 /// CPU-exception handler. Fatal: prints a diagnostic and halts.
 /// Replaces the old silent triple-fault on any #PF/#GP/#DF/etc. so we can
 /// actually see what faulted during bring-up.
-#[no_mangle]
-pub extern "C" fn exception_handler(frame: *const u8, vector: u64) {
-    // Render the vector + faulting RIP/RSP from the saved TrapFrame. The frame
-    // pointer points at our 15 pushed GPRs; immediately above them sit the
-    // errcode and the hardware frame (rip, cs, rflags, rsp, ss).
-    let v = vector as u8;
-    let mut vga = kernel_kit::vga::VgaWriter::new();
-    vga.write_string("\n!! CPU EXCEPTION ");
-    // Print vector as two hex digits by hand (no core::fmt in the kernel).
-    let hi = (v >> 4) & 0xF;
-    let lo = v & 0xF;
-    let hx = |n: u8| -> u8 { if n < 10 { b'0' + n } else { b'A' + (n - 10) } };
-    vga.write_string(&[hx(hi) as char, hx(lo) as char].iter().collect::<alloc::string::String>());
-    vga.write_string(" (");
-
-    let name: &[u8] = match v {
-        0 => b"#DE", 1 => b"#DB", 2 => b"NMI", 3 => b"#BP", 4 => b"#OF",
-        5 => b"#BR", 6 => b"#UD", 7 => b"#NM", 8 => b"#DF", 10 => b"#TS",
-        11 => b"#NP", 12 => b"#SS", 13 => b"#GP", 14 => b"#PF", 16 => b"#MF",
-        17 => b"#AC", 18 => b"#MC", 19 => b"#XM", 20 => b"#VE", _ => b"??",
-    };
-    if let Ok(s) = core::str::from_utf8(name) { vga.write_string(s); }
-    vga.write_string(") -- HALTING");
-
-    // Also emit on serial so headless QEMU (CI) sees it.
-    let banner = b"\n!! CPU EXCEPTION -- HALTING\n";
-    for &b in banner {
-        let (sport, ser_sif_1) = kernel_kit::serial::SERIAL1.lock(); sport.send(b); kernel_kit::serial::SERIAL1.unlock(ser_sif_1);
+struct EmergencySerial;
+impl core::fmt::Write for EmergencySerial {
+    fn write_str(&mut self, text: &str) -> core::fmt::Result {
+        for byte in text.bytes() {
+            for _ in 0..1000000 { if kernel_kit::io::Port::new(0x3fd).read() & 0x20 != 0 { break; } core::hint::spin_loop(); }
+            kernel_kit::io::Port::new(0x3f8).write(byte);
+        }
+        Ok(())
     }
+}
 
-    // Touch the frame so the pointer is provably used; the full register dump
-    // can be added later by walking the TrapFrame layout.
-    let _ = frame;
-
+#[no_mangle]
+pub extern "C" fn exception_handler(frame: *const u64, vector: u64) -> u64 {
+    use core::fmt::Write;
     unsafe {
-        core::arch::asm!("cli", options(nomem, nostack));
-        loop { core::arch::asm!("hlt", options(nomem, nostack, preserves_flags)); }
+        let error = *frame.add(15);
+        let rip = *frame.add(16);
+        let cs = *frame.add(17);
+        let rsp = *frame.add(19);
+        let cr2: u64;
+        core::arch::asm!("mov {}, cr2", out(reg) cr2, options(nomem, nostack, preserves_flags));
+        let _ = writeln!(EmergencySerial, "\n{} vector={} error={:#x} rip={:#x} rsp={:#x} cr2={:#x}",
+            if cs & 3 == 3 { "USER_FAULT" } else { "KERNEL_EXCEPTION" }, vector, error, rip, rsp, cr2);
+        if cs & 3 == 3 {
+            if let Some(sys) = &mut *(&raw mut SYSTEM) {
+                sys.exit_current(128 + vector);
+                let next = sys.scheduler.switch_context(frame as u64);
+                activate(sys);
+                return next;
+            }
+        }
+        kernel_kit::io::Port::new(0xf4).write32(0x11);
+        core::arch::asm!("cli");
+        loop { core::arch::asm!("hlt"); }
     }
 }
 
@@ -519,57 +487,25 @@ fn inject_payloads() {
     let shell_bytes = include_bytes!("../../target/x86_64-os/release/payload");
     let daemon_bytes = include_bytes!("../../target/x86_64-os/release/daemon");
     
+    let worker_bytes = include_bytes!("../../target/x86_64-os/release/worker");
+    let fault_bytes = include_bytes!("../../target/x86_64-os/release/fault-probe");
     // Inject the payloads into the Root RamFS
     let mut fs = kernel_kit::fs::ROOT_FS.lock();
     if let kernel_kit::fs::AtomNode::Directory(children) = &mut *fs {
         use alloc::string::String;
         use alloc::vec::Vec;
         
+        children.push((String::from("worker.elf"), kernel_kit::fs::AtomNode::File(alloc::boxed::Box::new(worker_bytes.to_vec()))));
+        children.push((String::from("fault.elf"), kernel_kit::fs::AtomNode::File(alloc::boxed::Box::new(fault_bytes.to_vec()))));
         let mut shell_data = Vec::new();
         shell_data.extend_from_slice(shell_bytes);
-        children.push((String::from("shell.elf"), kernel_kit::fs::AtomNode::File(shell_data)));
+        children.push((String::from("shell.elf"), kernel_kit::fs::AtomNode::File(alloc::boxed::Box::new(shell_data))));
         
         let mut daemon_data = Vec::new();
         daemon_data.extend_from_slice(daemon_bytes);
-        children.push((String::from("daemon.elf"), kernel_kit::fs::AtomNode::File(daemon_data)));
+        children.push((String::from("daemon.elf"), kernel_kit::fs::AtomNode::File(alloc::boxed::Box::new(daemon_data))));
     }
     kernel_kit::fs::ROOT_FS.unlock();
-}
-
-unsafe fn spawn_process(pid: u64, filename: &[u8]) -> kernel_kit::context::Context {
-    use kernel_kit::trap::TrapFrame;
-    use alloc::vec::Vec;
-
-    // Allocate an individual kernel stack for this process's TrapFrame and interrupt handling
-    let mut kernel_stack = Vec::<u8>::with_capacity(4096);
-    kernel_stack.resize(4096, 0);
-    let kernel_stack_ptr = kernel_stack.as_ptr() as u64 + 4096;
-    core::mem::forget(kernel_stack);
-
-    let mut tf = TrapFrame::new_user(0, 0xFFFFFFFF80100000);
-    let frame_ptr = (kernel_stack_ptr - core::mem::size_of::<TrapFrame>() as u64) as *mut TrapFrame;
-    
-    // We pass tf.rsp via ctx.rsp so the dispatcher can find it.
-    let tf_ptr_temp = &mut tf as *mut _ as u64;
-    let mut ctx = kernel_kit::context::Context::new(pid as usize, tf_ptr_temp, kernel_stack_ptr, kernel_kit::paging::Cr3::read());
-    let mut mem = kernel_kit::memory::MemoryPool::new();
-    
-    // Setup trap frame to mimic SYS_EXEC arguments
-    tf.rax = 13; // SYS_EXEC
-    tf.rdi = filename.as_ptr() as u64;
-    
-    kernel_orchestrator::syscall::dispatch(&mut ctx, &mut mem);
-    
-    if tf.rax == core::u64::MAX {
-        panic!("Failed to load payload");
-    }
-
-    *frame_ptr = tf; // Move TrapFrame to actual kernel stack
-    
-    // Update Context rsp to point to the TrapFrame on the kernel stack
-    ctx.rsp = frame_ptr as u64;
-    
-    ctx
 }
 
 // Now takes/returns rsp because keyboard_interrupt_wrapper does `mov rsp,rax`
@@ -601,18 +537,22 @@ static mut TSS: TaskStateSegment = TaskStateSegment::new();
 /// and _start so the syscall trampoline can find the kernel stack.
 #[no_mangle]
 pub static mut KERNEL_STACK_PTR: u64 = 0;
+#[no_mangle]
+pub static mut USER_STACK_PTR: u64 = 0;
+#[no_mangle]
+pub static KERNEL_MXCSR: u32 = 0x1f80;
 
 // ──────────────── GAP 3: syscall/sysret fast entry ────────────────
 global_asm!(r#"
 .global syscall_entry
 syscall_entry:
-    // On entry: RCX = user RIP, R11 = user RFLAGS, RAX = syscall number.
-    // CPU did NOT push anything. We are on the user stack.
-    // Switch to kernel stack via KERNEL_STACK_PTR global.
-    mov rax, [KERNEL_STACK_PTR]
-    mov rsp, rax
-
-    // Push TrapFrame (same layout as the int 0x80 wrapper).
+    mov [rip + USER_STACK_PTR], rsp
+    mov rsp, [rip + KERNEL_STACK_PTR]
+    push 0x1b
+    push qword ptr [rip + USER_STACK_PTR]
+    push r11
+    push 0x23
+    push rcx
     push rax
     push rbx
     push rcx
@@ -628,15 +568,21 @@ syscall_entry:
     push r13
     push r14
     push r15
-
-    // Call Rust handler with rdi = rsp (pointer to TrapFrame).
     mov rdi, rsp
+    mov rbx, rsp
+    sub rsp, 512
+    and rsp, -16
+    fxsave64 [rsp]
+    fninit
+    ldmxcsr [rip + KERNEL_MXCSR]
+    cld
     call syscall_fast_handler
-
-    // Handler returns new rsp in rax.
+    cmp rax, rbx
+    jne restore_interrupt_context
+    lea rsp, [rax - 512]
+    and rsp, -16
+    fxrstor64 [rsp]
     mov rsp, rax
-
-    // Restore GPRs.
     pop r15
     pop r14
     pop r13
@@ -652,8 +598,9 @@ syscall_entry:
     pop rcx
     pop rbx
     pop rax
-
-    // Return to user mode. RCX has user RIP, R11 has user RFLAGS.
+    mov rcx, [rsp]
+    mov r11, [rsp + 16]
+    mov rsp, [rsp + 24]
     sysretq
 "#);
 
@@ -694,7 +641,7 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
     // for fallback; init wires both to the HEAP_MEM region.
     unsafe {
         let heap_start = (&raw const HEAP_MEM) as *const u8 as usize;
-        ALLOCATOR.init(heap_start, HEAP_BYTES);
+        ALLOCATOR.init(heap_start, HEAP_BYTES - 512 * 1024);
     }
 
     // GAP 1 OOM-after-N benchmark: compare slab vs bump on the same
@@ -757,6 +704,10 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
     obj.send(b'B');
     kernel_kit::serial::SERIAL1.unlock(sif_3);
     
+    match kernel_kit::storage::mount() {
+        Ok(generation) => { use core::fmt::Write; let _ = writeln!(EmergencySerial, "STORAGE_READY generation={}", generation); }
+        Err(error) => { use core::fmt::Write; let _ = writeln!(EmergencySerial, "STORAGE_UNAVAILABLE {:?}", error); }
+    }
     inject_payloads();
     let (obj, sif_4) = kernel_kit::serial::SERIAL1.lock();
     obj.send(b'C');
@@ -833,13 +784,16 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
         PICS.initialize(32, 40); // Map PIC1 to IRQ 32-39, PIC2 to IRQ 40-47
         // initialize() now masks everything; unmask only the lines we handle:
         // IRQ0 (timer, vector 32) and IRQ1 (keyboard, vector 33).
+        kernel_kit::io::Port::new(0x43).write(0x36);
+        kernel_kit::io::Port::new(0x40).write((11932u16 & 255) as u8);
+        kernel_kit::io::Port::new(0x40).write((11932u16 >> 8) as u8);
         PICS.unmask(0);
         PICS.unmask(1);
     }
     vga.write_string("PIC Initialized.\n");
 
     unsafe {
-        SYSTEM = Some(System::new());
+        SYSTEM = Some(System::new(kernel_kit::paging::Cr3::read()));
     }
     vga.write_string("Orchestrator Initialized.\n");
     
@@ -853,28 +807,21 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
         KERNEL_STACK_PTR = TSS.privilege_stack_table[0];
     }
 
-    // Spawn User Tasks (Ring 3)
+    // Runtime loader and boot loader use the same validated ownership path.
     unsafe {
-        let shell_ctx = spawn_process(1, b"shell.elf\0");
-        let daemon_ctx = spawn_process(2, b"daemon.elf\0");
-
         if let Some(sys) = &mut *(&raw mut SYSTEM) {
-            sys.scheduler.spawn(shell_ctx).unwrap();
-            sys.scheduler.spawn(daemon_ctx).unwrap();
-            
-            // Set the initial TSS privilege stack table to the first active task
-            if let Some(task) = sys.scheduler.current_task() {
-                TSS.privilege_stack_table[0] = task.kernel_stack;
-            }
+            sys.spawn_program(0, "shell.elf").expect("load shell");
+            sys.spawn_program(0, "daemon.elf").expect("load daemon");
         }
     }
     vga.write_string("Ring 3 Multi-Tasking Spawned.\n");
+
+    vga.write_string("System running autonomously. Awaiting hardware events...\n");
 
     // 3. Enable Interrupts
     unsafe {
         core::arch::asm!("sti", options(nomem, nostack));
     }
-    vga.write_string("System running autonomously. Awaiting hardware events...\n");
     
     loop {
         // Idle the CPU until an interrupt occurs

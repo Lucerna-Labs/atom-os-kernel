@@ -18,3 +18,6 @@ run*.log
 # OS artifacts
 .DS_Store
 Thumbs.db
+
+# Reproducible VM results and isolated test disks (retained locally).
+/test-results/

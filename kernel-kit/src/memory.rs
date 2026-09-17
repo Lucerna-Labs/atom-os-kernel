@@ -92,7 +92,7 @@ impl<T> Spinlock<T> {
 #[inline]
 pub fn read_if() -> u8 {
     let flags: u64;
-    unsafe { asm!("pushfq; pop {}", out(reg) flags, options(nomem, nostack, preserves_flags)); }
+    unsafe { asm!("pushfq; pop {}", out(reg) flags, options(preserves_flags)); }
     ((flags >> 9) & 1) as u8
 }
 
@@ -300,6 +300,8 @@ impl FrameAllocator {
             self.frames[i] = i < self.count;
         }
     }
+
+    pub fn free_count(&self) -> usize { self.frames[..self.count].iter().filter(|&&free| free).count() }
 
     /// Allocate one 4 KiB frame. Returns its PHYSICAL address (apply
     /// paging::phys_to_virt to access its contents).

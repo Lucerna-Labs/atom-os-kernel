@@ -11,6 +11,23 @@ impl Port {
         Self { port }
     }
 
+    pub fn read16(&self) -> u16 {
+        let value: u16;
+        unsafe { asm!("in ax, dx", out("ax") value, in("dx") self.port, options(nomem, nostack, preserves_flags)); }
+        value
+    }
+    pub fn read32(&self) -> u32 {
+        let value: u32;
+        unsafe { asm!("in eax, dx", out("eax") value, in("dx") self.port, options(nomem, nostack, preserves_flags)); }
+        value
+    }
+    pub fn write16(&mut self, value: u16) {
+        unsafe { asm!("out dx, ax", in("ax") value, in("dx") self.port, options(nomem, nostack, preserves_flags)); }
+    }
+    pub fn write32(&mut self, value: u32) {
+        unsafe { asm!("out dx, eax", in("eax") value, in("dx") self.port, options(nomem, nostack, preserves_flags)); }
+    }
+
     /// Projects the hardware state of the port into an 8-bit value.
     #[inline]
     pub fn read(&self) -> u8 {

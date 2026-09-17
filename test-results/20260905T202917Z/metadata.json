@@ -1,0 +1,10 @@
+{
+  "timestamp_utc": "20260905T202917Z",
+  "source_root": "/home/jesse/Desktop/Projects/atom-os-kernel",
+  "git_head": "3fe46c838af28c4e35a1045360e2417b7e10f6bf",
+  "git_status_before": " M .cargo/config.toml\n M .github/workflows/test.yml\n M .gitignore\n M ATOM-STACK-KERNEL-DESIGN.md\n M Cargo.lock\n M Cargo.toml\n M NOTES.md\n M daemon/.cargo/config.toml\n M daemon/Cargo.toml\n M daemon/build.rs\n M daemon/linker.ld\n M daemon/src/main.rs\n M kernel-kit/Cargo.toml\n M kernel-kit/src/atoms.rs\n M kernel-kit/src/context.rs\n M kernel-kit/src/elf.rs\n M kernel-kit/src/fs.rs\n M kernel-kit/src/gdt.rs\n M kernel-kit/src/interrupts.rs\n M kernel-kit/src/io.rs\n M kernel-kit/src/keyboard.rs\n M kernel-kit/src/lib.rs\n M kernel-kit/src/memory.rs\n M kernel-kit/src/page_table.rs\n M kernel-kit/src/paging.rs\n M kernel-kit/src/pic.rs\n M kernel-kit/src/serial.rs\n M kernel-kit/src/slab.rs\n M kernel-kit/src/trap.rs\n M kernel-kit/src/vga.rs\n M kernel-orchestrator/Cargo.toml\n M kernel-orchestrator/src/lib.rs\n M kernel-orchestrator/src/scheduler.rs\n M kernel-orchestrator/src/syscall.rs\n M kernel-orchestrator/src/system.rs\n M payload/.cargo/config.toml\n M payload/Cargo.toml\n M payload/build.rs\n M payload/linker.ld\n M payload/src/main.rs\n M runner/Cargo.toml\n M runner/src/main.rs\n M rust-toolchain.toml\n M x86_64-kernel/Cargo.toml\n M x86_64-kernel/src/main.rs\n M x86_64-os.json\n",
+  "git_diff_ignoring_eol": "",
+  "source_file_count": 51,
+  "vm": "atom-os-dev",
+  "vm_run_dir": "/home/jesse/atom-os-kernel-tests/20260905T202917Z"
+}

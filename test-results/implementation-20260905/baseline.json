@@ -1,0 +1,14 @@
+{
+  "source_backup": "/home/jesse/Desktop/Projects/atom-os-kernel/test-results/20260905T202917Z/source.tar.gz",
+  "baseline_report": "/home/jesse/Desktop/Projects/atom-os-kernel/test-results/20260905T202917Z/REPORT.md",
+  "started_utc": "2026-09-05T21:21:19.117186+00:00",
+  "vm_dir": "/home/jesse/atom-os-kernel-tests/implementation-20260905",
+  "scope": [
+    "boot and syscall fixes",
+    "allocator and file handles",
+    "ELF and user pointer validation",
+    "spawn wait exit reaping",
+    "per-process heap",
+    "persistent block storage and reboot tests"
+  ]
+}

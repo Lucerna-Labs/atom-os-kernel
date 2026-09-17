@@ -1,22 +1,61 @@
 use crate::scheduler::Scheduler;
-use kernel_kit::memory::MemoryPool;
+use kernel_kit::context::TaskState;
+use kernel_kit::trap::TrapFrame;
 
 pub struct System {
     pub scheduler: Scheduler,
-    pub memory: MemoryPool,
+    pub kernel_root: u64,
+    next_pid: usize,
 }
-
 impl System {
-    pub const fn new() -> Self {
-        Self {
-            scheduler: Scheduler::new(),
-            memory: MemoryPool::new(),
-        }
+    pub const fn new(kernel_root: u64) -> Self {
+        Self { scheduler: Scheduler::new(), kernel_root, next_pid: 1 }
     }
-
-    /// Called by the hardware timer interrupt wrapper.
-    /// Passes the current physical stack pointer and returns the next one.
-    pub fn schedule_tick(&mut self, current_rsp: u64) -> u64 {
-        self.scheduler.switch_context(current_rsp)
+    pub fn spawn_program(&mut self, parent: usize, name: &str) -> Result<usize, ()> {
+        self.scheduler.collect();
+        if !self.scheduler.has_slot() { return Err(()); }
+        let pid = self.next_pid;
+        let next = pid.checked_add(1).ok_or(())?;
+        let context = crate::process::create(pid, parent, name, self.kernel_root).map_err(|_| ())?;
+        if let Err(mut context) = self.scheduler.spawn(context) {
+            context.release_resources();
+            return Err(());
+        }
+        self.next_pid = next;
+        Ok(pid)
+    }
+    pub fn schedule_tick(&mut self, rsp: u64) -> u64 {
+        self.scheduler.collect();
+        self.scheduler.timer_tick(rsp)
+    }
+    pub fn exit_current(&mut self, code: u64) {
+        let Some(current) = self.scheduler.current_task_mut() else { return; };
+        let pid = current.id;
+        current.exit_code = code;
+        current.state = TaskState::Terminated;
+        let mut waited = false;
+        for task in self.scheduler.tasks.iter_mut().flatten() {
+            if task.id != pid && task.wait_for == Some(pid) {
+                unsafe { (*(task.rsp as *mut TrapFrame)).rax = code; }
+                task.wait_for = None;
+                task.state = TaskState::Ready;
+                waited = true;
+            }
+            if task.parent == pid { task.parent = 0; }
+        }
+        if waited { self.scheduler.task_mut(pid).unwrap().waited = true; }
+    }
+    pub fn wait(&mut self, pid: usize) -> Result<Option<u64>, ()> {
+        let parent = self.scheduler.current_task().ok_or(())?.id;
+        let child = self.scheduler.task_mut(pid).ok_or(())?;
+        if child.parent != parent || child.waited { return Err(()); }
+        if child.state == TaskState::Terminated {
+            child.waited = true;
+            return Ok(Some(child.exit_code));
+        }
+        let caller = self.scheduler.current_task_mut().unwrap();
+        caller.wait_for = Some(pid);
+        caller.state = TaskState::Blocked;
+        Ok(None)
     }
 }

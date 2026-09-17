@@ -1,0 +1,31 @@
+{
+  "source_files": 65,
+  "changed_after_test": [],
+  "native": "21 passed, 0 failed",
+  "backends": {
+    "kvm": {
+      "checks": 16,
+      "churn": {
+        "rounds": 48,
+        "free_before": 16326,
+        "free_after": 16326,
+        "tasks": 2
+      },
+      "image_sha256": "625f6495e3c99362200d3937b904e68e67579d7aa4664ea7b88ca8b3cee206b2",
+      "seconds": 16.101,
+      "nonce": "persist-ebc7c210d65745da"
+    },
+    "tcg": {
+      "checks": 16,
+      "churn": {
+        "rounds": 48,
+        "free_before": 16326,
+        "free_after": 16326,
+        "tasks": 2
+      },
+      "image_sha256": "625f6495e3c99362200d3937b904e68e67579d7aa4664ea7b88ca8b3cee206b2",
+      "seconds": 16.321,
+      "nonce": "persist-8fa14217abe245f8"
+    }
+  }
+}

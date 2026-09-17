@@ -1,0 +1,15 @@
+[package]
+name = "worker"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+user-rt = { path = "../user-rt" }
+
+[[bin]]
+name = "worker"
+path = "src/main.rs"
+
+[[bin]]
+name = "fault-probe"
+path = "src/fault.rs"

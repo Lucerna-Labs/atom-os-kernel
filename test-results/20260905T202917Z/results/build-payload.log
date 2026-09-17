@@ -1,0 +1,88 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/jesse/atom-os-kernel-tests/20260905T202917Z/source/daemon/Cargo.toml
+workspace: /home/jesse/atom-os-kernel-tests/20260905T202917Z/source/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/jesse/atom-os-kernel-tests/20260905T202917Z/source/x86_64-kernel/Cargo.toml
+workspace: /home/jesse/atom-os-kernel-tests/20260905T202917Z/source/Cargo.toml
+   Compiling compiler_builtins v0.1.160 (/home/jesse/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+   Compiling core v0.0.0 (/home/jesse/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling payload v0.1.0 (/home/jesse/atom-os-kernel-tests/20260905T202917Z/source/payload)
+   Compiling alloc v0.0.0 (/home/jesse/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+warning: use of deprecated constant `core::u64::MAX`: replaced by the `MAX` associated constant on this type
+  --> payload/src/main.rs:42:46
+   |
+42 |         let mut current_fd: u64 = core::u64::MAX;
+   |                                              ^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated constant `core::u64::MAX`: replaced by the `MAX` associated constant on this type
+   --> payload/src/main.rs:101:57
+    |
+101 | ...                   if current_fd != core::u64::MAX {
+    |                                                   ^^^
+
+warning: use of deprecated constant `core::u64::MAX`: replaced by the `MAX` associated constant on this type
+   --> payload/src/main.rs:107:57
+    |
+107 | ...                   current_fd = core::u64::MAX;
+    |                                               ^^^
+
+warning: use of deprecated constant `core::u64::MAX`: replaced by the `MAX` associated constant on this type
+   --> payload/src/main.rs:159:61
+    |
+159 | ...                   if current_fd != core::u64::MAX {
+    |                                                   ^^^
+
+warning: use of deprecated constant `core::u64::MAX`: replaced by the `MAX` associated constant on this type
+   --> payload/src/main.rs:168:63
+    |
+168 | ...                   if byte == core::u64::MAX { break; } // EOF
+    |                                             ^^^
+
+warning: use of deprecated constant `core::u64::MAX`: replaced by the `MAX` associated constant on this type
+   --> payload/src/main.rs:198:53
+    |
+198 | ...                   if fd != core::u64::MAX {
+    |                                           ^^^
+
+warning: use of deprecated constant `core::u64::MAX`: replaced by the `MAX` associated constant on this type
+   --> payload/src/main.rs:202:63
+    |
+202 | ...                   if byte == core::u64::MAX { break; } // EOF
+    |                                             ^^^
+
+warning: use of deprecated constant `core::u64::MAX`: replaced by the `MAX` associated constant on this type
+   --> payload/src/main.rs:239:57
+    |
+239 | ...                   if fd != core::u64::MAX {
+    |                                           ^^^
+
+warning: use of deprecated constant `core::u64::MAX`: replaced by the `MAX` associated constant on this type
+   --> payload/src/main.rs:262:54
+    |
+262 | ...                   if res != core::u64::MAX {
+    |                                            ^^^
+
+warning: unnecessary `unsafe` block
+   --> payload/src/main.rs:278:45
+    |
+ 38 |     unsafe {
+    |     ------ because it's nested under this `unsafe` block
+...
+278 |                                 let start = unsafe { core::arch::x86_64::_rdtsc() };
+    |                                             ^^^^^^ unnecessary `unsafe` block
+    |
+    = note: `#[warn(unused_unsafe)]` (part of `#[warn(unused)]`) on by default
+
+warning: unnecessary `unsafe` block
+   --> payload/src/main.rs:282:43
+    |
+ 38 |     unsafe {
+    |     ------ because it's nested under this `unsafe` block
+...
+282 |                                 let end = unsafe { core::arch::x86_64::_rdtsc() };
+    |                                           ^^^^^^ unnecessary `unsafe` block
+
+warning: `payload` (bin "payload") generated 11 warnings
+    Finished `release` profile [optimized] target(s) in 9.21s

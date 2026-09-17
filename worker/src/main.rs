@@ -1,0 +1,83 @@
+#![no_std]
+#![no_main]
+extern crate alloc;
+use user_rt::{self as rt, abi::*};
+user_rt::entry!(main);
+
+fn main() {
+    let pid = rt::call(SYS_GETPID, 0, 0);
+    // Reject untrusted pointers without taking a kernel exception.
+    assert_eq!(rt::call(SYS_OPEN, 0, 0), ERROR);
+    assert_eq!(rt::call(SYS_OPEN, 0x200000, 0), ERROR);
+    assert_eq!(rt::call(SYS_WRITE_BUFFER, u64::MAX, 8), ERROR);
+    let page = rt::call(SYS_ALLOC, 4096, 4096);
+    assert_ne!(page, ERROR);
+    unsafe { *((page + 4095) as *mut u8) = b'x'; }
+    assert_eq!(rt::call(SYS_WRITE_BUFFER, page + 4095, 2), ERROR);
+    assert_eq!(rt::call(SYS_OPEN, page + 4095, 0), ERROR);
+    assert_eq!(rt::call(SYS_FREE, page, 0), 0);
+    assert_eq!(rt::call(SYS_FREE, page, 0), ERROR);
+
+    let mut bytes = alloc::vec![0u8; 65536];
+    for (index, value) in bytes.iter_mut().enumerate() { *value = ((index as u64 ^ pid) % 251) as u8; }
+    for _ in 0..100 { rt::yield_now(); }
+    assert!(bytes.iter().enumerate().all(|(i, &v)| v == ((i as u64 ^ pid) % 251) as u8));
+    drop(bytes);
+
+    let held = alloc::format!("held{}.txt", pid % 16);
+    let fd = rt::open(&held); assert_ne!(fd, ERROR);
+    assert_eq!(rt::call(SYS_TRUNCATE, fd, 0), 0);
+    for i in 0..32 {
+        let name = alloc::format!("growth{}.txt", i);
+        let temporary = rt::open(&name); assert_ne!(temporary, ERROR); rt::close(temporary);
+    }
+    assert!(rt::write(fd, b"stable handle")); rt::close(fd);
+    let fd = rt::open(&held);
+    for &expected in b"stable handle" { assert_eq!(rt::read(fd), Some(expected)); }
+    assert_eq!(rt::read(fd), None); rt::close(fd);
+
+    let fast_pid: u64;
+    unsafe {
+        core::arch::asm!("syscall", inout("rax") SYS_GETPID => fast_pid,
+            lateout("rcx") _, lateout("r11") _, options(nostack));
+    }
+    assert_eq!(pid, fast_pid);
+    // A fast yield can resume through another task's int-0x80 frame.
+    for _ in 0..32 {
+        unsafe { core::arch::asm!("syscall", inout("rax") SYS_YIELD => _, lateout("rcx") _, lateout("r11") _, options(nostack)); }
+    }
+    let pattern = [0x123456789abcdef0u64, 0xfedcba9876543210];
+    let mut observed = [0u64; 4];
+    unsafe {
+        core::arch::asm!(
+            "movdqu xmm0, [{input}]", "movdqu xmm15, [{input}]", "mov rcx, 2000",
+            "2:", "mov rax, 1", "int 0x80", "loop 2b",
+            "movdqu [{output}], xmm0", "movdqu [{output} + 16], xmm15",
+            input = in(reg) pattern.as_ptr(), output = in(reg) observed.as_mut_ptr(),
+            out("rax") _, out("rcx") _, out("xmm0") _, out("xmm15") _, options(nostack));
+    }
+    assert_eq!(&observed[..2], &pattern); assert_eq!(&observed[2..], &pattern);
+    // Wait for a real timer tick while SIMD and MXCSR contain process-specific
+    // state. Timer IRQs can only advance this counter outside the syscall gate.
+    let mxcsr = if pid & 1 == 0 { 0x3f80u32 } else { 0x5f80u32 };
+    let default_mxcsr = 0x1f80u32;
+    let mut observed_mxcsr = 0u32;
+    let ticks: u64;
+    unsafe {
+        core::arch::asm!(
+            "movdqu xmm0, [{input}]", "ldmxcsr [{control}]",
+            "mov rax, 31", "int 0x80", "mov r12, rax", "mov rcx, 1000000",
+            "2:", "pause", "mov rax, 31", "int 0x80", "cmp rax, r12", "jne 3f", "loop 2b",
+            "3:", "sub rax, r12", "movdqu [{output}], xmm0", "stmxcsr [{observed_control}]", "ldmxcsr [{default_control}]",
+            input = in(reg) pattern.as_ptr(), control = in(reg) &mxcsr,
+            output = in(reg) observed.as_mut_ptr(), observed_control = in(reg) &mut observed_mxcsr,
+            default_control = in(reg) &default_mxcsr,
+            out("rax") ticks, out("rcx") _, out("r12") _, out("xmm0") _, options(nostack));
+    }
+    assert!(ticks > 0); assert_eq!(&observed[..2], &pattern); assert_eq!(observed_mxcsr, mxcsr);
+    let mut sent = false;
+    for _ in 0..200 { if rt::send(2, "worker delivered") { sent = true; break; } rt::sleep(1); }
+    assert!(sent);
+    rt::print("WORKER_OK heap pointers fd fast-syscall xmm ipc\n");
+    rt::exit(37)
+}

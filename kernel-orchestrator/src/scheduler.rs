@@ -1,102 +1,69 @@
 use kernel_kit::context::{Context, TaskState};
+pub const MAX_TASKS: usize = 16;
 
-const MAX_TASKS: usize = 16;
-
-/// The Scheduler manages preemptive context switching by swapping hardware stack pointers (rsp).
+/// The returned stack and selected context form one indivisible transition.
 pub struct Scheduler {
-    tasks: [Option<Context>; MAX_TASKS],
-    current_task: usize,
+    pub(crate) tasks: [Option<Context>; MAX_TASKS],
+    pub(crate) current: Option<usize>,
+    pub idle_rsp: u64,
+    pub ticks: u64,
 }
-
 impl Scheduler {
     pub const fn new() -> Self {
-        const INIT_NONE: Option<Context> = None;
-        Self {
-            tasks: [INIT_NONE; MAX_TASKS],
-            current_task: 0,
+        Self { tasks: [const { None }; MAX_TASKS], current: None, idle_rsp: 0, ticks: 0 }
+    }
+    pub fn current_task(&self) -> Option<&Context> { self.current.and_then(|i| self.tasks[i].as_ref()) }
+    pub fn current_task_mut(&mut self) -> Option<&mut Context> { self.current.and_then(|i| self.tasks[i].as_mut()) }
+    pub fn task(&self, pid: usize) -> Option<&Context> { self.tasks.iter().flatten().find(|t| t.id == pid) }
+    pub fn task_mut(&mut self, pid: usize) -> Option<&mut Context> { self.tasks.iter_mut().flatten().find(|t| t.id == pid) }
+    pub fn has_slot(&self) -> bool { self.tasks.iter().any(|t| t.is_none()) }
+    pub fn spawn(&mut self, ctx: Context) -> Result<(), Context> {
+        for slot in &mut self.tasks {
+            // Resource-free orphans can release their slot immediately.
+            if slot.as_ref().is_some_and(|t| t.state == TaskState::Terminated && t.parent == 0
+                && t.space.is_none() && t.kernel_stack_pages == 0) { *slot = None; }
+            if slot.is_none() { *slot = Some(ctx); return Ok(()); }
         }
+        Err(ctx)
     }
-
-    pub fn current_task(&self) -> Option<&Context> {
-        self.tasks[self.current_task].as_ref()
-    }
-
-    pub fn current_task_mut(&mut self) -> Option<&mut Context> {
-        self.tasks[self.current_task].as_mut()
-    }
-
-    /// Spawns a new task.
-    pub fn spawn(&mut self, ctx: Context) -> Result<(), ()> {
-        for i in 0..MAX_TASKS {
-            if self.tasks[i].is_none() {
-                self.tasks[i] = Some(ctx);
-                return Ok(());
-            }
-        }
-        Err(())
-    }
-
-    /// Called by the Timer Interrupt. Takes the interrupted task's stack pointer,
-    /// saves it, and returns the next task's stack pointer.
     pub fn switch_context(&mut self, old_rsp: u64) -> u64 {
-        // Count ALL Ready tasks (including the current one).
-        let total_ready: usize = self.tasks.iter()
-            .filter(|t| t.as_ref().map_or(false, |c| c.state == TaskState::Ready))
-            .count();
-
-        // Count OTHER ready tasks (excluding current).
-        let other_ready: usize = self.tasks.iter()
-            .enumerate()
-            .filter(|(i, t)| *i != self.current_task && t.as_ref().map_or(false, |c| c.state == TaskState::Ready))
-            .count();
-
-        // The current task's state.
-        let current_is_running = self.tasks.get(self.current_task)
-            .and_then(|t| t.as_ref())
-            .map_or(false, |c| c.state == TaskState::Running);
-
-        // Skip the save/restore ONLY when:
-        //   - current task is Running (it's the active task, not the idle loop)
-        //   - no OTHER task is Ready to switch to
-        // This avoids corrupting the running task's saved state via the
-        // timer handler's rsp save when there's nothing to switch to.
-        if current_is_running && other_ready == 0 {
-            return old_rsp;
-        }
-
-        // If the current task is Running and there IS another Ready task,
-        // save the current state before switching.
-        if current_is_running {
-            if let Some(ctx) = &mut self.tasks[self.current_task] {
-                ctx.rsp = old_rsp;
-                ctx.state = TaskState::Ready;
-            }
-        }
-
-        // Note: if current_is_running is false (e.g. kernel idle, first
-        // dispatch, or task already Ready), we don't save old_rsp — the
-        // idle loop's stack is not a task context.
-        if let Some(ctx) = &mut self.tasks[self.current_task] {
-            if ctx.state == TaskState::Running {
-                ctx.rsp = old_rsp;
-                ctx.state = TaskState::Ready;
-            }
-        }
-
-        // Find the next ready task (simple Round Robin)
-        for i in 1..=MAX_TASKS {
-            let next_idx = (self.current_task + i) % MAX_TASKS;
-            if let Some(ctx) = &mut self.tasks[next_idx] {
-                if ctx.state == TaskState::Ready {
-                    self.current_task = next_idx;
-                    ctx.state = TaskState::Running;
-                    return ctx.rsp;
+        let start = self.current.map_or(MAX_TASKS - 1, |i| i);
+        if let Some(task) = self.current_task_mut() {
+            task.rsp = old_rsp;
+            if task.state == TaskState::Running { task.state = TaskState::Ready; }
+        } else { self.idle_rsp = old_rsp; }
+        for step in 1..=MAX_TASKS {
+            let index = (start + step) % MAX_TASKS;
+            if let Some(task) = &mut self.tasks[index] {
+                if task.state == TaskState::Ready {
+                    task.state = TaskState::Running;
+                    self.current = Some(index);
+                    return task.rsp;
                 }
             }
         }
-
-        // No ready task found despite ready_count > 0 (race edge case).
-        // Fall through without modifying state.
-        old_rsp
+        self.current = None;
+        assert_ne!(self.idle_rsp, 0, "idle context must be captured before running tasks");
+        self.idle_rsp
+    }
+    pub fn timer_tick(&mut self, rsp: u64) -> u64 {
+        self.ticks = self.ticks.wrapping_add(1);
+        for task in self.tasks.iter_mut().flatten() {
+            if task.state == TaskState::Blocked && task.wait_for.is_none() && task.sleep_until <= self.ticks {
+                task.state = TaskState::Ready;
+            }
+        }
+        self.switch_context(rsp)
+    }
+    pub fn collect(&mut self) {
+        for index in 0..MAX_TASKS {
+            if Some(index) == self.current { continue; }
+            if let Some(task) = &mut self.tasks[index] {
+                if task.state == TaskState::Terminated {
+                    task.release_resources();
+                    if task.parent == 0 || task.waited { self.tasks[index] = None; }
+                }
+            }
+        }
     }
 }

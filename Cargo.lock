@@ -11,6 +11,9 @@ checksum = "e22d5a0b9e11dd5bee9d24a68885de6dc7ed367f897323b1c1286150fd469374"
 [[package]]
 name = "daemon"
 version = "0.1.0"
+dependencies = [
+ "user-rt",
+]
 
 [[package]]
 name = "kernel-kit"
@@ -26,6 +29,20 @@ dependencies = [
 [[package]]
 name = "payload"
 version = "0.1.0"
+dependencies = [
+ "user-rt",
+]
+
+[[package]]
+name = "user-rt"
+version = "0.1.0"
+
+[[package]]
+name = "worker"
+version = "0.1.0"
+dependencies = [
+ "user-rt",
+]
 
 [[package]]
 name = "x86_64-kernel"

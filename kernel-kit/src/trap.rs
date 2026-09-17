@@ -42,10 +42,10 @@ impl TrapFrame {
         let mut frame = Self::empty();
         frame.rip = instruction_pointer;
         frame.rsp = stack_pointer;
-        // User Code Segment is index 3 (0x18). Add 3 for RPL=3 (Ring 3) -> 0x1B
-        frame.cs = 0x1B;
-        // User Data Segment is index 4 (0x20). Add 3 for RPL=3 (Ring 3) -> 0x23
-        frame.ss = 0x23;
+        // User code is index 4; data immediately precedes it for SYSRET.
+        frame.cs = 0x23;
+        // User data is index 3, selector 0x1b.
+        frame.ss = 0x1b;
         // Interrupts enabled (0x200), Reserved bit 1 set (0x2) -> 0x202
         frame.rflags = 0x202;
         frame

@@ -1,0 +1,14 @@
+{
+  "saved_rip": "0x20a34f",
+  "saved_cs": "0x8",
+  "error_code": "0x0",
+  "saved_rax": "0x1d00",
+  "saved_rcx": "0xc0000080",
+  "saved_rdx": "0x0",
+  "saved_rflags": "0x10006",
+  "saved_rsp": "0x100001ff260",
+  "saved_ss": "0x10",
+  "instruction": "wrmsr",
+  "preceding_instruction": "or $0x1000,%eax",
+  "source": "x86_64-kernel/src/main.rs:313-314"
+}
