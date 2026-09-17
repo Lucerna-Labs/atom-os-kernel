@@ -1,0 +1,29 @@
+Atom OS data image: /home/jesse/atom-os-kernel-tests/run-20260917T212634980705680Z/results/tcg-console-process/continuing-session.img
+Type help in the OS. Use sync to save; Ctrl-a then x exits QEMU. The data image is retained.
+ABooting Fearless Hypatia...
+oom_after_n: slab=100000 (oom=no , capped=100000)  bump=4096 (oom=yes)
+oom_after_n: GATE PASS — slab reached the 100000-round cap, bump OOMed
+BSTORAGE_READY generation=1
+CHeap Allocation Test: PASS!
+DEPIC Initialized.
+Orchestrator Initialized.
+Ring 3 Multi-Tasking Spawned.
+System running autonomously. Awaiting hardware events...
+ATOM OS kernel shell
+HEAP_OK
+[Daemon] Started
+10,000 SYS_YIELDs took (CPU cycles): 48015469
+> help
+commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run ps kill proctest selftest pairtest churn faulttest fstest storageprobe rm mv df status sync reboot
+> cat retained.txt
+console-daabc743826f4ed1
+
+> status
+FS_STATUS saved files=1/128 bytes=47/524288 buffers=25/1048576 generation=1 disk=1
+> run worker.elf --args "exec value" ''
+ARGS pid=1 count=4
+ARG 0 len=10 worker.elf
+ARG 1 len=6 --args
+ARG 2 len=10 exec value
+ARG 3 len=0 
+[Daemon] Heartbeat... tasks=1

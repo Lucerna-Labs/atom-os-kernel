@@ -1,0 +1,235 @@
+ABooting Fearless Hypatia...
+oom_after_n: slab=100000 (oom=no , capped=100000)  bump=4096 (oom=yes)
+oom_after_n: GATE PASS — slab reached the 100000-round cap, bump OOMed
+BSTORAGE_READY generation=0
+CHeap Allocation Test: PASS!
+DEPIC Initialized.
+Orchestrator Initialized.
+Ring 3 Multi-Tasking Spawned.
+System running autonomously. Awaiting hardware events...
+ATOM OS kernel shell
+HEAP_OK
+[Daemon] Started
+10,000 SYS_YIELDs took (CPU cycles): 47871909
+> fstest
+FILE_LIFECYCLE_OK
+DURABLE_QUOTAS_OK
+FS_STATE_OK
+FSTEST_OK
+> status
+FS_STATUS saved files=0/128 bytes=4/524288 buffers=0/1048576 generation=2 disk=1
+> echo kept > move.txt
+> mv move.txt renamed.txt
+RENAMED
+> cat renamed.txt
+kept
+
+> rm renamed.txt
+REMOVED
+> cat renamed.txt
+cat: file not found
+> df
+FS_STATUS unsaved files=0/128 bytes=4/524288 buffers=0/1048576 generation=2 disk=1
+> proctest
+PROCESS_INPUT_VALIDATION_OK
+ARGUMENT_LIMITS_EXEC_OK
+KILL_WAIT_ORPHAN_OK
+KILL_REAP_OK rounds=48 free_before=16283 free_after=16283
+PROCTEST_OK
+> ps
+PID PPID STATE PROGRAM
+1 0 running shell.elf
+2 0 sleeping daemon.elf
+> spawn worker.elf --sleep
+spawned pid 65
+> ps
+PID PPID STATE PROGRAM
+1 0 running shell.elf
+2 0 sleeping daemon.elf
+65 1 sleeping worker.elf
+> kill 65
+killed pid 65
+> ps
+PID PPID STATE PROGRAM
+1 0 running shell.elf
+2 0 sleeping daemon.elf
+65 1 exited worker.elf
+> wait 65
+wait pid=65 status=137
+> kill 65
+kill failed: no live process with that PID
+> kill 0
+kill failed: no live process with that PID
+> spawn worker.elf --args hello world
+spawned pid 66
+> ARGS pid=66 count=4
+ARG 0 len=10 worker.elf
+ARG 1 len=6 --args
+ARG 2 len=5 hello
+ARG 3 len=5 world
+wait 66
+wait pid=66 status=41
+> help
+commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run ps kill proctest selftest pairtest churn faulttest fstest storageprobe rm mv df status sync reboot
+> ls
+shell.elf  daemon.elf  worker.elf  fault.elf  fs-probe.elf  
+> echo persist-c93c4fd04d43428c > durable.txt
+> cat durable.txt
+persist-c93c4fd04d43428c
+
+> msg acceptance ipc
+Message sent to Daemon
+> [Daemon] Received IPC: acceptance ipc
+heaptest
+HEAP_OK
+> selftest
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+SELFTEST_OK
+> pa[Daemon] Received IPC: worker delivered
+irtest
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+PAIRTEST_OK
+> s[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+pawn worker.elf
+spawned pid 70
+> WORKER_OK heap pointers fd fast-syscall xmm ipc
+w[Daemon] Received IPC: worker delivered
+ait 70
+wait pid=70 status=37
+> wait 70
+wait failed
+> echo invalid > malformed.elf
+> spawn malformed.elf
+spawn failed
+> churn 48
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+[Daemon] Received IPC: worker delivered
+WORKER_OK heap pointers fd fast-syscall xmm ipc
+[Daemon] Received IPC: worker delivered
+CHURN_OK rounds=48 free_before=16321 free_after=16321 tasks=2
+> faulttest
+FAULT_PROBE_START
+
+USER_FAULT vector=14 error=0x6 rip=0xffffffff80100022 rsp=0xffffffff800ffff0 cr2=0xffffffff800f7000
+FAULT_ISOLATION_OK status=142
+> sync
+SYNC_OK
+FS_STATUS saved files=50/128 bytes=1093/524288 buffers=296/1048576 generation=3 disk=1
+> reboot
+ABooting Fearless Hypatia...
+oom_after_n: slab=100000 (oom=no , capped=100000)  bump=4096 (oom=yes)
+oom_after_n: GATE PASS — slab reached the 100000-round cap, bump OOMed
+BSTORAGE_READY generation=4
+CHeap Allocation Test: PASS!
+DEPIC Initialized.
+Orchestrator Initialized.
+Ring 3 Multi-Tasking Spawned.
+System running autonomously. Awaiting hardware events...
+ATOM OS kernel shell
+HEAP_OK
+[Daemon] Started
+10,000 SYS_YIELDs took (CPU cycles): 50640583
+> cat durable.txt
+persist-c93c4fd04d43428c
+
+> echo second-persist-c93c4fd04d43428c > durable.txt
+> sync
+SYNC_OK
+FS_STATUS saved files=50/128 bytes=1125/524288 buffers=280/1048576 generation=5 disk=1
+> 

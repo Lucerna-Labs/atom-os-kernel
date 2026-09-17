@@ -157,23 +157,52 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         writer.write_string("\n"); kernel_kit::fs::ROOT_FS.unlock(); frame.rax = 0;
     } else if is(number, SYS_CLEAR) {
         kernel_kit::vga::VgaWriter::new().clear_screen(); frame.rax = 0;
-    } else if is(number, SYS_EXEC) {
-        if let Ok(name) = user_string(context, arg, 64) {
-            if let Ok((space, entry)) = crate::process::load_image(&name, system.kernel_root) {
+    } else if is(number, SYS_EXEC) || is(number, SYS_EXEC_ARGS) || is(number, SYS_SPAWN) || is(number, SYS_SPAWN_ARGS) {
+        // Copy all input before creating a child or replacing the caller's CR3.
+        let request = (|| {
+            let name = user_string(context, arg, 64)?;
+            let extra = if is(number, SYS_EXEC_ARGS) || is(number, SYS_SPAWN_ARGS) {
+                if arg2 > MAX_ARG_BYTES as u64 { return Err(()); }
+                if arg2 == 0 { Vec::new() } else {
+                    if !context.space.as_ref().unwrap().valid_user_range(arg1, arg2 as usize, false) { return Err(()); }
+                    unsafe { core::slice::from_raw_parts(arg1 as *const u8, arg2 as usize) }.to_vec()
+                }
+            } else { Vec::new() };
+            let packed = kernel_kit::arguments::pack(&name, &extra)?;
+            Ok((name, extra, packed))
+        })();
+        if let Ok((name, extra, packed)) = request {
+            if is(number, SYS_SPAWN) || is(number, SYS_SPAWN_ARGS) {
+                frame.rax = system.spawn_with_args(pid, &name, &extra).map(|n| n as u64).unwrap_or(ERROR);
+            } else if let Ok((space, entry)) = crate::process::load_image(&name, system.kernel_root) {
                 let context = system.scheduler.current_task_mut().unwrap();
-                // The new root keeps the same kernel mappings and stack. Switch
-                // before dropping the old owner, so no live CR3 is reclaimed.
+                // Switch before dropping the old address-space owner.
                 unsafe { Cr3::load(space.root); }
                 context.page_table_root = space.root;
                 context.space = Some(space);
+                context.arguments = packed;
                 context.open_files = [const { None }; 16]; context.fs_error = 0;
                 *frame = TrapFrame::new_user(entry, STACK_TOP);
                 unsafe { crate::process::reset_fpu(rsp); }
             }
         }
-    } else if is(number, SYS_SPAWN) {
-        if let Ok(name) = user_string(context, arg, 64) {
-            frame.rax = system.spawn_program(pid, &name).map(|n| n as u64).unwrap_or(ERROR);
+    } else if is(number, SYS_ARGS) {
+        let len = context.arguments.len();
+        if arg1 >= len as u64 && context.space.as_ref().unwrap().valid_user_range(arg, len, true) {
+            unsafe { core::ptr::copy_nonoverlapping(context.arguments.as_ptr(), arg as *mut u8, len); }
+            frame.rax = len as u64;
+        }
+    } else if is(number, SYS_PROCESSES) {
+        // A fixed-capacity, single-call snapshot avoids races between queries.
+        let bytes = MAX_PROCESSES * core::mem::size_of::<ProcessInfo>();
+        if arg1 == MAX_PROCESSES as u64 && context.space.as_ref().unwrap().valid_user_range(arg, bytes, true) {
+            let (records, count) = system.scheduler.snapshot();
+            unsafe { core::ptr::copy_nonoverlapping(records.as_ptr() as *const u8, arg as *mut u8, bytes); }
+            frame.rax = count as u64;
+        }
+    } else if is(number, SYS_KILL) {
+        if system.terminate(arg as usize, KILLED_STATUS).is_ok() {
+            frame.rax = 0; switch = arg == pid as u64;
         }
     } else if is(number, SYS_WAIT) {
         match system.wait(arg as usize) {

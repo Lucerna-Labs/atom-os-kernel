@@ -23,7 +23,8 @@ been validated.
 - **Protected processes:** private address spaces, validated ELF loading,
   write/execute permissions, stack guards, and checked syscall buffers.
 - **Process lifecycle:** `spawn`, parent-owned `wait`, exit status, sleeping,
-  orphan cleanup, and resource reclamation after a process stops using its
+  argument passing, process inspection, explicit termination, orphan cleanup,
+  and resource reclamation after a process stops using its
   address space and kernel stack.
 - **Memory allocation:** a kernel slab allocator with reusable large/aligned
   allocations, plus a Rust userspace allocator backed by mapped private pages.
@@ -45,11 +46,12 @@ has passed. The earlier September 5 baseline remains preserved in test history.
 
 | Verification | Recorded result |
 |---|---|
-| Native regression suite | **29 passed, 0 failed** |
-| QEMU with KVM | **18 acceptance checks passed**; acceleration confirmed by QMP |
-| QEMU with TCG software emulation | **18 acceptance checks passed** on the same boot image |
+| Native regression suite | **32 passed, 0 failed** |
+| QEMU with KVM | **21 acceptance checks passed**; acceleration confirmed by QMP |
+| QEMU with TCG software emulation | **21 acceptance checks passed** on the same boot image |
 | Process creation, wait, and reaping | **48 measured cycles** per backend, following warmup |
-| Free frames after those cycles | **16,324 before → 16,324 after** on both backends |
+| Forced termination and reaping | **48 additional cycles** per backend with open unlinked files and live heap allocations |
+| Free frames after process churn | **16,321 before → 16,321 after** on both backends |
 | Persistent files | Exact generated text survived a warm OS reboot and a fresh QEMU cold boot |
 | Executable replacement | Worker replaced the shell, exited, and left the daemon running |
 | Interrupted storage / I/O failures | **7 cases passed per backend**, at a full 512 KiB serialized snapshot |
@@ -66,15 +68,16 @@ termination; it does not model a physical host losing its disk cache.
 
 Evidence:
 
-- [Combined verification record](test-results/run-20260917T202346184712688Z/verification.json)
-- [Native test output](test-results/run-20260917T202346184712688Z/native.log)
-- [KVM acceptance result](test-results/run-20260917T202346184712688Z/acceptance/result.json)
-- [TCG acceptance result](test-results/run-20260917T202346184712688Z/tcg-acceptance/result.json)
-- [Cold-boot serial transcript](test-results/run-20260917T202346184712688Z/acceptance/cold/serial.log)
+- [Combined verification record](test-results/run-20260917T212634980705680Z/verification.json)
+- [Native test output](test-results/run-20260917T212634980705680Z/native.log)
+- [KVM acceptance result](test-results/run-20260917T212634980705680Z/acceptance/result.json)
+- [TCG acceptance result](test-results/run-20260917T212634980705680Z/tcg-acceptance/result.json)
+- [Cold-boot serial transcript](test-results/run-20260917T212634980705680Z/acceptance/cold/serial.log)
+- [Program arguments and process-control report](test-results/process-controls-20260917/REPORT.md)
 - [Filesystem and session implementation report](test-results/durable-file-session-20260917/REPORT.md)
-- [KVM recovery cases](test-results/run-20260917T202346184712688Z/recovery/result.json)
-- [TCG recovery cases](test-results/run-20260917T202346184712688Z/tcg-recovery/result.json)
-- [Interactive console results](test-results/run-20260917T202346184712688Z/console/result.json)
+- [KVM recovery cases](test-results/run-20260917T212634980705680Z/recovery/result.json)
+- [TCG recovery cases](test-results/run-20260917T212634980705680Z/tcg-recovery/result.json)
+- [Interactive console results](test-results/run-20260917T212634980705680Z/console-process/result.json)
 
 The reference environment was Ubuntu 24.04.4 on x86-64 with QEMU 8.2.2,
 bootimage 0.10.5, and Rust `1.100.0-nightly (8fa1c96cf 2026-08-17)` from the
@@ -206,15 +209,46 @@ prompt quiet; its standalone heartbeat remains available after the shell exits.
 | `df`, `status` | Show file/snapshot/buffer capacity, saved state, generation and disk availability |
 | `msg text` | Send a message to the daemon; a full mailbox returns an error |
 | `bench`, `heaptest`, `stats` | Exercise yields/heap or show free frames and live tasks |
-| `spawn worker.elf` | Start a child while the shell continues; print its PID |
+| `spawn worker.elf [arguments...]` | Start a child with arguments while the shell continues; print its PID |
 | `wait PID` | Wait for a child of this shell and collect its exit status |
-| `run worker.elf` | Replace the shell process with the executable |
+| `run worker.elf [arguments...]` | Replace the shell with the executable and arguments, retaining its PID |
+| `ps` | Snapshot PID, parent PID, state and program name; uncollected exits remain visible |
+| `kill PID` | Immediately terminate a live process; its parent can collect status **137** with `wait` |
+| `proctest` | Exercise argument limits, bad pointers, exec, process inspection, kill/wait and cleanup |
 | `selftest`, `pairtest` | Run one worker or two concurrent workers and check their exits |
 | `churn 48` | Exercise repeated process creation/reaping and compare free-frame counts |
 | `fstest` | Exercise file lifecycle and full-capacity checks on an empty filesystem with a disk |
 | `faulttest` | Confirm a user page fault terminates that worker while the shell survives |
 | `sync` | Commit writable files to the data disk |
 | `reboot` | Sync successfully, then reboot the OS |
+
+Program launches accept single/double quotes, empty quoted arguments, and
+backslash escaping outside single quotes. For example:
+
+```text
+spawn worker.elf --args "two words" ''
+spawn worker.elf --sleep
+ps
+kill 4
+wait 4
+```
+
+Use the actual PID printed by `spawn` in place of `4`. `worker.elf --args` prints
+its arguments and exits with status 41; `--sleep` is a long-lived diagnostic.
+`run` replaces the shell, so use `spawn` to keep the prompt. Invalid quoting or
+arguments are rejected. The ABI accepts at most 16 UTF-8 arguments including
+the executable name (`argv[0]`), and 1024 bytes including NUL separators.
+The shell's existing line editor accepts ASCII input. Userspace obtains owned
+argument strings through `user_rt::args()`; arguments are copied into the kernel
+before launch, and rejected exec requests leave the old image and arguments intact.
+
+`ps` uses one validated, fixed-capacity snapshot; states are ready, running,
+sleeping, waiting, exited, or trapped. `kill` is immediate termination, not a
+catchable signal. It shares exit/wait cleanup, including orphan handling and
+deferred reclamation of an active kernel stack/address space. There are no user
+identities or permissions yet: **any process can kill any live user process,
+including the shell or daemon**. PID 0, unknown PIDs and already-exited PIDs are
+rejected. Process inspection and control are not security authorization boundaries.
 
 The serial console accepts normal terminal input. The optional VGA/PS/2 path
 uses the [basic keyboard mapping](kernel-kit/src/keyboard.rs), where numpad `+`
@@ -259,6 +293,22 @@ retain the project's architecture reasoning and historical investigations.
 Their dated plans and earlier failure states should be read alongside the
 current source and verification evidence.
 
+### Atom architecture: intent and current enforcement
+
+The eight root atom definitions remain unchanged by the process-control work.
+The intended architecture uses immutable atoms and synthetic emergence through
+composition. The current implementation does **not** establish that all behavior
+is confined to such compositions: several atom helpers take caller-supplied Rust
+callbacks, and the kernel implements scheduling, syscalls, device access and
+loading through direct Rust/assembly control flow. These callbacks are supplied
+by compiled code; this is not evidence of remote callback injection.
+
+The ELF loader validates executable structure, mappings and permissions, but
+it does not verify an atom-only composition language. Existing VM tests establish
+specific runtime behaviors, not atom immutability or a complete security proof.
+This distinction must be resolved before networking can rely on the proposed
+immutable-composition security model.
+
 ## Persistent storage and current limits
 
 The filesystem uses stable boxed file objects in RAM. A successful `sync`
@@ -275,6 +325,7 @@ with `virtio-blk-pci,disable-modern=on`; the storage contracts follow the
 | Resource | Current bound |
 |---|---|
 | Task slots | 16 |
+| Program arguments | 16 including executable name; 1024 serialized bytes |
 | User stack | 32 KiB per process, with a guard page |
 | Heap address window | 16 MiB per process |
 | Individual user allocation | Up to 1 MiB |
@@ -310,8 +361,8 @@ leave the device offline. Without a compatible disk, the kernel reports
 
 These are proposed work, not currently implemented features:
 
-- Program arguments and process inspection/control commands such as `ps` and
-  `kill`.
+- Define and enforce the immutable-atom composition boundary before relying on
+  it for the proposed network security architecture.
 - Further storage development beyond the current flat, bounded snapshot format.
 
 ## CI and preserved history

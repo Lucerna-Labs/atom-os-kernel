@@ -1,6 +1,7 @@
 // Native diagnostics using the actual, unchanged source modules.
 // No privileged IRQ, port-I/O, or paging instruction is executed here.
 #![allow(dead_code, unused_imports, unused_variables)]
+extern crate alloc;
 extern crate kernel_kit;
 use kernel_kit::{context, elf, fs, keyboard, memory, slab};
 #[path = "../kernel-orchestrator/src/scheduler.rs"] mod scheduler;
@@ -440,4 +441,45 @@ fn truncation_releases_buffer_capacity_even_for_unlinked_open_files() {
     root.append(&file, &vec![4; 536]).unwrap();
     assert_eq!(file.len(), 65536);
     assert_eq!(root.usage().live_bytes, 65536);
+}
+
+#[test]
+fn process_argument_encoding_limits_and_empty_values() {
+    use kernel_kit::{arguments::pack, abi::*};
+    assert_eq!(pack("a", b"one\0\0two words\0").unwrap(), b"a\0one\0\0two words\0");
+    assert!(pack("a", b"unterminated").is_err());
+    assert!(pack("a", &[255, 0]).is_err());
+    assert!(pack("", b"").is_err());
+    assert!(pack("a\0b", b"").is_err());
+    assert!(pack("a", &[0; MAX_ARGS]).is_err());
+    assert!(pack("a", &[0; MAX_ARGS - 1]).is_ok());
+    let mut extra = vec![b'x'; MAX_ARG_BYTES - 2]; *extra.last_mut().unwrap() = 0;
+    assert_eq!(pack("a", &extra).unwrap().len(), MAX_ARG_BYTES);
+    extra.insert(0, b'x'); assert!(pack("a", &extra).is_err());
+}
+#[test]
+fn launch_quoting_preserves_empty_spaces_and_escapes() {
+    use kernel_kit::arguments::words;
+    assert_eq!(words(r#"worker.elf plain "two words" '' 'a"b' c\ d "q\"x""#).unwrap(),
+               ["worker.elf", "plain", "two words", "", "a\"b", "c d", "q\"x"]);
+    for bad in ["", "   ", "worker 'unfinished", "worker \\", "worker \0"] { assert!(words(bad).is_err()); }
+}
+#[test]
+fn process_snapshot_states_names_and_zeroed_unused_records() {
+    use kernel_kit::abi::*;
+    let mut scheduler = scheduler::Scheduler::new();
+    let mut context = context::Context::new(99, 0, 0, 0);
+    context.parent = 8; context.arguments = b"worker.elf\0private argument\0".to_vec();
+    context.state = context::TaskState::Blocked; context.wait_for = Some(7);
+    scheduler.spawn(context).unwrap();
+    let (rows, count) = scheduler.snapshot(); assert_eq!(count, 1);
+    assert_eq!((rows[0].pid, rows[0].parent, rows[0].state), (99, 8, PROCESS_WAITING));
+    assert_eq!(&rows[0].name[..11], b"worker.elf\0"); assert!(rows[0].name[11..].iter().all(|&b| b == 0));
+    assert_eq!(rows[1].pid, 0); assert!(rows[1].name.iter().all(|&b| b == 0));
+    scheduler.task_mut(99).unwrap().wait_for = None;
+    assert_eq!(scheduler.snapshot().0[0].state, PROCESS_SLEEPING);
+    scheduler.task_mut(99).unwrap().state = context::TaskState::Terminated;
+    scheduler.task_mut(99).unwrap().exit_code = KILLED_STATUS;
+    assert_eq!(scheduler.snapshot().0[0].state, PROCESS_EXITED);
+    assert_eq!(scheduler.snapshot().0[0].exit_code, KILLED_STATUS);
 }

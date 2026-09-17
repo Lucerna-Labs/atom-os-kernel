@@ -102,7 +102,7 @@ fn execute(command: &str) {
     let argument = argument.trim();
     match verb {
         "" => {}
-        "help" => rt::print("commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run selftest pairtest churn faulttest fstest storageprobe rm mv df status sync reboot\n"),
+        "help" => rt::print("commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run ps kill proctest selftest pairtest churn faulttest fstest storageprobe rm mv df status sync reboot\n"),
         "ls" => { rt::call(SYS_LIST_DIR, 0, 0); }
         "clear" => { rt::call(SYS_CLEAR, 0, 0); }
         "bench" => bench(),
@@ -131,14 +131,48 @@ fn execute(command: &str) {
         }
         "storageprobe" => storage_probe::run(argument),
         "msg" => rt::print(if rt::send(2, argument) { "Message sent to Daemon\n" } else { "message rejected or mailbox full\n" }),
-        "spawn" => { let pid = rt::spawn(argument); if pid == ERROR { rt::print("spawn failed\n"); }
-            else { rt::print(&format!("spawned pid {}\n", pid)); } }
+        "spawn" | "run" => match rt::arguments::words(argument) {
+            Ok(words) => {
+                let args: Vec<_> = words[1..].iter().map(String::as_str).collect();
+                if verb == "spawn" {
+                    let pid = rt::spawn_args(&words[0], &args);
+                    if pid == ERROR { rt::print("spawn failed\n"); }
+                    else { rt::print_args(format_args!("spawned pid {}\n", pid)); }
+                } else { rt::exec_args(&words[0], &args); rt::print("exec failed\n"); }
+            }
+            Err(()) => rt::print("invalid program arguments or quoting\n"),
+        },
+        "ps" => match rt::processes() {
+            Ok(tasks) => {
+                rt::print("PID PPID STATE PROGRAM\n");
+                for task in tasks {
+                    let end = task.name.iter().position(|&b| b == 0).unwrap_or(task.name.len());
+                    let name = core::str::from_utf8(&task.name[..end]).unwrap_or("?");
+                    let state = match task.state {
+                        PROCESS_READY => "ready", PROCESS_RUNNING => "running",
+                        PROCESS_SLEEPING => "sleeping", PROCESS_WAITING => "waiting",
+                        PROCESS_EXITED => "exited", _ => "trapped",
+                    };
+                    rt::print_args(format_args!("{} {} {} {}\n", task.pid, task.parent, state, name));
+                }
+            }
+            Err(()) => rt::print("ps failed\n"),
+        },
+        "kill" => match argument.parse::<u64>() {
+            Ok(pid) => if rt::kill(pid) { rt::print_args(format_args!("killed pid {}\n", pid)); }
+                       else { rt::print("kill failed: no live process with that PID\n"); },
+            Err(_) => rt::print("usage: kill pid\n"),
+        },
+        "proctest" => {
+            let pid = rt::spawn_args("worker.elf", &["--process-test"]);
+            if pid != ERROR && rt::wait(pid) == 0 { rt::print("PROCTEST_OK\n"); }
+            else { rt::print("PROCTEST_FAIL\n"); }
+        }
         "wait" => match argument.parse::<u64>() {
             Ok(pid) => { let status = rt::wait(pid); if status == ERROR { rt::print("wait failed\n"); }
                 else { rt::print(&format!("wait pid={} status={}\n", pid, status)); } }
             Err(_) => rt::print("usage: wait pid\n"),
         },
-        "run" => { rt::path_call(SYS_EXEC, argument); rt::print("exec failed\n"); }
         "selftest" => rt::print(if worker() { "SELFTEST_OK\n" } else { "SELFTEST_FAIL\n" }),
         "pairtest" => {
             let first = rt::spawn("worker.elf"); let second = rt::spawn("worker.elf");

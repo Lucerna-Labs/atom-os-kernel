@@ -1,0 +1,42 @@
+{
+  "acceleration": "tcg",
+  "image_sha256": "debb366693541bb8df29169f653b14ab43af6d448222183fd3d02abf3af72f90",
+  "nonce": "persist-c93c4fd04d43428c",
+  "checks": {
+    "BOOT_HEAP_BENCH": true,
+    "FILE_LIFECYCLE_QUOTAS_SAVED_STATE": true,
+    "FILE_MANAGEMENT_COMMANDS": true,
+    "PROCESS_ARGUMENTS_KILL_BOUNDARIES": true,
+    "PS_KILL_COMMANDS": true,
+    "SHELL_PROGRAM_ARGUMENTS": true,
+    "KEYBOARD": true,
+    "RAMFS_LIST": true,
+    "RAMFS_WRITE_READ": true,
+    "IPC_DELIVERY": true,
+    "USER_HEAP": true,
+    "USER_POINTER_FD_FASTCALL_XMM": true,
+    "CONCURRENT_PROCESS_ISOLATION": true,
+    "SPAWN_WAIT_EXIT": true,
+    "INVALID_ELF_REJECTED": true,
+    "PROCESS_REAP_NO_FRAME_LEAK": true,
+    "USER_FAULT_CONTAINED": true,
+    "VIRTIO_FLUSH_COMMIT": true,
+    "OS_REBOOT_PERSISTENCE": true,
+    "COLD_BOOT_EXACT_CONTENT": true,
+    "EXEC_REPLACEMENT_DAEMON_SURVIVES": true
+  },
+  "disk": "/home/jesse/atom-os-kernel-tests/run-20260917T212634980705680Z/results/tcg-acceptance/data.img",
+  "qmp_kvm": {
+    "enabled": false,
+    "present": true
+  },
+  "process_churn": {
+    "rounds": 48,
+    "free_before": 16321,
+    "free_after": 16321,
+    "tasks": 2
+  },
+  "disk_sha256_after_save": "ffcaf8173a15b838132ba5299698e4e89da90ebd7d1d2e4eb006e9f47b5cd87c",
+  "success": true,
+  "elapsed_seconds": 26.548
+}

@@ -1,0 +1,1062 @@
+{"QMP": {"version": {"qemu": {"micro": 2, "minor": 2, "major": 8}, "package": "Debian 1:8.2.2+ds-0ubuntu1.18"}, "capabilities": ["oob"]}}
+{"request": {"execute": "qmp_capabilities"}}
+{"return": {}}
+{"request": {"execute": "query-kvm"}}
+{"return": {"enabled": false, "present": true}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "f"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "u"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "h"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "o"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "k"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "p"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "kp_add"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "m"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "o"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "v"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "dot"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "x"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "m"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "v"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "m"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "o"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "v"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "dot"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "x"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "n"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "m"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "dot"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "x"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "n"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "m"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "dot"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "x"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "m"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "n"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "m"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "dot"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "x"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "n"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "m"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "dot"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "x"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "f"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "p"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "o"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "p"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "p"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "w"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "n"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "w"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "o"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "k"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "dot"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "f"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "minus"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "minus"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "p"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "p"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "k"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "i"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "6"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "5"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "p"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "w"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "i"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "6"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "5"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "k"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "i"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "6"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "5"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "k"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "i"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "0"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "p"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "w"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "n"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "w"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "o"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "k"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "dot"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "f"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "minus"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "minus"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "g"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "h"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "o"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "w"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "o"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "w"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "i"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "6"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "6"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "h"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "p"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "h"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "o"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "p"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "i"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "minus"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "9"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "3"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "4"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "f"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "0"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "4"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "4"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "3"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "4"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "2"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "8"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "kp_add"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "u"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "b"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "dot"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "x"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "u"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "b"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "dot"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "x"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "m"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "g"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "p"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "n"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "i"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "p"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "h"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "p"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "f"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "p"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "i"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "p"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "w"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "n"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "w"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "o"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "k"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "dot"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "f"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "w"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "i"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "7"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "0"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "w"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "i"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "7"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "0"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "h"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "o"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "i"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "n"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "v"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "i"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "kp_add"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "m"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "f"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "o"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "m"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "dot"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "f"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "p"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "w"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "n"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "m"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "f"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "o"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "m"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "dot"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "f"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "h"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "u"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "n"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "4"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "8"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "f"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "u"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "y"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "n"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "b"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "o"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "o"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"timestamp": {"seconds": 1789680543, "microseconds": 786903}, "event": "RESET", "data": {"guest": true, "reason": "guest-reset"}}
+{"timestamp": {"seconds": 1789680543, "microseconds": 817523}, "event": "RESET", "data": {"guest": true, "reason": "guest-reset"}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "u"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "b"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "dot"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "x"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "h"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "o"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "o"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "n"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "minus"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "p"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "i"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "minus"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "9"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "3"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "4"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "f"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "0"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "4"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "4"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "3"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "4"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "2"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "8"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "kp_add"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "spc"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "d"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "u"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "r"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "a"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "b"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "l"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "e"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "dot"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "x"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "t"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "s"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "y"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "n"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "c"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "send-key", "arguments": {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 20}}}
+{"return": {}}
+{"request": {"execute": "quit"}}
+{"timestamp": {"seconds": 1789680547, "microseconds": 186558}, "event": "SHUTDOWN", "data": {"guest": false, "reason": "host-qmp-quit"}}
+{"return": {}}

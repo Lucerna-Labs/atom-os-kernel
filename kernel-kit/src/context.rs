@@ -23,6 +23,7 @@ pub struct Context {
     pub exit_code: u64,
     pub waited: bool,
     pub mailbox: VecDeque<Vec<u8>>,
+    pub arguments: Vec<u8>,
 }
 
 impl Context {
@@ -31,7 +32,7 @@ impl Context {
             open_files: [const { None }; 16], fs_error: 0, space: None,
             kernel_stack_phys: 0, kernel_stack_pages: 0, parent: 0,
             wait_for: None, sleep_until: 0, exit_code: 0, waited: false,
-            mailbox: VecDeque::new() }
+            mailbox: VecDeque::new(), arguments: Vec::new() }
     }
     pub fn set_state(&mut self, state: TaskState) { self.state = state; }
 

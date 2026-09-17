@@ -2,9 +2,11 @@
 #![no_main]
 extern crate alloc;
 use user_rt::{self as rt, abi::*};
+mod process_probe;
 user_rt::entry!(main);
 
 fn main() {
+    process_probe::dispatch();
     let pid = rt::call(SYS_GETPID, 0, 0);
     // Reject untrusted pointers without taking a kernel exception.
     assert_eq!(rt::call(SYS_OPEN, 0, 0), ERROR);

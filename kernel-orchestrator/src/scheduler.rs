@@ -1,5 +1,5 @@
 use kernel_kit::context::{Context, TaskState};
-pub const MAX_TASKS: usize = 16;
+pub const MAX_TASKS: usize = kernel_kit::abi::MAX_PROCESSES;
 
 /// The returned stack and selected context form one indivisible transition.
 pub struct Scheduler {
@@ -65,5 +65,26 @@ impl Scheduler {
                 }
             }
         }
+    }
+}
+
+impl Scheduler {
+    pub fn snapshot(&self) -> ([kernel_kit::abi::ProcessInfo; MAX_TASKS], usize) {
+        use kernel_kit::abi::*;
+        let mut records = [ProcessInfo::EMPTY; MAX_TASKS];
+        let mut count = 0;
+        for task in self.tasks.iter().flatten() {
+            let info = &mut records[count]; count += 1;
+            info.pid = task.id as u64; info.parent = task.parent as u64;
+            info.exit_code = if task.state == TaskState::Terminated { task.exit_code } else { 0 };
+            info.state = match task.state {
+                TaskState::Ready => PROCESS_READY, TaskState::Running => PROCESS_RUNNING,
+                TaskState::Blocked if task.wait_for.is_some() => PROCESS_WAITING,
+                TaskState::Blocked => PROCESS_SLEEPING, TaskState::Terminated => PROCESS_EXITED,
+                TaskState::Trapped => PROCESS_TRAPPED,
+            };
+            for (dst, &byte) in info.name[..63].iter_mut().zip(task.arguments.iter().take_while(|&&b| b != 0)) { *dst = byte; }
+        }
+        (records, count)
     }
 }

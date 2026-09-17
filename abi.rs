@@ -51,3 +51,34 @@ pub fn fs_error_message(code: u64) -> &'static str {
         9 => "disk unavailable or I/O failed", 10 => "invalid user buffer", _ => "filesystem error",
     }
 }
+
+// Process-control ABI. Arguments are UTF-8 strings terminated by NUL; argv[0]
+// is the executable name. Spawn/exec inputs contain only the extra arguments.
+pub const SYS_SPAWN_ARGS: u64 = 39;
+pub const SYS_EXEC_ARGS: u64 = 40;
+pub const SYS_ARGS: u64 = 41;
+pub const SYS_PROCESSES: u64 = 42;
+pub const SYS_KILL: u64 = 43;
+pub const MAX_ARGS: usize = 16;
+pub const MAX_ARG_BYTES: usize = 1024;
+pub const MAX_PROCESSES: usize = 16;
+pub const KILLED_STATUS: u64 = 137;
+pub const PROCESS_READY: u64 = 0;
+pub const PROCESS_RUNNING: u64 = 1;
+pub const PROCESS_SLEEPING: u64 = 2;
+pub const PROCESS_WAITING: u64 = 3;
+pub const PROCESS_EXITED: u64 = 4;
+pub const PROCESS_TRAPPED: u64 = 5;
+
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub struct ProcessInfo {
+    pub pid: u64,
+    pub parent: u64,
+    pub state: u64,
+    pub exit_code: u64,
+    pub name: [u8; 64],
+}
+impl ProcessInfo {
+    pub const EMPTY: Self = Self { pid: 0, parent: 0, state: 0, exit_code: 0, name: [0; 64] };
+}

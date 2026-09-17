@@ -1,0 +1,20 @@
+{
+  "nonce": "console-daabc743826f4ed1",
+  "success": true,
+  "sessions": [
+    {
+      "number": 1,
+      "passed": true,
+      "disk_sha256": "1af0b14f60ee86e1f3663e611996f6633923f6720c5750f76b4c8f56b19391d3"
+    },
+    {
+      "number": 2,
+      "passed": true,
+      "disk_sha256": "1af0b14f60ee86e1f3663e611996f6633923f6720c5750f76b4c8f56b19391d3"
+    }
+  ],
+  "acceleration": "tcg",
+  "quoted_arguments": true,
+  "exclusive_session_lock": true,
+  "shell_exec_arguments": true
+}

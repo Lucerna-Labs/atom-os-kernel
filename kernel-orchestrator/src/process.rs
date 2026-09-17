@@ -30,7 +30,7 @@ pub fn load_image(name: &str, kernel_root: u64) -> Result<(AddressSpace, u64), M
     })
 }
 
-pub fn create(pid: usize, parent: usize, name: &str, kernel_root: u64) -> Result<Context, MapError> {
+pub fn create(pid: usize, parent: usize, name: &str, arguments: alloc::vec::Vec<u8>, kernel_root: u64) -> Result<Context, MapError> {
     let (space, entry) = load_image(name, kernel_root)?;
     let pages = 4;
     let phys = frames_allocate(pages)?;
@@ -39,6 +39,7 @@ pub fn create(pid: usize, parent: usize, name: &str, kernel_root: u64) -> Result
     unsafe { *(rsp as *mut TrapFrame) = TrapFrame::new_user(entry, STACK_TOP); reset_fpu(rsp); }
     let mut context = Context::new(pid, rsp, top, space.root);
     context.parent = parent;
+    context.arguments = arguments;
     context.space = Some(space);
     context.kernel_stack_phys = phys;
     context.kernel_stack_pages = pages;

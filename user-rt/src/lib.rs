@@ -102,3 +102,35 @@ macro_rules! entry {
         pub extern "C" fn atom_user_entry() -> ! { $main(); $crate::exit(0) }
     };
 }
+
+#[path = "../../arguments.rs"]
+pub mod arguments;
+
+/// Arguments include the executable name at index zero, including legacy spawn.
+pub fn args() -> alloc::vec::Vec<alloc::string::String> {
+    let mut bytes = [0; MAX_ARG_BYTES];
+    let len = call(SYS_ARGS, bytes.as_mut_ptr() as u64, bytes.len() as u64);
+    assert!(len != ERROR && len > 0 && len <= bytes.len() as u64);
+    bytes[..len as usize - 1].split(|&b| b == 0)
+        .map(|arg| alloc::string::String::from_utf8(arg.to_vec()).unwrap()).collect()
+}
+fn launch(number: u64, path: &str, args: &[&str]) -> u64 {
+    let mut extra = alloc::vec::Vec::new();
+    if args.len() >= MAX_ARGS { return ERROR; }
+    for arg in args {
+        if arg.as_bytes().contains(&0) || arg.len() + 1 > MAX_ARG_BYTES.saturating_sub(extra.len()) { return ERROR; }
+        extra.extend_from_slice(arg.as_bytes()); extra.push(0);
+    }
+    if arguments::pack(path, &extra).is_err() { return ERROR; }
+    let mut name = [0; 64]; name[..path.len()].copy_from_slice(path.as_bytes());
+    call3(number, name.as_ptr() as u64, extra.as_ptr() as u64, extra.len() as u64)
+}
+pub fn spawn_args(path: &str, args: &[&str]) -> u64 { launch(SYS_SPAWN_ARGS, path, args) }
+pub fn exec_args(path: &str, args: &[&str]) -> u64 { launch(SYS_EXEC_ARGS, path, args) }
+pub fn kill(pid: u64) -> bool { call(SYS_KILL, pid, 0) == 0 }
+pub fn processes() -> Result<alloc::vec::Vec<ProcessInfo>, ()> {
+    let mut records = [ProcessInfo::EMPTY; MAX_PROCESSES];
+    let count = call(SYS_PROCESSES, records.as_mut_ptr() as u64, MAX_PROCESSES as u64);
+    if count > MAX_PROCESSES as u64 { return Err(()); }
+    Ok(records[..count as usize].to_vec())
+}

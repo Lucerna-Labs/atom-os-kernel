@@ -1,0 +1,47 @@
+{
+  "image_sha256": "debb366693541bb8df29169f653b14ab43af6d448222183fd3d02abf3af72f90",
+  "native_passed": 32,
+  "backends": {
+    "kvm": {
+      "acceptance_checks": 21,
+      "process_churn": {
+        "rounds": 48,
+        "free_before": 16321,
+        "free_after": 16321,
+        "tasks": 2
+      },
+      "kill_churn": {
+        "rounds": 48,
+        "free_before": 16283,
+        "free_after": 16283
+      },
+      "recovery_passed": true,
+      "interactive_sessions": 2,
+      "quoted_arguments": true,
+      "exec_arguments_and_pid": true
+    },
+    "tcg": {
+      "acceptance_checks": 21,
+      "process_churn": {
+        "rounds": 48,
+        "free_before": 16321,
+        "free_after": 16321,
+        "tasks": 2
+      },
+      "kill_churn": {
+        "rounds": 48,
+        "free_before": 16283,
+        "free_after": 16283
+      },
+      "recovery_passed": true,
+      "interactive_sessions": 2,
+      "quoted_arguments": true,
+      "exec_arguments_and_pid": true
+    }
+  },
+  "extended_console_script_sha256": "9023ef7caae8d9563c090b6c12419094a0312690e2802e8066b554d564c71a25",
+  "source_snapshot_differences": [
+    "README.md (documentation)",
+    "scripts/test-console.py (extended script archived as test-console-process.py and tested on both backends)"
+  ]
+}

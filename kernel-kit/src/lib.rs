@@ -24,3 +24,6 @@ pub mod storage;
 
 #[path = "../../abi.rs"]
 pub mod abi;
+
+#[path = "../../arguments.rs"]
+pub mod arguments;

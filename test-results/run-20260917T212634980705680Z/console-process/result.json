@@ -1,0 +1,20 @@
+{
+  "nonce": "console-0fa801ccb9a04676",
+  "success": true,
+  "sessions": [
+    {
+      "number": 1,
+      "passed": true,
+      "disk_sha256": "be86af4e1a35c6995e4943ab7acda8f28803d0da33dc88f1e7c26bbf0edede00"
+    },
+    {
+      "number": 2,
+      "passed": true,
+      "disk_sha256": "be86af4e1a35c6995e4943ab7acda8f28803d0da33dc88f1e7c26bbf0edede00"
+    }
+  ],
+  "acceleration": "kvm",
+  "quoted_arguments": true,
+  "exclusive_session_lock": true,
+  "shell_exec_arguments": true
+}
