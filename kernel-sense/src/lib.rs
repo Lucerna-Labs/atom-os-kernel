@@ -115,12 +115,116 @@ impl<T> Lock<T> {
     }
 }
 
+/// Rhythm window per tracked stream (E30's organ, kernel edition).
+const GAP_WINDOW: usize = 48;
+const RHYTHM_SLOTS: usize = 24; // boot runs ~10 payloads; the organ must track them all
+/// Current PE below baseline - DRIFT_MARGIN and under DRIFT_CEILING
+/// = machine-ward drift: the takeover signal.
+const DRIFT_MARGIN: f64 = 0.12;
+const DRIFT_CEILING: f64 = 0.65;
+
+/// One stream's rhythm: inter-event gaps (ticks), ring-buffered,
+/// baseline matured when the window first fills (per-pid — a new
+/// stream EARNS its baseline as it runs; drift is judged only
+/// against matured baselines). A drift verdict is latched for the
+/// stream's life: takeover is a one-way observation (reboot is the
+/// ceremony).
+struct RhythmSlot {
+    pid: u64,
+    last_tick: u64,
+    gaps: [u64; GAP_WINDOW],
+    len: usize,
+    head: usize,
+    baseline: f64,
+    matured: bool,
+    drifted: bool,
+}
+
+impl RhythmSlot {
+    const EMPTY: Self = Self {
+        pid: u64::MAX,
+        last_tick: u64::MAX,
+        gaps: [0; GAP_WINDOW],
+        len: 0,
+        head: 0,
+        baseline: 0.0,
+        matured: false,
+        drifted: false,
+    };
+
+    fn push_gap(&mut self, gap: u64) {
+        self.gaps[self.head] = gap;
+        self.head = (self.head + 1) % GAP_WINDOW;
+        if self.len < GAP_WINDOW {
+            self.len += 1;
+        }
+    }
+
+}
+
+/// log2 in-repo (f64::log2 is std-only) — mirrors kernel-egress's
+/// implementation (exponent from bits + atanh series).
+fn log2(x: f64) -> f64 {
+    const LN2: f64 = 0.693_147_180_559_945_3;
+    if x <= 0.0 {
+        return 0.0;
+    }
+    let bits = x.to_bits();
+    let exponent = ((bits >> 52) & 0x7FF) as i64 - 1023;
+    let mantissa = 1.0 + (bits & 0xF_FFFF_FFFF_FFFF) as f64 / 4_503_599_627_370_496.0;
+    let z = (mantissa - 1.0) / (mantissa + 1.0);
+    let z2 = z * z;
+    let series = 2.0 * (z + z * z2 / 3.0 + z * z2 * z2 / 5.0) / LN2;
+    exponent as f64 + series
+}
+
+/// Position-stable ordinal pattern (atom-writer tie rule).
+fn ordinal_pattern(a: u64, b: u64, c: u64) -> usize {
+    let mut sorted = [(a, 0usize), (b, 1), (c, 2)];
+    sorted.sort_unstable_by_key(|&(value, position)| (value, position));
+    let mut ranks = [0usize; 3];
+    for (rank, &(_, position)) in sorted.iter().enumerate() {
+        ranks[position] = rank;
+    }
+    ranks[0] * 2 + usize::from(ranks[1] > ranks[2])
+}
+
+/// Bandt-Pompe PE over the ring window, iterating chronologically.
+fn ring_pe(slot: &RhythmSlot) -> f64 {
+    if slot.len < 16 {
+        return -1.0; // too few gaps: no verdict
+    }
+    let mut counts = [0usize; 6];
+    // Iterate consecutive triples in ring order.
+    let at = |index: usize| -> u64 { slot.gaps[(slot.head + slot.len + index - GAP_WINDOW) % GAP_WINDOW] };
+    // Simpler chronological walk: oldest is (head - len) mod WINDOW.
+    let oldest = (slot.head + GAP_WINDOW - slot.len) % GAP_WINDOW;
+    for step in 0..slot.len.saturating_sub(2) {
+        let i0 = (oldest + step) % GAP_WINDOW;
+        let i1 = (oldest + step + 1) % GAP_WINDOW;
+        let i2 = (oldest + step + 2) % GAP_WINDOW;
+        counts[ordinal_pattern(slot.gaps[i0], slot.gaps[i1], slot.gaps[i2])] += 1;
+    }
+    let total = (slot.len - 2) as f64;
+    let mut bits = 0.0;
+    for count in counts {
+        if count > 0 {
+            let p = count as f64 / total;
+            bits -= p * log2(p);
+        }
+    }
+    bits / log2(6.0)
+}
+
 struct Sensor {
     permeability: [f32; SITES],
     foreign: [(u64, f32); MAX_TRACKED],
     trained: bool,
     normal_map: [bool; SITES],
     events: u64,
+    /// Scheduler ticks (advanced by tick(); the rhythm's clock).
+    ticks: u64,
+    rhythm: [RhythmSlot; RHYTHM_SLOTS],
 }
 
 static SENSOR: Lock<Sensor> = Lock::new(Sensor {
@@ -129,6 +233,8 @@ static SENSOR: Lock<Sensor> = Lock::new(Sensor {
     trained: false,
     normal_map: [false; SITES],
     events: 0,
+    ticks: 0,
+    rhythm: [RhythmSlot::EMPTY; RHYTHM_SLOTS],
 });
 
 /// Deterministic site for a (pid, target, syscall) conversation.
@@ -156,6 +262,53 @@ pub fn record(pid: u64, syscall: u64, target: u64, weight: f32) {
         for p in sensor.permeability.iter_mut() {
             let decay = EROSION * (*p - FLOOR).max(0.0);
             *p = (*p - decay).max(FLOOR);
+        }
+    }
+
+    // E31 rhythm tracking: the gap between this pid's successive
+    // events feeds its ring window; baseline matures per-pid once the
+    // window fills (a stream EARNS its baseline as it runs); drift
+    // (machine-ward, from a matured organic baseline) is a latched,
+    // one-way verdict that fires the intrusion signal.
+    {
+        let ticks_now = sensor.ticks;
+        let mut slot_pid = sensor
+            .rhythm
+            .iter()
+            .position(|slot| slot.pid == pid);
+        if slot_pid.is_none() {
+            if let Some(free) = sensor.rhythm.iter().position(|slot| slot.pid == u64::MAX) {
+                sensor.rhythm[free] = RhythmSlot { pid, ..RhythmSlot::EMPTY };
+                slot_pid = Some(free);
+            }
+        }
+        if let Some(index) = slot_pid {
+            let trained_now = sensor.trained;
+            let slot = &mut sensor.rhythm[index];
+            if slot.last_tick != u64::MAX {
+                let gap = ticks_now.wrapping_sub(slot.last_tick);
+                slot.push_gap(gap);
+            }
+            slot.last_tick = ticks_now;
+            if trained_now && slot.len == GAP_WINDOW {
+                let current = ring_pe(slot);
+                if !slot.matured {
+                    slot.baseline = current;
+                    slot.matured = true;
+                } else if !slot.drifted
+                    && slot.baseline - current > DRIFT_MARGIN
+                    && current < DRIFT_CEILING
+                {
+                    slot.drifted = true;
+                    let condemned = slot.pid;
+                    let _ = &condemned;
+                    // Fire through the atomic ring outside the lock:
+                    // drop, fire, return (this event IS the verdict).
+                    drop(sensor);
+                    fire_intrusion_signal(pid);
+                    return;
+                }
+            }
         }
     }
 
@@ -281,6 +434,7 @@ pub fn status() -> (bool, u64, usize, usize) {
 /// event-driven (scars record activity, budgets record blame).
 pub fn tick() {
     let mut sensor = SENSOR.lock();
+    sensor.ticks = sensor.ticks.wrapping_add(1);
     for entry in sensor.foreign.iter_mut() {
         if entry.1 > 0.0 {
             entry.1 = (entry.1 - BUDGET_DECAY_PER_TICK).max(0.0);
@@ -322,6 +476,25 @@ pub fn take_intrusion_signal() -> Option<u64> {
     None
 }
 
+/// Rhythm status for a pid: (matured, drifted, baseline x1024,
+/// current x1024). Current is -1 (encoded 0) when the window is
+/// still short.
+pub fn rhythm_status(pid: u64) -> (bool, bool, u64, u64) {
+    let sensor = SENSOR.lock();
+    match sensor.rhythm.iter().find(|slot| slot.pid == pid) {
+        Some(slot) => {
+            let current = if slot.len >= 16 { ring_pe(slot) } else { -1.0 };
+            (
+                slot.matured,
+                slot.drifted,
+                (slot.baseline.max(0.0) * 1024.0) as u64,
+                (current.max(0.0) * 1024.0) as u64,
+            )
+        }
+        None => (false, false, 0, 0),
+    }
+}
+
 /// Learning still open?
 pub fn learning() -> bool {
     !SENSOR.lock().trained
@@ -335,6 +508,8 @@ pub fn reset() {
     sensor.trained = false;
     sensor.normal_map = [false; SITES];
     sensor.events = 0;
+    sensor.ticks = 0;
+    sensor.rhythm = [RhythmSlot::EMPTY; RHYTHM_SLOTS];
 }
 
 #[cfg(test)]

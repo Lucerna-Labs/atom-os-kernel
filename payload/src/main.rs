@@ -212,5 +212,7 @@ fn main() {
     if smuggler == ERROR { rt::print("shell: smuggler.elf not found\n"); }
     let lane = rt::spawn("lane.elf");
     if lane == ERROR { rt::print("shell: lane.elf not found\n"); }
+    let metro = rt::spawn("metro.elf");
+    if metro == ERROR { rt::print("shell: metro.elf not found\n"); }
     loop { rt::print("> "); let command = line(); execute(command.trim()); }
 }

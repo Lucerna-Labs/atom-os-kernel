@@ -497,10 +497,11 @@ fn inject_payloads() {
     let instant_bytes = include_bytes!("../../target/x86_64-os/release/instantkeep");
     let smuggler_bytes = include_bytes!("../../target/x86_64-os/release/smuggler");
     let lane_bytes = include_bytes!("../../target/x86_64-os/release/lanewalk");
+    let metro_bytes = include_bytes!("../../target/x86_64-os/release/metronome");
     let fs = kernel_kit::fs::ROOT_FS.lock();
     for (name, bytes) in [("shell.elf", &shell_bytes[..]), ("daemon.elf", &daemon_bytes[..]),
         ("spider.elf", &spider_bytes[..]), ("rogue.elf", &rogue_bytes[..]),
-        ("weave.elf", &weave_bytes[..]), ("keykeep.elf", &keykeep_bytes[..]), ("instant.elf", &instant_bytes[..]), ("smuggler.elf", &smuggler_bytes[..]), ("lane.elf", &lane_bytes[..]),
+        ("weave.elf", &weave_bytes[..]), ("keykeep.elf", &keykeep_bytes[..]), ("instant.elf", &instant_bytes[..]), ("smuggler.elf", &smuggler_bytes[..]), ("lane.elf", &lane_bytes[..]), ("metro.elf", &metro_bytes[..]),
                           ("worker.elf", &worker_bytes[..]), ("fault.elf", &fault_bytes[..]), ("fs-probe.elf", &fs_bytes[..])] {
         fs.insert_builtin(name, bytes).expect("embedded program");
     }

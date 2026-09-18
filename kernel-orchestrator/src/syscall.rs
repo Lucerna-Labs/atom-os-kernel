@@ -304,6 +304,14 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             frame.rax = 0;
         } else if sub == 2 {
             frame.rax = (kernel_sense::foreign_budget(arg1) * 1e6) as u64;
+        } else if sub == 6 {
+            // E31: rhythm status for pid arg1 — (matured<<63 |
+            // drifted<<62 | baseline_q<<32 | current_q).
+            let (matured, drifted, baseline, current) = kernel_sense::rhythm_status(arg1);
+            frame.rax = (u64::from(matured) << 63)
+                | (u64::from(drifted) << 62)
+                | (baseline << 32)
+                | current;
         } else if sub == 3 {
             // T3: average cycles per sensor record() call.
             let calls = SENSOR_CALLS.load(Ordering::Relaxed);

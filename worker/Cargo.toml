@@ -45,3 +45,7 @@ path = "src/smuggler.rs"
 [[bin]]
 name = "lanewalk"
 path = "src/lanewalk.rs"
+
+[[bin]]
+name = "metronome"
+path = "src/metronome.rs"
