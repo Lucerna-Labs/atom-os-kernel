@@ -49,3 +49,7 @@ path = "src/lanewalk.rs"
 [[bin]]
 name = "metronome"
 path = "src/metronome.rs"
+
+[[bin]]
+name = "taintwalk"
+path = "src/taintwalk.rs"

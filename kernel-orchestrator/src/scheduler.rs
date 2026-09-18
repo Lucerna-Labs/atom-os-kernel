@@ -87,6 +87,8 @@ impl Scheduler {
         for index in 0..MAX_TASKS {
             if Some(index) == self.current { continue; }
             if let Some(task) = &mut self.tasks[index] {
+                // E34: dying context's taint entries are forgotten.
+                kernel_taint::forget(task.id as u64);
                 if task.state == TaskState::Terminated {
                     task.release_resources();
                     if task.parent == 0 || task.waited { self.tasks[index] = None; }

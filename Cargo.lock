@@ -45,10 +45,15 @@ dependencies = [
  "kernel-kit",
  "kernel-lane",
  "kernel-sense",
+ "kernel-taint",
 ]
 
 [[package]]
 name = "kernel-sense"
+version = "0.1.0"
+
+[[package]]
+name = "kernel-taint"
 version = "0.1.0"
 
 [[package]]

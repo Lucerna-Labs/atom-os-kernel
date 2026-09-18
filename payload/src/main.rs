@@ -214,5 +214,7 @@ fn main() {
     if lane == ERROR { rt::print("shell: lane.elf not found\n"); }
     let metro = rt::spawn("metro.elf");
     if metro == ERROR { rt::print("shell: metro.elf not found\n"); }
+    let taint = rt::spawn("taint.elf");
+    if taint == ERROR { rt::print("shell: taint.elf not found\n"); }
     loop { rt::print("> "); let command = line(); execute(command.trim()); }
 }

@@ -200,6 +200,13 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         kernel_kit::vga::VgaWriter::new().clear_screen(); frame.rax = 0;
     } else if is(number, SYS_EXEC) || is(number, SYS_EXEC_ARGS) || is(number, SYS_SPAWN) || is(number, SYS_SPAWN_ARGS) {
         // Copy all input before creating a child or replacing the caller's CR3.
+        // E34 taint wall: a TAINTED context cannot spawn or exec —
+        // derived content stays data. (This is the exec/spawn half of
+        // the gate; PROT_EXEC-equivalent for the atom OS.)
+        if !kernel_taint::gate_exec_spawn(pid as u64) {
+            frame.rax = ERROR;
+        } else
+        {
         let request = (|| {
             let name = user_string(context, arg, 64)?;
             let extra = if is(number, SYS_EXEC_ARGS) || is(number, SYS_SPAWN_ARGS) {
@@ -214,7 +221,14 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         })();
         if let Ok((name, extra, packed)) = request {
             if is(number, SYS_SPAWN) || is(number, SYS_SPAWN_ARGS) {
-                frame.rax = system.spawn_with_args(pid, &name, &extra).map(|n| n as u64).unwrap_or(ERROR);
+                match system.spawn_with_args(pid, &name, &extra) {
+                    Ok(child) => {
+                        // E34: children inherit taint from their parent.
+                        kernel_taint::propagate_taint(pid as u64, child as u64);
+                        frame.rax = child as u64;
+                    }
+                    Err(()) => frame.rax = ERROR,
+                }
             } else if let Ok((space, entry)) = crate::process::load_image(&name, system.kernel_root) {
                 let context = system.scheduler.current_task_mut().unwrap();
                 // Switch before dropping the old address-space owner.
@@ -227,6 +241,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                 unsafe { crate::process::reset_fpu(rsp); }
             }
         }
+        } // E34 taint gate close
     } else if is(number, SYS_ARGS) {
         let len = context.arguments.len();
         if arg1 >= len as u64 && context.space.as_ref().unwrap().valid_user_range(arg, len, true) {
@@ -393,6 +408,36 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             let (lane, holding, revoked, real, honey) = kernel_lane::status();
             frame.rax = (lane << 48) | (u64::from(holding) << 47)
                 | (u64::from(revoked) << 46) | (real << 23) | honey;
+        }
+    } else if is(number, SYS_TAINT) {
+        // E34 taint layer. sub = arg:
+        //   0=mark_tainted(pid), 1=gate(pid), 2=promote(target),
+        //   3=status(pid), 4=forget(pid), 5=propagate(from,to),
+        //   6=set_input_focus (caller self-registers as the input
+        //      context — in a real system the keyboard handler at
+        //      boot does this; here the first caller at boot wins,
+        //      labeled honestly).
+        let sub = arg;
+        if sub == 0 {
+            frame.rax = u64::from(kernel_taint::mark_tainted(arg1));
+        } else if sub == 1 {
+            frame.rax = u64::from(kernel_taint::gate_exec_spawn(arg1));
+        } else if sub == 2 {
+            frame.rax = u64::from(kernel_taint::promote(pid as u64, arg1));
+        } else if sub == 3 {
+            frame.rax = match kernel_taint::status(arg1) {
+                kernel_taint::TaintState::Clean => 0,
+                kernel_taint::TaintState::Tainted => 1,
+                kernel_taint::TaintState::Promoted => 2,
+            };
+        } else if sub == 4 {
+            kernel_taint::forget(arg1);
+            frame.rax = 0;
+        } else if sub == 5 {
+            frame.rax = u64::from(kernel_taint::propagate_taint(arg1, arg2));
+        } else if sub == 6 {
+            kernel_taint::set_input_focus(pid as u64);
+            frame.rax = 0;
         }
     } else if is(number, SYS_REBOOT) {
         if kernel_kit::storage::sync().is_ok() {

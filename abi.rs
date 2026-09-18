@@ -67,6 +67,10 @@ pub const SYS_KEY: u64 = 45;
 pub const SYS_INSTANT: u64 = 46;
 /// E25 key lane: claim/deposit/handoff/log/status — the one owned way out.
 pub const SYS_KEYLANE: u64 = 47;
+/// E34 taint layer: sub=arg — 0=mark_tainted(pid=arg1), 1=gate(pid=arg1),
+/// 2=promote(target=arg1), 3=status(pid=arg1), 4=forget(pid=arg1),
+/// 5=propagate(from=arg1,to=arg2), 6=set_input_focus(self).
+pub const SYS_TAINT: u64 = 48;
 pub const MAX_ARGS: usize = 16;
 pub const MAX_ARG_BYTES: usize = 1024;
 pub const MAX_PROCESSES: usize = 16;

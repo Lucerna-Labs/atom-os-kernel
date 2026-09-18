@@ -1,0 +1,13 @@
+[package]
+name = "kernel-taint"
+version = "0.1.0"
+edition = "2021"
+description = "E34: the taint layer — derived content stays data until a human promotes it (wall 4 of zero-click resistance)"
+
+[lib]
+name = "kernel_taint"
+path = "src/lib.rs"
+
+[features]
+default = []
+std = []
