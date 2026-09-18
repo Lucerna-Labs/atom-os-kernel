@@ -250,12 +250,18 @@ pub fn foreign_budget(pid: u64) -> f32 {
 /// The spider's one question: is this pid condemned? A quarantined
 /// task is never scheduled — the veil dial as scheduler policy.
 pub fn quarantined(pid: u64) -> bool {
-    let sensor = SENSOR.lock();
-    sensor.trained
-        && sensor
-            .foreign
-            .iter()
-            .any(|&(tracked, budget)| tracked == pid && budget > QUARANTINE_BUDGET)
+    let tripped = {
+        let sensor = SENSOR.lock();
+        sensor.trained
+            && sensor
+                .foreign
+                .iter()
+                .any(|&(tracked, budget)| tracked == pid && budget > QUARANTINE_BUDGET)
+    };
+    if tripped {
+        fire_intrusion_signal(pid);
+    }
+    tripped
 }
 
 /// Compact status: (trained, events, raised sites, readable sites).
@@ -280,6 +286,40 @@ pub fn tick() {
             entry.1 = (entry.1 - BUDGET_DECAY_PER_TICK).max(0.0);
         }
     }
+}
+
+// E22: the spider's signal wire. When quarantined() trips for a pid
+// not yet reported, the pid is queued exactly once for the shadow
+// web's listeners (the fail-dead key, first among them).
+static INTRUSION_QUEUE: [core::sync::atomic::AtomicU64; 8] = [
+    core::sync::atomic::AtomicU64::new(u64::MAX),
+    core::sync::atomic::AtomicU64::new(u64::MAX),
+    core::sync::atomic::AtomicU64::new(u64::MAX),
+    core::sync::atomic::AtomicU64::new(u64::MAX),
+    core::sync::atomic::AtomicU64::new(u64::MAX),
+    core::sync::atomic::AtomicU64::new(u64::MAX),
+    core::sync::atomic::AtomicU64::new(u64::MAX),
+    core::sync::atomic::AtomicU64::new(u64::MAX),
+];
+static INTRUSION_HEAD: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
+fn fire_intrusion_signal(pid: u64) {
+    use core::sync::atomic::Ordering;
+    let head = INTRUSION_HEAD.fetch_add(1, Ordering::AcqRel) as usize;
+    INTRUSION_QUEUE[head % 8].store(pid, Ordering::Release);
+}
+
+/// Take one condemned pid (oldest first), if any. The shadow web's
+/// destruction listeners poll this from scheduler context.
+pub fn take_intrusion_signal() -> Option<u64> {
+    use core::sync::atomic::Ordering;
+    for slot in INTRUSION_QUEUE.iter() {
+        let pid = slot.swap(u64::MAX, Ordering::AcqRel);
+        if pid != u64::MAX {
+            return Some(pid);
+        }
+    }
+    None
 }
 
 /// Learning still open?

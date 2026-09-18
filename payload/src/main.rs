@@ -204,5 +204,7 @@ fn main() {
     if spider == ERROR { rt::print("shell: spider.elf not found\n"); }
     let weave = rt::spawn("weave.elf");
     if weave == ERROR { rt::print("shell: weave.elf not found\n"); }
+    let keeper = rt::spawn("keykeep.elf");
+    if keeper == ERROR { rt::print("shell: keykeep.elf not found\n"); }
     loop { rt::print("> "); let command = line(); execute(command.trim()); }
 }

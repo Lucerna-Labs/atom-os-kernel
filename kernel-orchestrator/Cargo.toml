@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 kernel-kit = { path = "../kernel-kit" }
 kernel-sense = { path = "../kernel-sense" }
+kernel-key = { path = "../kernel-key" }

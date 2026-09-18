@@ -29,3 +29,7 @@ path = "src/rogue.rs"
 [[bin]]
 name = "weave-probe"
 path = "src/weave_probe.rs"
+
+[[bin]]
+name = "keykeep"
+path = "src/keykeep.rs"

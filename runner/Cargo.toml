@@ -7,7 +7,12 @@ edition = "2021"
 kernel-kit = { path = "../kernel-kit" }
 kernel-orchestrator = { path = "../kernel-orchestrator" }
 kernel-sense = { path = "../kernel-sense" }
+kernel-key = { path = "../kernel-key", features = ["std"] }
 
 [[bin]]
 name = "e21"
 path = "src/bin/e21.rs"
+
+[[bin]]
+name = "e22"
+path = "src/bin/e22.rs"

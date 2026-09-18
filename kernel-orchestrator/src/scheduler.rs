@@ -60,6 +60,12 @@ impl Scheduler {
         // time, so a false positive recovers and a real rogue is
         // re-condemned the moment it resumes.
         kernel_sense::tick();
+        // E22 fail-dead key: passive erosion every tick, and the
+        // spider's condemnation signal destroys the key immediately.
+        kernel_key::tick();
+        if kernel_sense::take_intrusion_signal().is_some() {
+            kernel_key::spider_destroy();
+        }
         for task in self.tasks.iter_mut().flatten() {
             if task.state == TaskState::Blocked && task.wait_for.is_none() && task.sleep_until <= self.ticks {
                 task.state = TaskState::Ready;

@@ -16,6 +16,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "kernel-key"
+version = "0.1.0"
+
+[[package]]
 name = "kernel-kit"
 version = "0.1.0"
 
@@ -23,6 +27,7 @@ version = "0.1.0"
 name = "kernel-orchestrator"
 version = "0.1.0"
 dependencies = [
+ "kernel-key",
  "kernel-kit",
  "kernel-sense",
 ]

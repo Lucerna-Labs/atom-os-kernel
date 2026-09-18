@@ -1,0 +1,13 @@
+[package]
+name = "kernel-key"
+version = "0.1.0"
+edition = "2021"
+description = "E22: the fail-dead thermodynamic key — alive only while maintained, destroyed by the spider's intrusion signal (an omission, not an action)"
+
+[lib]
+name = "kernel_key"
+path = "src/lib.rs"
+
+[features]
+default = []
+std = []

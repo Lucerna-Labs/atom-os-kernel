@@ -282,6 +282,24 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             let calls = SENSOR_CALLS.load(Ordering::Relaxed);
             frame.rax = if calls == 0 { 0 } else { SENSOR_CYCLES.load(Ordering::Relaxed) / calls };
         }
+    } else if is(number, SYS_KEY) {
+        // E22 fail-dead key. sub = arg: 0=init (seed arg1^arg2 pairs),
+        // 1=maintain, 2=read word arg1, 3=status. The caller's pid is
+        // the keeper; the spider's signal revokes keepership forever.
+        let sub = arg;
+        if sub == 0 {
+            let seed = [arg1 ^ 0xE22_1, arg2 ^ 0xE22_2, arg1.rotate_left(17), arg2.rotate_left(23)];
+            frame.rax = u64::from(kernel_key::init(pid as u64, seed));
+        } else if sub == 1 {
+            frame.rax = u64::from(kernel_key::maintain(pid as u64));
+        } else if sub == 2 {
+            let words = kernel_key::read(pid as u64);
+            let index = (arg1 & 3) as usize;
+            frame.rax = words[index];
+        } else if sub == 3 {
+            let (alive, cause, energy) = kernel_key::status();
+            frame.rax = (u64::from(alive) << 63) | ((cause as u64) << 60) | energy;
+        }
     } else if is(number, SYS_REBOOT) {
         if kernel_kit::storage::sync().is_ok() {
             let status = kernel_kit::io::Port::new(0x64);
