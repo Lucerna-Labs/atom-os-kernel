@@ -63,8 +63,12 @@ impl Scheduler {
         // E22 fail-dead key: passive erosion every tick, and the
         // spider's condemnation signal destroys the key immediately.
         kernel_key::tick();
+        kernel_instant::tick();
         if kernel_sense::take_intrusion_signal().is_some() {
+            // The wire has one reader (the kernel); the destruction
+            // fans out to every key species: perishable and instant.
             kernel_key::spider_destroy();
+            kernel_instant::spider_destroy();
         }
         for task in self.tasks.iter_mut().flatten() {
             if task.state == TaskState::Blocked && task.wait_for.is_none() && task.sleep_until <= self.ticks {

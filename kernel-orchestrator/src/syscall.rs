@@ -300,6 +300,25 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             let (alive, cause, energy) = kernel_key::status();
             frame.rax = (u64::from(alive) << 63) | ((cause as u64) << 60) | energy;
         }
+    } else if is(number, SYS_INSTANT) {
+        // E23 instant-key. sub = arg: 0=init (seed arg1), 1=maintain,
+        // 2=transform word arg1 (returns ERROR on refusal), 3=status.
+        // The key exists for one instruction inside this handler;
+        // userspace never sees key material — only its behavior.
+        let sub = arg;
+        if sub == 0 {
+            frame.rax = u64::from(kernel_instant::init(pid as u64, arg1 ^ 0xE23_5EED));
+        } else if sub == 1 {
+            frame.rax = u64::from(kernel_instant::maintain(pid as u64));
+        } else if sub == 2 {
+            match kernel_instant::transform(pid as u64, arg1) {
+                Some(out) => frame.rax = out,
+                None => frame.rax = ERROR,
+            }
+        } else if sub == 3 {
+            let (alive, cause, energy) = kernel_instant::status();
+            frame.rax = (u64::from(alive) << 63) | ((cause as u64) << 60) | energy;
+        }
     } else if is(number, SYS_REBOOT) {
         if kernel_kit::storage::sync().is_ok() {
             let status = kernel_kit::io::Port::new(0x64);

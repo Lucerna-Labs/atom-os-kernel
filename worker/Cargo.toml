@@ -33,3 +33,7 @@ path = "src/weave_probe.rs"
 [[bin]]
 name = "keykeep"
 path = "src/keykeep.rs"
+
+[[bin]]
+name = "instantkeep"
+path = "src/instantkeep.rs"

@@ -494,10 +494,11 @@ fn inject_payloads() {
     let rogue_bytes = include_bytes!("../../target/x86_64-os/release/rogue");
     let weave_bytes = include_bytes!("../../target/x86_64-os/release/weave-probe");
     let keykeep_bytes = include_bytes!("../../target/x86_64-os/release/keykeep");
+    let instant_bytes = include_bytes!("../../target/x86_64-os/release/instantkeep");
     let fs = kernel_kit::fs::ROOT_FS.lock();
     for (name, bytes) in [("shell.elf", &shell_bytes[..]), ("daemon.elf", &daemon_bytes[..]),
         ("spider.elf", &spider_bytes[..]), ("rogue.elf", &rogue_bytes[..]),
-        ("weave.elf", &weave_bytes[..]), ("keykeep.elf", &keykeep_bytes[..]),
+        ("weave.elf", &weave_bytes[..]), ("keykeep.elf", &keykeep_bytes[..]), ("instant.elf", &instant_bytes[..]),
                           ("worker.elf", &worker_bytes[..]), ("fault.elf", &fault_bytes[..]), ("fs-probe.elf", &fs_bytes[..])] {
         fs.insert_builtin(name, bytes).expect("embedded program");
     }

@@ -1,0 +1,13 @@
+[package]
+name = "kernel-instant"
+version = "0.1.0"
+edition = "2021"
+description = "E23: the instant-key — four informationless shares, recombined for ONE instruction, unborn again; decay law on the shares, spider signal kills the species"
+
+[lib]
+name = "kernel_instant"
+path = "src/lib.rs"
+
+[features]
+default = []
+std = []

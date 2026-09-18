@@ -206,5 +206,7 @@ fn main() {
     if weave == ERROR { rt::print("shell: weave.elf not found\n"); }
     let keeper = rt::spawn("keykeep.elf");
     if keeper == ERROR { rt::print("shell: keykeep.elf not found\n"); }
+    let instant = rt::spawn("instant.elf");
+    if instant == ERROR { rt::print("shell: instant.elf not found\n"); }
     loop { rt::print("> "); let command = line(); execute(command.trim()); }
 }
