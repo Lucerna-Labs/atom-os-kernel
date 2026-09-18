@@ -25,3 +25,7 @@ path = "src/spider.rs"
 [[bin]]
 name = "rogue"
 path = "src/rogue.rs"
+
+[[bin]]
+name = "weave-probe"
+path = "src/weave_probe.rs"
