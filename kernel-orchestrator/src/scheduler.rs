@@ -64,11 +64,17 @@ impl Scheduler {
         // spider's condemnation signal destroys the key immediately.
         kernel_key::tick();
         kernel_instant::tick();
-        if kernel_sense::take_intrusion_signal().is_some() {
+        if let Some(intruder) = kernel_sense::take_intrusion_signal() {
             // The wire has one reader (the kernel); the destruction
             // fans out to every key species: perishable and instant.
             kernel_key::spider_destroy();
             kernel_instant::spider_destroy();
+            // E25: if the intruder IS the lane task, the lane's trust
+            // dies with it — real material never travels again (the
+            // lane keeps serving honey, forever labeled).
+            if intruder == kernel_lane::lane_pid() {
+                kernel_lane::revoke();
+            }
         }
         for task in self.tasks.iter_mut().flatten() {
             if task.state == TaskState::Blocked && task.wait_for.is_none() && task.sleep_until <= self.ticks {

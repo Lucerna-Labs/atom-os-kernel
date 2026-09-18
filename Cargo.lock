@@ -32,6 +32,10 @@ name = "kernel-kit"
 version = "0.1.0"
 
 [[package]]
+name = "kernel-lane"
+version = "0.1.0"
+
+[[package]]
 name = "kernel-orchestrator"
 version = "0.1.0"
 dependencies = [
@@ -39,6 +43,7 @@ dependencies = [
  "kernel-instant",
  "kernel-key",
  "kernel-kit",
+ "kernel-lane",
  "kernel-sense",
 ]
 

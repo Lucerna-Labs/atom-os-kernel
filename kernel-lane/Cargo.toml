@@ -1,0 +1,13 @@
+[package]
+name = "kernel-lane"
+version = "0.1.0"
+edition = "2021"
+description = "E25: the key lane — a dumb state machine (at-rest → in-lane → in-transit → gone), one owned way out, honey for the unauthorized"
+
+[lib]
+name = "kernel_lane"
+path = "src/lib.rs"
+
+[features]
+default = []
+std = []

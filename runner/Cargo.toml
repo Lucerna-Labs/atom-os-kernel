@@ -10,6 +10,7 @@ kernel-sense = { path = "../kernel-sense" }
 kernel-key = { path = "../kernel-key", features = ["std"] }
 kernel-instant = { path = "../kernel-instant", features = ["std"] }
 kernel-egress = { path = "../kernel-egress", features = ["std"] }
+kernel-lane = { path = "../kernel-lane", features = ["std"] }
 
 [[bin]]
 name = "e21"
@@ -26,3 +27,7 @@ path = "src/bin/e23.rs"
 [[bin]]
 name = "e24"
 path = "src/bin/e24.rs"
+
+[[bin]]
+name = "e25"
+path = "src/bin/e25.rs"

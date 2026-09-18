@@ -28,6 +28,24 @@ pub fn user_string(context: &Context, address: u64, limit: usize) -> Result<Stri
     Err(())
 }
 
+/// The lane's transit line — the observation point made visible.
+/// Written straight to serial (kernel-side), so lane traffic never
+/// passes through the cone-gated write channels: this IS the one way
+/// out, and the log line is its receipt.
+fn lane_transit_line(transit: u64, word: u64, real: bool) {
+    let line = alloc::format!(
+        "[LANE] transit #{} word {:#x} ({})\n",
+        transit,
+        word,
+        if real { "real" } else { "HONEY" }
+    );
+    let (mut serial, flags) = kernel_kit::serial::SERIAL1.lock();
+    for byte in line.as_bytes() {
+        serial.send(*byte);
+    }
+    kernel_kit::serial::SERIAL1.unlock(flags);
+}
+
 fn fs_result(context: &mut Context, frame: &mut TrapFrame, result: Result<u64, FsError>) {
     match result {
         Ok(value) => { frame.rax = value; context.fs_error = 0; }
@@ -327,6 +345,46 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         } else if sub == 3 {
             let (alive, cause, energy) = kernel_instant::status();
             frame.rax = (u64::from(alive) << 63) | ((cause as u64) << 60) | energy;
+        }
+    } else if is(number, SYS_KEYLANE) {
+        // E25 the key lane — the one owned way out. sub = arg:
+        //   0=claim, 1=deposit(word=arg1,tag=arg2),
+        //   2=handoff -> word (ERROR if lane empty), 3=log_get(arg1)
+        //     -> kind<<32|word, 4=status.
+        // Real transits print a marked line to serial: the lane IS
+        // the observation point, and its traffic is legal precisely
+        // because it goes through here, not through the cone-gated
+        // write channels.
+        let sub = arg;
+        if sub == 0 {
+            frame.rax = u64::from(kernel_lane::claim(pid as u64));
+        } else if sub == 1 {
+            frame.rax = u64::from(kernel_lane::deposit(pid as u64, arg1, arg2));
+        } else if sub == 2 {
+            match kernel_lane::handoff(pid as u64) {
+                kernel_lane::Handoff::Real { word, transit, .. } => {
+                    lane_transit_line(transit, word, true);
+                    frame.rax = word;
+                }
+                kernel_lane::Handoff::Honey { word, transit } => {
+                    lane_transit_line(transit, word, false);
+                    frame.rax = word;
+                }
+                kernel_lane::Handoff::Nothing => frame.rax = ERROR,
+            }
+        } else if sub == 3 {
+            // A 64-bit word and a kind cannot share one 64-bit return
+            // without loss: the word comes back whole; the kind has
+            // its own query (sub 5).
+            let (_kind, word) = kernel_lane::log_get(arg1);
+            frame.rax = word;
+        } else if sub == 5 {
+            let (kind, _word) = kernel_lane::log_get(arg1);
+            frame.rax = kind;
+        } else if sub == 4 {
+            let (lane, holding, revoked, real, honey) = kernel_lane::status();
+            frame.rax = (lane << 48) | (u64::from(holding) << 47)
+                | (u64::from(revoked) << 46) | (real << 23) | honey;
         }
     } else if is(number, SYS_REBOOT) {
         if kernel_kit::storage::sync().is_ok() {

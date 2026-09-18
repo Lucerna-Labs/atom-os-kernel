@@ -65,6 +65,8 @@ pub const SYS_SENSE: u64 = 44;
 pub const SYS_KEY: u64 = 45;
 /// E23 instant-key: init/maintain/transform/status (reconstruction-at-use).
 pub const SYS_INSTANT: u64 = 46;
+/// E25 key lane: claim/deposit/handoff/log/status — the one owned way out.
+pub const SYS_KEYLANE: u64 = 47;
 pub const MAX_ARGS: usize = 16;
 pub const MAX_ARG_BYTES: usize = 1024;
 pub const MAX_PROCESSES: usize = 16;

@@ -41,3 +41,7 @@ path = "src/instantkeep.rs"
 [[bin]]
 name = "smuggler"
 path = "src/smuggler.rs"
+
+[[bin]]
+name = "lanewalk"
+path = "src/lanewalk.rs"
