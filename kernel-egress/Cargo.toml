@@ -1,0 +1,13 @@
+[package]
+name = "kernel-egress"
+version = "0.1.0"
+edition = "2021"
+description = "E24: the egress cone — the coffee strainer graduated from prose to bits: entropy ceiling + prose-structure profile on every outbound window"
+
+[lib]
+name = "kernel_egress"
+path = "src/lib.rs"
+
+[features]
+default = []
+std = []

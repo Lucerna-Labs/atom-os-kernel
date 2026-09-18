@@ -208,5 +208,7 @@ fn main() {
     if keeper == ERROR { rt::print("shell: keykeep.elf not found\n"); }
     let instant = rt::spawn("instant.elf");
     if instant == ERROR { rt::print("shell: instant.elf not found\n"); }
+    let smuggler = rt::spawn("smuggler.elf");
+    if smuggler == ERROR { rt::print("shell: smuggler.elf not found\n"); }
     loop { rt::print("> "); let command = line(); execute(command.trim()); }
 }

@@ -10,7 +10,7 @@ pub const MAX_NAME_BYTES: usize = 63;
 pub const MAX_SNAPSHOT_BYTES: usize = 512 * 1024;
 pub const MAX_LIVE_BYTES: usize = 2 * MAX_SNAPSHOT_BYTES;
 
-pub fn builtin(name: &str) -> bool { matches!(name, "shell.elf" | "daemon.elf" | "worker.elf" | "fault.elf" | "fs-probe.elf" | "spider.elf" | "rogue.elf" | "weave.elf" | "keykeep.elf" | "instant.elf") }
+pub fn builtin(name: &str) -> bool { matches!(name, "shell.elf" | "daemon.elf" | "worker.elf" | "fault.elf" | "fs-probe.elf" | "spider.elf" | "rogue.elf" | "weave.elf" | "keykeep.elf" | "instant.elf" | "smuggler.elf") }
 pub fn valid_name(name: &str) -> bool {
     !name.is_empty() && name.len() <= MAX_NAME_BYTES && !name.bytes().any(|b| b < 32 || b == b'/')
 }

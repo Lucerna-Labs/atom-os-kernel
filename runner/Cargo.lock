@@ -3,6 +3,10 @@
 version = 4
 
 [[package]]
+name = "kernel-egress"
+version = "0.1.0"
+
+[[package]]
 name = "kernel-instant"
 version = "0.1.0"
 
@@ -18,6 +22,7 @@ version = "0.1.0"
 name = "kernel-orchestrator"
 version = "0.1.0"
 dependencies = [
+ "kernel-egress",
  "kernel-instant",
  "kernel-key",
  "kernel-kit",
@@ -32,6 +37,7 @@ version = "0.1.0"
 name = "runner"
 version = "0.1.0"
 dependencies = [
+ "kernel-egress",
  "kernel-instant",
  "kernel-key",
  "kernel-kit",

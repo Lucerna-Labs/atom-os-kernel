@@ -1,7 +1,7 @@
 [workspace]
 members = ["daemon", "user-rt", "worker",
     "kernel-kit",
-    "kernel-orchestrator", "kernel-sense", "kernel-key", "kernel-instant", "payload",
+    "kernel-orchestrator", "kernel-sense", "kernel-key", "kernel-instant", "kernel-egress", "payload",
     "x86_64-kernel",
 ]
 exclude = ["runner"]

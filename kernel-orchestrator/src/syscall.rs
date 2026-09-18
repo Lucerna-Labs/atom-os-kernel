@@ -91,9 +91,16 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
     } else if is(number, SYS_WRITE_BUFFER) {
         if arg1 <= 4096 && context.space.as_ref().unwrap().valid_user_range(arg, arg1 as usize, false) {
             let bytes = unsafe { core::slice::from_raw_parts(arg as *const u8, arg1 as usize) };
+            // E24 egress cone: the entropy gate on the outbound
+            // display channel — prose passes, key-shaped data does
+            // not, encoded keys fail the structure profile.
+            if !kernel_egress::gate(bytes) {
+                frame.rax = ERROR;
+            } else {
             let mut writer = kernel_kit::vga::VgaWriter::new();
             for &byte in bytes { writer.write_byte(byte); }
             frame.rax = arg1;
+            }
         }
     } else if is(number, SYS_OPEN) || is(number, SYS_OPEN_EXISTING) {
         let result = (|| {
@@ -234,7 +241,9 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         frame.rax = pid as u64;
     } else if is(number, SYS_IPC_SEND) {
         if let Ok(message) = user_string(context, arg1, 256) {
-            if let Some(target) = system.scheduler.task_mut(arg as usize) {
+            // E24 egress cone: IPC is an outbound channel too.
+            if !kernel_egress::gate(message.as_bytes()) {
+            } else if let Some(target) = system.scheduler.task_mut(arg as usize) {
                 if target.state != TaskState::Terminated && target.mailbox.len() < 4 {
                     target.mailbox.push_back(message.into_bytes()); frame.rax = 0;
                 }

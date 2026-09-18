@@ -8,3 +8,4 @@ kernel-kit = { path = "../kernel-kit" }
 kernel-sense = { path = "../kernel-sense" }
 kernel-key = { path = "../kernel-key" }
 kernel-instant = { path = "../kernel-instant" }
+kernel-egress = { path = "../kernel-egress" }
