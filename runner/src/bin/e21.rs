@@ -7,7 +7,7 @@
 //! event does not doom anyone, and quiet scars erode. The in-kernel
 //! wiring mirrors these calls at the syscall chokepoint.
 
-use kernel_sense::{foreign_budget, freeze, learning, quarantined, record, reset, status};
+use kernel_sense::{foreign_budget, freeze, learning, quarantined, record, reset, status, tick};
 
 /// A clean boot: a few pids talking to their usual partners through
 /// their usual syscalls (IPC send, write), at a steady rate.
@@ -67,5 +67,42 @@ fn main() {
     assert_eq!(raised_after, 0);
     println!("S4 PASS: unmaintained scars erode (thermodynamic forgetting)");
 
-    println!("\nE21 HOST PASS: the shadow web learns, admits, condemns, and forgets");
+    // -- S5: false positive recovers thermodynamically -------------
+    reset();
+    clean_boot(2000);
+    freeze();
+    for _ in 0..500 {
+        record(5, 15, 42, 1.0);
+    }
+    assert!(quarantined(5), "budget must condemn first");
+    let mut ticks = 0u64;
+    while quarantined(5) {
+        tick();
+        ticks += 1;
+        assert!(ticks < 100_000, "release must terminate");
+    }
+    println!("S5 PASS: wrongly-condemned pid released after {ticks} ticks (wall-time erosion)");
+
+    // -- S6: persistent rogue re-condemned every cycle ---------------
+    let mut releases = 0u64;
+    let mut total_recharge = 0u64;
+    for _cycle in 0..3 {
+        let mut guard = 0u64;
+        while !quarantined(9) {
+            record(9, 15, 7, 1.0);
+            guard += 1;
+            assert!(guard < 100_000, "condemnation must arrive");
+        }
+        while quarantined(9) {
+            tick();
+        }
+        releases += 1;
+        total_recharge += guard;
+    }
+    println!(
+        "S6 PASS: 3 condemn/release cycles, avg {} foreign events to re-condemn — the dial breathes",
+        total_recharge / 3
+    );
+
+    println!("\nE21 HOST PASS: the shadow web learns, admits, condemns, releases, and forgets");
 }

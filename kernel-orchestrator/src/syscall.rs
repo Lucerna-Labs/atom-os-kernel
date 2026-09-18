@@ -7,6 +7,10 @@ use crate::system::System;
 
 pub use crate::abi::*;
 
+use core::sync::atomic::{AtomicU64, Ordering};
+static SENSOR_CYCLES: AtomicU64 = AtomicU64::new(0);
+static SENSOR_CALLS: AtomicU64 = AtomicU64::new(0);
+
 fn is(value: u64, code: u64) -> bool {
     !kernel_kit::atoms::compare(&value, &code) && !kernel_kit::atoms::compare(&code, &value)
 }
@@ -49,8 +53,15 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
     // E21 shadow web: every syscall is a vibration at the kernel's
     // single chokepoint. The sensor learns who talks to whom; after
     // its cone freezes, foreign conversations spend quarantine budget.
-    // Never a payload — class, pid, target, weight only.
-    kernel_sense::record(pid as u64, number, arg, 1.0);
+    // Never a payload — class, pid, target, weight only. The rdtsc
+    // pair is the T3 measurement the design doc requires before any
+    // primitive is trusted live: the honest cost of feeling.
+    {
+        let started = unsafe { core::arch::x86_64::_rdtsc() };
+        kernel_sense::record(pid as u64, number, arg, 1.0);
+        SENSOR_CYCLES.fetch_add(unsafe { core::arch::x86_64::_rdtsc() } - started, Ordering::Relaxed);
+        SENSOR_CALLS.fetch_add(1, Ordering::Relaxed);
+    }
     if is(number, SYS_YIELD) {
         frame.rax = 0; switch = true;
     } else if is(number, SYS_ALLOC) {
@@ -266,6 +277,10 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             frame.rax = 0;
         } else if sub == 2 {
             frame.rax = (kernel_sense::foreign_budget(arg1) * 1e6) as u64;
+        } else if sub == 3 {
+            // T3: average cycles per sensor record() call.
+            let calls = SENSOR_CALLS.load(Ordering::Relaxed);
+            frame.rax = if calls == 0 { 0 } else { SENSOR_CYCLES.load(Ordering::Relaxed) / calls };
         }
     } else if is(number, SYS_REBOOT) {
         if kernel_kit::storage::sync().is_ok() {

@@ -55,6 +55,13 @@ const ENERGY_PER_UNIT: f32 = 0.02;
 /// clean boot's stray events never reach it (T2 judgment; T3
 /// measurement pending the QEMU gate).
 pub const QUARANTINE_BUDGET: f32 = 2.0;
+/// Budget decay per scheduler tick (linear). Condemnation is
+/// thermodynamic, not permanent: a starved pid's budget erodes with
+/// wall time, so a false positive earns its scheduling back, while a
+/// real rogue re-charges the moment it resumes and is re-condemned —
+/// the veil dial breathes. Full condemnation budget (say 40) clears
+/// in ~3000 ticks.
+pub const BUDGET_DECAY_PER_TICK: f32 = 0.013;
 const MAX_TRACKED: usize = 16;
 
 /// Minimal spin lock (no dependencies; kernel context only).
@@ -263,6 +270,18 @@ pub fn status() -> (bool, u64, usize, usize) {
     (sensor.trained, sensor.events, raised, readable)
 }
 
+/// Scheduler-tick maintenance: erodes foreign budgets with wall
+/// time. Called from timer context; the permeability field stays
+/// event-driven (scars record activity, budgets record blame).
+pub fn tick() {
+    let mut sensor = SENSOR.lock();
+    for entry in sensor.foreign.iter_mut() {
+        if entry.1 > 0.0 {
+            entry.1 = (entry.1 - BUDGET_DECAY_PER_TICK).max(0.0);
+        }
+    }
+}
+
 /// Learning still open?
 pub fn learning() -> bool {
     !SENSOR.lock().trained
@@ -338,6 +357,59 @@ mod tests {
         // detection is a budget, not a per-event threshold.
         record(4, 15, 9, 1.0);
         assert!(!quarantined(4));
+    }
+
+    #[test]
+    fn gate_s5_false_positive_recovers_thermodynamically() {
+        reset();
+        clean_boot(2000);
+        freeze();
+        // A benign pid wrongly condemned (foreign budget spent by a
+        // misclassified burst) stops; wall time erodes the budget and
+        // the scheduler takes it back.
+        for _ in 0..500 {
+            record(5, 15, 42, 1.0);
+        }
+        assert!(quarantined(5), "budget must condemn first");
+        let mut ticks = 0;
+        while quarantined(5) {
+            tick();
+            ticks += 1;
+            assert!(ticks < 100_000, "release must terminate");
+        }
+        assert!(!quarantined(5));
+        assert!(ticks > 0);
+    }
+
+    #[test]
+    fn gate_s6_persistent_rogue_is_re_condemned_every_cycle() {
+        reset();
+        clean_boot(2000);
+        freeze();
+        let mut releases = 0;
+        for _cycle in 0..3 {
+            // Rogue misbehaves until condemned.
+            let mut guard = 0;
+            while !quarantined(9) {
+                record(9, 15, 7, 1.0);
+                guard += 1;
+                assert!(guard < 100_000, "condemnation must arrive");
+            }
+            // Starved (no events possible); wall time erodes release.
+            while quarantined(9) {
+                tick();
+            }
+            releases += 1;
+        }
+        assert_eq!(releases, 3, "the dial must breathe: condemn, release, re-condemn");
+        // And the rogue's next burst re-condemns immediately.
+        let mut guard = 0;
+        while !quarantined(9) {
+            record(9, 15, 7, 1.0);
+            guard += 1;
+            assert!(guard < 100_000);
+        }
+        assert!(guard < 5000, "re-condemnation must be fast: {guard} events");
     }
 
     #[test]

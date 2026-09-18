@@ -56,6 +56,10 @@ impl Scheduler {
     }
     pub fn timer_tick(&mut self, rsp: u64) -> u64 {
         self.ticks = self.ticks.wrapping_add(1);
+        // E21 thermodynamic release: condemnation erodes with wall
+        // time, so a false positive recovers and a real rogue is
+        // re-condemned the moment it resumes.
+        kernel_sense::tick();
         for task in self.tasks.iter_mut().flatten() {
             if task.state == TaskState::Blocked && task.wait_for.is_none() && task.sleep_until <= self.ticks {
                 task.state = TaskState::Ready;

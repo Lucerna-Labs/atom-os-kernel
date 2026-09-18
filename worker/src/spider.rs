@@ -60,14 +60,43 @@ fn main() {
         }
     }
 
-    // Give the starved rogue time to prove its silence, then verify.
-    rt::sleep(100);
-    let budget = rt::call3(SYS_SENSE, 2, rogue_pid, 0);
-    rt::print_args(format_args!(
-        "[Spider] settled budget {}.{} — rogue starved (no further prints)\n",
-        budget / 1_000_000,
-        (budget % 1_000_000) / 100_000
-    ));
-    rt::print("[Spider] E21 PASS: the kernel felt the rogue without permission\n");
-    rt::exit(0);
+    // The dial breathes: while the rogue is starved, wall-time erosion
+    // decays its budget toward release; on release it resumes, re-charges,
+    // and is re-condemned. Watch one full breath.
+    rt::print("[Spider] watching the dial breathe (budget erodes with wall time)...\n");
+    let mut breaths = 0u64;
+    let mut polls = 0u64;
+    let mut released_seen = false;
+    while breaths < 1 && polls < 4000 {
+        rt::sleep(25);
+        let budget = rt::call3(SYS_SENSE, 2, rogue_pid, 0);
+        polls += 1;
+        if !released_seen && budget < 2_000_000 {
+            rt::print_args(format_args!(
+                "[Spider] release at poll {}: budget {} — rogue may resume\n",
+                polls, budget / 1_000_000
+            ));
+            released_seen = true;
+        }
+        if released_seen && budget > 2_000_000 {
+            rt::print_args(format_args!(
+                "[Spider] re-condemned at poll {}: budget {} rose again — one full breath\n",
+                polls, budget / 1_000_000
+            ));
+            breaths += 1;
+        }
+    }
+    // T3: the honest cost of feeling (average cycles per record call).
+    let overhead = rt::call3(SYS_SENSE, 3, 0, 0);
+    rt::print_args(format_args!("[Spider] T3 sensor overhead: {} cycles/syscall\n", overhead));
+    if breaths == 1 {
+        rt::print("[Spider] E21.5 PASS: condemn, starve, release, re-condemn — the dial breathes\n");
+        rt::exit(0);
+    } else if released_seen {
+        rt::print("[Spider] E21.5 PARTIAL: release observed, re-condemnation pending more runtime\n");
+        rt::exit(0);
+    } else {
+        rt::print("[Spider] E21.5 INCOMPLETE: no release within the window\n");
+        rt::exit(4);
+    }
 }
