@@ -74,17 +74,32 @@ impl Scheduler {
         kernel_key::tick();
         kernel_instant::tick();
         if let Some(intruder) = kernel_sense::take_intrusion_signal() {
-            // The wire has one reader (the kernel); the destruction
-            // fans out to every key species: perishable, instant,
-            // and the crypt layer's master key.
-            kernel_key::spider_destroy();
-            kernel_instant::spider_destroy();
-            kernel_crypt::destroy();
             // E25: if the intruder IS the lane task, the lane's trust
             // dies with it — real material never travels again (the
-            // lane keeps serving honey, forever labeled).
+            // lane keeps serving honey, forever labeled). This is
+            // DISTRUST, not destruction: it rides the raw signal
+            // outside the judge, because the lane's doctrine is
+            // possession-is-proof and a single condemnation of the
+            // holder ends the ceremony.
             if intruder == kernel_lane::lane_pid() {
                 kernel_lane::revoke();
+            }
+            // E36 the judge: condemn-starve already happened (the
+            // quarantined pid is never scheduled); DESTRUCTION waits
+            // for certified evidence — a latched drift verdict, a
+            // latched parasite seam plus a foreign-budget trace, or
+            // three re-condemnation episodes. Insufficient evidence
+            // abstains: the pid stays starved, the keys stay alive,
+            // and the thermodynamic release still frees a false
+            // positive. Patience costs safety nothing; a wrong
+            // cascade costs the whole boot (one life per key).
+            if kernel_sense::adjudicate(intruder) {
+                // The wire has one reader (the kernel); the destruction
+                // fans out to every key species: perishable, instant,
+                // and the crypt layer's master key.
+                kernel_key::spider_destroy();
+                kernel_instant::spider_destroy();
+                kernel_crypt::destroy();
             }
         }
         for task in self.tasks.iter_mut().flatten() {

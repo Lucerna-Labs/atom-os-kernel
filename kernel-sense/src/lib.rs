@@ -123,6 +123,51 @@ const RHYTHM_SLOTS: usize = 24; // boot runs ~10 payloads; the organ must track 
 const DRIFT_MARGIN: f64 = 0.12;
 const DRIFT_CEILING: f64 = 0.65;
 
+// E36 — the seam detector and the judge. Interruption is a different
+// artifact from drift: drift means the app itself changed; a seam
+// means something came BETWEEN the app and its signal. A parasite
+// sharing a pid after injection interleaves TWO rhythms — dense
+// parasite bursts inside the host's organic beats — so the gap ring
+// goes bimodal: a jump between clusters far larger than the typical
+// step inside either. The judge (eig/gate doctrine, in-repo port)
+// sits between the intrusion signal and the destruction cascade:
+// condemn-starve stays immediate (cheap, reversible via
+// thermodynamic release), but destruction requires CERTIFIED
+// evidence. Insufficient evidence abstains — a held pid is already
+// starved, so safety is never traded for patience.
+/// Minimum ring length before a seam verdict exists.
+const SEAM_MIN_LEN: usize = 32;
+/// Both clusters of a bimodal split must hold at least this many
+/// gaps — a couple of outliers is not a second mode.
+const SEAM_MIN_CLUSTER: usize = 5;
+/// The between-cluster jump must clear this multiple of the median
+/// nonzero adjacent step (and an absolute floor) — the density seam.
+const BIMODAL_JUMP_MULTIPLE: f64 = 4.0;
+/// The absolute floor guards sparse windows: a real interleave leaves
+/// a WIDE density hole (burst zeros vs host beats vs quiet spells);
+/// a random sampling hole in a sparse organic window does not reach
+/// this, and the two-strike latch finishes the discrimination.
+const BIMODAL_JUMP_MIN: u64 = 8;
+/// A hole in the stream: max gap at this multiple of the median.
+const HOLE_RATIO: f64 = 8.0;
+/// Seam checks run every this-many events on a matured window (the
+/// cost law: record() stays a hash and two adds; the 48-sort is
+/// amortized to ~140 ops per event).
+const SEAM_CHECK_INTERVAL: u32 = 6;
+/// A seam verdict certifies only with an independent budget trace:
+/// the parasite's foreign conversation must have left THIS much
+/// blame. Far below the quarantine bar, and sized for the decay
+/// economics (0.02/event vs 0.013/tick: a patient parasite's
+/// equilibrium trace is small) — this is corroboration that the pid
+/// touched foreign ground, not spatial condemnation.
+const SEAM_BUDGET_BAR: f32 = 0.03;
+/// Condemnation episodes: distinct (>= EPISODE_GAP apart) ticks where
+/// the pid is still over the quarantine bar when its signal is heard.
+const EPISODE_GAP: u64 = 32;
+/// The re-condemning rogue certifies on its third episode; a single
+/// false-positive burst stops at one and never destroys anything.
+const CERT_EPISODES: u32 = 3;
+
 /// One stream's rhythm: inter-event gaps (ticks), ring-buffered,
 /// baseline matured when the window first fills (per-pid — a new
 /// stream EARNS its baseline as it runs; drift is judged only
@@ -138,6 +183,15 @@ struct RhythmSlot {
     baseline: f64,
     matured: bool,
     drifted: bool,
+    /// E36: checks since maturation (seam cadence counter).
+    checks: u32,
+    /// E36: consecutive bimodal checks (debounce: a random hole in a
+    /// sparse organic window moves between checks; a parasite's does
+    /// not).
+    seam_strikes: u32,
+    /// E36: a bimodal seam was seen twice running — latched, like
+    /// drift.
+    seam_latched: bool,
 }
 
 impl RhythmSlot {
@@ -150,6 +204,9 @@ impl RhythmSlot {
         baseline: 0.0,
         matured: false,
         drifted: false,
+        checks: 0,
+        seam_strikes: 0,
+        seam_latched: false,
     };
 
     fn push_gap(&mut self, gap: u64) {
@@ -216,25 +273,54 @@ fn ring_pe(slot: &RhythmSlot) -> f64 {
     bits / log2(6.0)
 }
 
+/// The judge's per-pid docket: how many condemnation episodes the
+/// court has heard, the strongest seam evidence at last hearing, and
+/// the verdict. One-way: certification is latched (destruction, like
+/// drift, is not un-run).
+struct JudgeSlot {
+    pid: u64,
+    episodes: u32,
+    last_episode: u64,
+    last_bimodal: bool,
+    certified: bool,
+}
+
+impl JudgeSlot {
+    const EMPTY: Self = Self {
+        pid: u64::MAX,
+        episodes: 0,
+        last_episode: 0,
+        last_bimodal: false,
+        certified: false,
+    };
+}
+
 struct Sensor {
     permeability: [f32; SITES],
-    foreign: [(u64, f32); MAX_TRACKED],
+    /// (pid, budget, signaled-this-episode): the signal wire is
+    /// EDGE-triggered — one fire per condemnation episode, re-armed
+    /// when decay drops the budget back under the bar. Level-trigger
+    /// flooded the 8-slot wire every scheduler switch and starved
+    /// every other signal source (the seam's, measured live).
+    foreign: [(u64, f32, bool); MAX_TRACKED],
     trained: bool,
     normal_map: [bool; SITES],
     events: u64,
     /// Scheduler ticks (advanced by tick(); the rhythm's clock).
     ticks: u64,
     rhythm: [RhythmSlot; RHYTHM_SLOTS],
+    judge: [JudgeSlot; MAX_TRACKED],
 }
 
 static SENSOR: Lock<Sensor> = Lock::new(Sensor {
     permeability: [FLOOR; SITES],
-    foreign: [(0, 0.0); MAX_TRACKED],
+    foreign: [(0, 0.0, false); MAX_TRACKED],
     trained: false,
     normal_map: [false; SITES],
     events: 0,
     ticks: 0,
     rhythm: [RhythmSlot::EMPTY; RHYTHM_SLOTS],
+    judge: [JudgeSlot::EMPTY; MAX_TRACKED],
 });
 
 /// Deterministic site for a (pid, target, syscall) conversation.
@@ -308,6 +394,33 @@ pub fn record(pid: u64, syscall: u64, target: u64, weight: f32) {
                     fire_intrusion_signal(pid);
                     return;
                 }
+                // E36 seam: a parasite interleaved into this pid makes
+                // the gap window bimodal — dense bursts inside the
+                // host's organic beats. Checked on a cadence (the cost
+                // law), latched like drift, fired like drift. The
+                // spatial budget stays the CERTIFIER: the judge only
+                // destroys on a seam that left foreign blame.
+                if slot.matured && !slot.drifted && !slot.seam_latched {
+                    slot.checks = slot.checks.wrapping_add(1);
+                    if slot.checks % SEAM_CHECK_INTERVAL == 0 {
+                        let mut window = [0u64; GAP_WINDOW];
+                        let oldest = (slot.head + GAP_WINDOW - slot.len) % GAP_WINDOW;
+                        for (k, dst) in window.iter_mut().enumerate().take(slot.len) {
+                            *dst = slot.gaps[(oldest + k) % GAP_WINDOW];
+                        }
+                        if seam_analysis(&window[..slot.len]).0 {
+                            slot.seam_strikes += 1;
+                            if slot.seam_strikes >= 2 {
+                                slot.seam_latched = true;
+                                drop(sensor);
+                                fire_intrusion_signal(pid);
+                                return;
+                            }
+                        } else {
+                            slot.seam_strikes = 0;
+                        }
+                    }
+                }
             }
         }
     }
@@ -334,7 +447,7 @@ pub fn record(pid: u64, syscall: u64, target: u64, weight: f32) {
         }
         if !claimed {
             if let Some(entry) = sensor.foreign.iter_mut().find(|e| e.0 == 0) {
-                *entry = (pid, weight_now);
+                *entry = (pid, weight_now, false);
             }
             // Tracking table full: the loudest already-tracked pids
             // carry the verdict; dropping a newcomer is the honest
@@ -392,7 +505,7 @@ pub fn freeze() {
 /// Foreign budget a pid has accumulated outside the normal map.
 pub fn foreign_budget(pid: u64) -> f32 {
     let sensor = SENSOR.lock();
-    for &(tracked, budget) in sensor.foreign.iter() {
+    for &(tracked, budget, _) in sensor.foreign.iter() {
         if tracked == pid {
             return budget;
         }
@@ -403,15 +516,25 @@ pub fn foreign_budget(pid: u64) -> f32 {
 /// The spider's one question: is this pid condemned? A quarantined
 /// task is never scheduled — the veil dial as scheduler policy.
 pub fn quarantined(pid: u64) -> bool {
-    let tripped = {
-        let sensor = SENSOR.lock();
-        sensor.trained
+    let (tripped, fresh) = {
+        let mut sensor = SENSOR.lock();
+        let mut fresh = false;
+        let tripped = sensor.trained
             && sensor
                 .foreign
-                .iter()
-                .any(|&(tracked, budget)| tracked == pid && budget > QUARANTINE_BUDGET)
+                .iter_mut()
+                .any(|entry| {
+                    if entry.0 == pid && entry.1 > QUARANTINE_BUDGET {
+                        fresh = !entry.2;
+                        entry.2 = true;
+                        true
+                    } else {
+                        false
+                    }
+                });
+        (tripped, fresh)
     };
-    if tripped {
+    if tripped && fresh {
         fire_intrusion_signal(pid);
     }
     tripped
@@ -438,6 +561,9 @@ pub fn tick() {
     for entry in sensor.foreign.iter_mut() {
         if entry.1 > 0.0 {
             entry.1 = (entry.1 - BUDGET_DECAY_PER_TICK).max(0.0);
+            if entry.1 <= QUARANTINE_BUDGET {
+                entry.2 = false; // re-arm the edge for the next episode
+            }
         }
     }
 }
@@ -495,6 +621,200 @@ pub fn rhythm_status(pid: u64) -> (bool, bool, u64, u64) {
     }
 }
 
+/// E36 seam analysis over a chronological gap window: is this one
+/// program's rhythm, or two interleaved? Deterministic, allocation-
+/// free: insertion-sort a fixed copy, then find the largest adjacent
+/// jump that leaves both sides populated. The jump must clear a
+/// multiple of the MEDIAN nonzero adjacent step (the density seam —
+/// two clusters feel like a hole in the step distribution, whatever
+/// each cluster's spread) plus an absolute floor. A hole test (max
+/// gap vs median) rides along — the interrupted stream's receipt.
+/// Returns (bimodal, hole, max_jump x1024 / bar).
+pub fn seam_analysis(gaps: &[u64]) -> (bool, bool, u32) {
+    let n = gaps.len();
+    if n < SEAM_MIN_LEN {
+        return (false, false, 0);
+    }
+    let mut sorted = [0u64; GAP_WINDOW];
+    for (dst, &gap) in sorted.iter_mut().zip(gaps.iter()) {
+        *dst = gap;
+    }
+    for i in 1..n {
+        let mut j = i;
+        while j > 0 && sorted[j - 1] > sorted[j] {
+            sorted.swap(j - 1, j);
+            j -= 1;
+        }
+    }
+    // Adjacent steps; the best split sits on the largest one that
+    // leaves SEAM_MIN_CLUSTER on both sides.
+    let mut best_jump = 0u64;
+    let mut best_index = usize::MAX;
+    for i in (SEAM_MIN_CLUSTER - 1)..=(n - SEAM_MIN_CLUSTER).saturating_sub(1) {
+        let jump = sorted[i + 1] - sorted[i];
+        if jump > best_jump {
+            best_jump = jump;
+            best_index = i;
+        }
+    }
+    let mut nonzero = [0u64; GAP_WINDOW];
+    let mut count = 0usize;
+    for i in 0..n.saturating_sub(1) {
+        let step = sorted[i + 1] - sorted[i];
+        if step > 0 {
+            nonzero[count] = step;
+            count += 1;
+        }
+    }
+    for i in 1..count {
+        let mut j = i;
+        while j > 0 && nonzero[j - 1] > nonzero[j] {
+            nonzero.swap(j - 1, j);
+            j -= 1;
+        }
+    }
+    let median_step = if count == 0 { 0 } else { nonzero[count / 2] };
+    let bar = (BIMODAL_JUMP_MULTIPLE * median_step as f64).max(BIMODAL_JUMP_MIN as f64);
+    let bimodal = best_index != usize::MAX && best_jump as f64 >= bar;
+    let separation = if bar > 0.0 { (best_jump as f64 / bar * 1024.0) as u32 } else { 0 };
+    let median = sorted[n / 2].max(1);
+    let hole = sorted[n - 1] as f64 >= HOLE_RATIO * median as f64;
+    (bimodal, hole, separation)
+}
+
+/// Copy a pid's chronological gap window out of its ring (under one
+/// lock); None when the pid has no rhythm slot yet.
+fn gap_window(pid: u64) -> Option<([u64; GAP_WINDOW], usize, bool, bool)> {
+    let sensor = SENSOR.lock();
+    sensor
+        .rhythm
+        .iter()
+        .find(|slot| slot.pid == pid)
+        .map(|slot| {
+            let mut gaps = [0u64; GAP_WINDOW];
+            let oldest = (slot.head + GAP_WINDOW - slot.len) % GAP_WINDOW;
+            for (k, dst) in gaps.iter_mut().enumerate().take(slot.len) {
+                *dst = slot.gaps[(oldest + k) % GAP_WINDOW];
+            }
+            (gaps, slot.len, slot.matured, slot.drifted)
+        })
+}
+
+/// Seam status for a pid: (bimodal, hole) of its current window.
+pub fn seam_status(pid: u64) -> (bool, bool) {
+    match gap_window(pid) {
+        Some((gaps, len, _matured, _drifted)) if len >= SEAM_MIN_LEN => {
+            let (bimodal, hole, _) = seam_analysis(&gaps[..len]);
+            (bimodal, hole)
+        }
+        _ => (false, false),
+    }
+}
+
+/// E36 the judge. Called by the scheduler when it takes an intrusion
+/// signal: condemn-starve has already happened (quarantine is
+/// immediate); this decides whether DESTRUCTION is warranted. The
+/// gate's evidence, strongest first:
+///
+///   1. A latched rhythm-drift verdict (the Fano gate already spoke).
+///   2. A latched bimodal seam PLUS a foreign-budget trace above
+///      SEAM_BUDGET_BAR — the parasite interleave, certified by two
+///      independent sensors agreeing (rhythm + blame). A spatially
+///      silent seam is heard and held, not destroyed on.
+///   3. CERT_EPISODES distinct condemnation episodes — the
+///      re-condemning rogue; a single false-positive burst stops at
+///      one episode and can never reach the bar.
+///
+/// Anything less abstains. A held pid is already starved, and the
+/// thermodynamic release still frees a false positive — patience
+/// costs safety nothing.
+pub fn adjudicate(pid: u64) -> bool {
+    let mut sensor = SENSOR.lock();
+    let slot_index = match sensor.judge.iter().position(|slot| slot.pid == pid) {
+        Some(index) => index,
+        None => match sensor.judge.iter().position(|slot| slot.pid == u64::MAX) {
+            Some(free) => {
+                sensor.judge[free] = JudgeSlot { pid, ..JudgeSlot::EMPTY };
+                free
+            }
+            // Docket table full: drift-only hearsay, honestly degraded.
+            None => return sensor.rhythm.iter().any(|slot| slot.pid == pid && slot.drifted),
+        },
+    };
+    let ticks_now = sensor.ticks;
+    let over_bar = sensor
+        .foreign
+        .iter()
+        .any(|&(tracked, budget, _)| tracked == pid && budget > QUARANTINE_BUDGET);
+    {
+        let docket = &mut sensor.judge[slot_index];
+        if over_bar && ticks_now.wrapping_sub(docket.last_episode) >= EPISODE_GAP {
+            docket.episodes += 1;
+            docket.last_episode = ticks_now;
+        }
+    }
+    let drifted = sensor
+        .rhythm
+        .iter()
+        .any(|slot| slot.pid == pid && slot.drifted);
+    let seam_latched = sensor
+        .rhythm
+        .iter()
+        .any(|slot| slot.pid == pid && slot.seam_latched);
+    let budget = sensor
+        .foreign
+        .iter()
+        .find(|&&(tracked, _, _)| tracked == pid)
+        .map(|&(_, budget, _)| budget)
+        .unwrap_or(0.0);
+    let docket = &mut sensor.judge[slot_index];
+    docket.last_bimodal = seam_latched;
+    docket.certified = drifted
+        || (seam_latched && budget > SEAM_BUDGET_BAR)
+        || docket.episodes >= CERT_EPISODES;
+    docket.certified
+}
+
+/// Judge status for a pid: (certified, seam-latched-at-last-hearing,
+/// episodes heard).
+pub fn judge_status(pid: u64) -> (bool, bool, u32) {
+    let sensor = SENSOR.lock();
+    match sensor.judge.iter().find(|slot| slot.pid == pid) {
+        Some(docket) => (docket.certified, docket.last_bimodal, docket.episodes),
+        None => (false, false, 0),
+    }
+}
+
+/// E36 diagnostic: the chronological gap at `index` of `pid`'s ring.
+pub fn gap_at(pid: u64, index: u64) -> u64 {
+    let sensor = SENSOR.lock();
+    match sensor.rhythm.iter().find(|slot| slot.pid == pid) {
+        Some(slot) if (index as usize) < slot.len => {
+            let oldest = (slot.head + GAP_WINDOW - slot.len) % GAP_WINDOW;
+            slot.gaps[(oldest + index as usize) % GAP_WINDOW]
+        }
+        _ => 0,
+    }
+}
+
+/// E36 diagnostic: (latched<<63 | strikes<<32 | budget x1e6).
+pub fn seam_probe(pid: u64) -> u64 {
+    let sensor = SENSOR.lock();
+    let mut latched = false;
+    let mut strikes = 0u32;
+    if let Some(slot) = sensor.rhythm.iter().find(|slot| slot.pid == pid) {
+        latched = slot.seam_latched;
+        strikes = slot.seam_strikes;
+    }
+    let budget = sensor
+        .foreign
+        .iter()
+        .find(|&&(tracked, _, _)| tracked == pid)
+        .map(|&(_, b, _)| b)
+        .unwrap_or(0.0);
+    (u64::from(latched) << 63) | ((strikes as u64) << 32) | ((budget * 1e6) as u64)
+}
+
 /// Learning still open?
 pub fn learning() -> bool {
     !SENSOR.lock().trained
@@ -504,12 +824,13 @@ pub fn learning() -> bool {
 pub fn reset() {
     let mut sensor = SENSOR.lock();
     sensor.permeability = [FLOOR; SITES];
-    sensor.foreign = [(0, 0.0); MAX_TRACKED];
+    sensor.foreign = [(0, 0.0, false); MAX_TRACKED];
     sensor.trained = false;
     sensor.normal_map = [false; SITES];
     sensor.events = 0;
     sensor.ticks = 0;
     sensor.rhythm = [RhythmSlot::EMPTY; RHYTHM_SLOTS];
+    sensor.judge = [JudgeSlot::EMPTY; MAX_TRACKED];
 }
 
 #[cfg(test)]
@@ -641,5 +962,44 @@ mod tests {
         }
         let (_t2, _e2, raised_after, _r2) = status();
         assert_eq!(raised_after, 0, "unmaintained scars must erode");
+    }
+
+    /// E36: two interleaved organic rhythms (host ~2-6 ticks,
+    /// parasite ~20-26) are bimodal; one program's varied spread is
+    /// not; a metronome's constant gap is not.
+    #[test]
+    fn gate_j1_seam_bimodal_vs_unimodal() {
+        let mut parasite = Vec::new();
+        for i in 0..48 {
+            if i % 3 == 0 {
+                parasite.push(20 + (i * 5 % 7) as u64);
+            } else {
+                parasite.push(2 + (i * 3 % 5) as u64);
+            }
+        }
+        let (bimodal, hole, _sep) = seam_analysis(&parasite);
+        assert!(bimodal, "interleaved parasite rhythm must be bimodal");
+        assert!(!hole);
+
+        let mut varied = Vec::new();
+        for i in 0..48 {
+            varied.push(5 + (i * 13 % 17) as u64); // metro's organic phase
+        }
+        let (bimodal2, _hole2, _) = seam_analysis(&varied);
+        assert!(!bimodal2, "one program's varied spread is not bimodal");
+
+        let constant = [13u64; 48];
+        let (bimodal3, _hole3, _) = seam_analysis(&constant);
+        assert!(!bimodal3, "a metronome is one mode, not two");
+    }
+
+    /// E36: an interruption — one hole in an otherwise steady stream.
+    #[test]
+    fn gate_j2_hole_detected() {
+        let mut gapped = vec![3u64; 47];
+        gapped.push(60);
+        let (bimodal, hole, _) = seam_analysis(&gapped);
+        assert!(hole, "a max-gap at 20x median is an interruption");
+        assert!(!bimodal, "one outlier is not a second mode (min cluster)");
     }
 }

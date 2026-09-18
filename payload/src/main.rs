@@ -222,5 +222,8 @@ fn main() {
     if metro == ERROR { rt::print("shell: metro.elf not found\n"); }
     let taint = rt::spawn("taint.elf");
     if taint == ERROR { rt::print("shell: taint.elf not found\n"); }
+    // E36: last — the seam demo's certification fires the cascade.
+    let seam = rt::spawn("seam.elf");
+    if seam == ERROR { rt::print("shell: seam.elf not found\n"); }
     loop { rt::print("> "); let command = line(); execute(command.trim()); }
 }

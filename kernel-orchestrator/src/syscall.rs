@@ -327,6 +327,25 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                 | (u64::from(drifted) << 62)
                 | (baseline << 32)
                 | current;
+        } else if sub == 7 {
+            // E36: seam status for pid arg1 — (bimodal<<63 | hole<<62).
+            let (bimodal, hole) = kernel_sense::seam_status(arg1);
+            frame.rax = (u64::from(bimodal) << 63) | (u64::from(hole) << 62);
+        } else if sub == 8 {
+            // E36: judge docket for pid arg1 — (certified<<63 |
+            // bimodal<<62 | episodes).
+            let (certified, bimodal, episodes) = kernel_sense::judge_status(arg1);
+            frame.rax = (u64::from(certified) << 63)
+                | (u64::from(bimodal) << 62)
+                | (episodes as u64 & 0xFF);
+        } else if sub == 9 {
+            // E36 diagnostic: chronological gap at index arg2 of pid
+            // arg1's rhythm ring (0 when absent).
+            frame.rax = kernel_sense::gap_at(arg1, arg2);
+        } else if sub == 10 {
+            // E36 diagnostic: seam internals for pid arg1 —
+            // (latched<<63 | strikes<<32 | foreign budget x1e6).
+            frame.rax = kernel_sense::seam_probe(arg1);
         } else if sub == 3 {
             // T3: average cycles per sensor record() call.
             let calls = SENSOR_CALLS.load(Ordering::Relaxed);
