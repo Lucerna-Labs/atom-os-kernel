@@ -1,0 +1,13 @@
+[package]
+name = "kernel-crypt"
+version = "0.1.0"
+edition = "2021"
+description = "E35: encryption at rest — register-resident master key, per-tick temporal nonce (the 4D scramble), ciphertext-only RAM for sensitive data"
+
+[lib]
+name = "kernel_crypt"
+path = "src/lib.rs"
+
+[features]
+default = []
+std = []

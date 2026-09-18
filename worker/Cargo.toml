@@ -53,3 +53,7 @@ path = "src/metronome.rs"
 [[bin]]
 name = "taintwalk"
 path = "src/taintwalk.rs"
+
+[[bin]]
+name = "cryptwalk"
+path = "src/cryptwalk.rs"

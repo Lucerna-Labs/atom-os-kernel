@@ -439,6 +439,37 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             kernel_taint::set_input_focus(pid as u64);
             frame.rax = 0;
         }
+    } else if is(number, SYS_CRYPT) {
+        // E35 crypt layer — encryption at rest with temporal scramble.
+        // sub = arg:
+        //   0=encrypt_word(word=arg1) -> ct; the temporal handle lands
+        //     in the single handle slot (read it with sub 2 before any
+        //     other crypt call — v1 single-slot, labeled),
+        //   1=decrypt_word(ct=arg1, handle=arg2) -> word (noise if the
+        //     handle is wrong or the key is dead),
+        //   2=take_handle -> the last encryption's temporal handle,
+        //   3=status -> (ready<<63) | nonce_counter,
+        //   4=destroy (the intrusion cascade fires this too).
+        // The field tick is the scheduler's own clock: ciphertext is a
+        // function of WHEN it was written, which a spatial DRAM
+        // snapshot cannot replay — the 4th dimension as a gate. v1
+        // scope is anti-snapshot, not inter-process secrecy (that is
+        // the lane's doctrine).
+        let sub = arg;
+        if sub == 0 {
+            let (ct, nonce) = kernel_crypt::encrypt_word(arg1, system.scheduler.ticks);
+            kernel_crypt::stash_handle(nonce);
+            frame.rax = ct;
+        } else if sub == 1 {
+            frame.rax = kernel_crypt::decrypt_word(arg1, arg2);
+        } else if sub == 2 {
+            frame.rax = kernel_crypt::take_handle();
+        } else if sub == 3 {
+            frame.rax = kernel_crypt::status();
+        } else if sub == 4 {
+            kernel_crypt::destroy();
+            frame.rax = 0;
+        }
     } else if is(number, SYS_REBOOT) {
         if kernel_kit::storage::sync().is_ok() {
             let status = kernel_kit::io::Port::new(0x64);

@@ -3,6 +3,10 @@
 version = 4
 
 [[package]]
+name = "kernel-crypt"
+version = "0.1.0"
+
+[[package]]
 name = "kernel-egress"
 version = "0.1.0"
 
@@ -47,6 +51,7 @@ version = "0.1.0"
 name = "runner"
 version = "0.1.0"
 dependencies = [
+ "kernel-crypt",
  "kernel-egress",
  "kernel-instant",
  "kernel-key",

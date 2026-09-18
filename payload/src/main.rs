@@ -199,6 +199,12 @@ fn execute(command: &str) {
 fn main() {
     rt::print("ATOM OS kernel shell\n");
     heap_test(); bench();
+    // E35: crypt first — the master key must be demonstrated alive
+    // before the rogue's condemnation fires the destruction cascade,
+    // and cryptwalk destroys the key itself at the end (one life per
+    // boot, same doctrine as the perishable key).
+    let crypt = rt::spawn("crypt.elf");
+    if crypt == ERROR { rt::print("shell: crypt.elf not found\n"); }
     // E21: launch the shadow-web spider probe after the clean boot.
     let spider = rt::spawn("spider.elf");
     if spider == ERROR { rt::print("shell: spider.elf not found\n"); }

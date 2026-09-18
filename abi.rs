@@ -71,6 +71,11 @@ pub const SYS_KEYLANE: u64 = 47;
 /// 2=promote(target=arg1), 3=status(pid=arg1), 4=forget(pid=arg1),
 /// 5=propagate(from=arg1,to=arg2), 6=set_input_focus(self).
 pub const SYS_TAINT: u64 = 48;
+/// E35 crypt layer: encryption at rest with temporal scramble.
+/// sub=arg — 0=encrypt_word(word=arg1) -> ct (nonce via sub 2),
+/// 1=decrypt_word(ct=arg1, nonce=arg2) -> word, 2=last_nonce,
+/// 3=status ((ready<<63)|nonce_counter), 4=destroy.
+pub const SYS_CRYPT: u64 = 49;
 pub const MAX_ARGS: usize = 16;
 pub const MAX_ARG_BYTES: usize = 1024;
 pub const MAX_PROCESSES: usize = 16;

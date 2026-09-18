@@ -56,6 +56,15 @@ impl Scheduler {
     }
     pub fn timer_tick(&mut self, rsp: u64) -> u64 {
         self.ticks = self.ticks.wrapping_add(1);
+        // E35: the crypt master key is derived once, at the field's
+        // first heartbeat, from the timestamp counter — per-boot
+        // entropy (v1 honest label: TSC seed; v2 derives from the
+        // QRNG lane). RAM pages encrypted under it read as noise to
+        // a cold-boot snapshot.
+        if self.ticks == 1 {
+            let seed = unsafe { core::arch::x86_64::_rdtsc() };
+            kernel_crypt::init(seed ^ 0xE35_B007);
+        }
         // E21 thermodynamic release: condemnation erodes with wall
         // time, so a false positive recovers and a real rogue is
         // re-condemned the moment it resumes.
@@ -66,9 +75,11 @@ impl Scheduler {
         kernel_instant::tick();
         if let Some(intruder) = kernel_sense::take_intrusion_signal() {
             // The wire has one reader (the kernel); the destruction
-            // fans out to every key species: perishable and instant.
+            // fans out to every key species: perishable, instant,
+            // and the crypt layer's master key.
             kernel_key::spider_destroy();
             kernel_instant::spider_destroy();
+            kernel_crypt::destroy();
             // E25: if the intruder IS the lane task, the lane's trust
             // dies with it — real material never travels again (the
             // lane keeps serving honey, forever labeled).

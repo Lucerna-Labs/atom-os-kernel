@@ -11,3 +11,4 @@ kernel-instant = { path = "../kernel-instant" }
 kernel-egress = { path = "../kernel-egress" }
 kernel-lane = { path = "../kernel-lane" }
 kernel-taint = { path = "../kernel-taint" }
+kernel-crypt = { path = "../kernel-crypt" }

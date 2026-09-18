@@ -12,6 +12,7 @@ kernel-instant = { path = "../kernel-instant", features = ["std"] }
 kernel-egress = { path = "../kernel-egress", features = ["std"] }
 kernel-lane = { path = "../kernel-lane", features = ["std"] }
 kernel-taint = { path = "../kernel-taint", features = ["std"] }
+kernel-crypt = { path = "../kernel-crypt", features = ["std"] }
 
 [[bin]]
 name = "e21"
@@ -40,3 +41,7 @@ path = "src/bin/e31.rs"
 [[bin]]
 name = "e34"
 path = "src/bin/e34.rs"
+
+[[bin]]
+name = "e35"
+path = "src/bin/e35.rs"
