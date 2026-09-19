@@ -42,6 +42,13 @@ pub fn scancode_to_ascii(scancode: u8) -> Option<u8> {
         0x2F => Some(b'v'), 0x30 => Some(b'b'), 0x31 => Some(b'n'), 0x32 => Some(b'm'),
         0x33 => Some(b','), 0x34 => Some(b'.'), 0x35 => Some(b'/'), 0x39 => Some(b' '),
         0x4E => Some(b'>'), // Numpad Plus mapped to > as a hack for echo >
+        // E40 cursor keys: private control codes (below printable
+        // ASCII, unused). The serial console delivers the same
+        // meanings as ANSI escapes (ESC [ D etc), parsed user-side.
+        0x48 => Some(0x10), // Up
+        0x50 => Some(0x11), // Down
+        0x4B => Some(0x12), // Left
+        0x4D => Some(0x13), // Right
         _ => None,
     }
 }

@@ -41,6 +41,7 @@ pub const SYS_OPEN_EXISTING: u64 = 38;
 pub enum FsError {
     NotFound = 1, Exists = 2, InvalidName = 3, ReadOnly = 4, NoSpace = 5,
     FileTooLarge = 6, Memory = 7, BadHandle = 8, Io = 9, BadBuffer = 10,
+    NotDir = 11, IsDir = 12, NotEmpty = 13,
 }
 pub fn fs_error_message(code: u64) -> &'static str {
     match code {
@@ -48,7 +49,9 @@ pub fn fs_error_message(code: u64) -> &'static str {
         3 => "invalid filename", 4 => "read-only built-in file",
         5 => "persistent filesystem is full", 6 => "file exceeds 64 KiB",
         7 => "file memory limit reached", 8 => "invalid file descriptor",
-        9 => "disk unavailable or I/O failed", 10 => "invalid user buffer", _ => "filesystem error",
+        9 => "disk unavailable or I/O failed", 10 => "invalid user buffer",
+        11 => "path component is not a directory", 12 => "path is a directory",
+        13 => "directory is not empty", _ => "filesystem error",
     }
 }
 
@@ -76,10 +79,22 @@ pub const SYS_TAINT: u64 = 48;
 /// 1=decrypt_word(ct=arg1, nonce=arg2) -> word, 2=last_nonce,
 /// 3=status ((ready<<63)|nonce_counter), 4=destroy.
 pub const SYS_CRYPT: u64 = 49;
+/// E40 the VGA cursor: sub=arg — 0=move cursor by arg cells
+/// (negative = left, clamped line-local), 1=read (col | row<<8).
+pub const SYS_VGA: u64 = 54;
 /// E37 the network ingress: sub=arg — 0=status, 1=recv (to RECV_BASE,
 /// marks the caller tainted), 2=send(bytes=arg,len=arg1) through the
 /// egress cone as an ICMP echo, 3=heartbeat now, 4=ARP bootstrap.
 pub const SYS_NET: u64 = 50;
+/// Directory tree navigation. MKDIR (arg = path pointer) is strict: every
+/// parent must already exist (no mkdir -p semantics). CHDIR (arg = path
+/// pointer) must land on a directory and updates the caller's working
+/// directory, returning the new cwd length. PWD (arg = buffer pointer,
+/// arg1 = capacity) copies the caller's cwd plus a trailing NUL, returning
+/// the byte count written.
+pub const SYS_MKDIR: u64 = 51;
+pub const SYS_CHDIR: u64 = 52;
+pub const SYS_PWD: u64 = 53;
 pub const MAX_ARGS: usize = 16;
 pub const MAX_ARG_BYTES: usize = 1024;
 pub const MAX_PROCESSES: usize = 16;

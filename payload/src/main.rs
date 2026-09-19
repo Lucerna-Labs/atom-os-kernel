@@ -6,15 +6,100 @@ use user_rt::{self as rt, abi::*};
 mod storage_probe;
 user_rt::entry!(main);
 
+/// E40: the line editor. The buffer holds the line, `pos` is the
+/// insertion index; arrows (PS/2 control codes 0x12/0x13, or ANSI
+/// ESC [ D / ESC [ C over serial) move within it; printable keys
+/// insert at the cursor; backspace deletes before it. Every edit
+/// redraws the tail from the cursor and parks the VGA hardware
+/// cursor at the insertion point — you can SEE where you type.
+fn put(byte: u8) {
+    let _ = rt::call(SYS_WRITE, byte as u64, 0);
+}
+
+/// E40: the prompt shows where you are — the tree is visible.
+fn prompt() {
+    let mut buffer = [0u8; 64];
+    let len = rt::call3(SYS_PWD, buffer.as_mut_ptr() as u64, 64, 0);
+    // SYS_PWD's count includes the trailing NUL; the text is len-1.
+    let cwd = if len <= 1 {
+        String::from("/")
+    } else {
+        let text_len = ((len as usize) - 1).min(63);
+        String::from(core::str::from_utf8(&buffer[..text_len]).unwrap_or("/"))
+    };
+    rt::print_args(format_args!("{cwd}> "));
+}
+
+fn redraw_tail(bytes: &[u8], from: usize, park_at: usize) {
+    for &b in &bytes[from..] {
+        put(b);
+    }
+    put(b' '); // erase one char of any older, longer tail
+    // Cursor now sits at (len+1) cells past `from`; park it.
+    let back = (bytes.len() + 1 - from).saturating_sub(park_at - from) as i64;
+    rt::vga_move(-back);
+}
+
 fn line() -> String {
-    let mut bytes = Vec::new();
+    let mut bytes: Vec<u8> = Vec::new();
+    let mut pos: usize = 0;
+    let mut esc = 0u8; // ANSI state for the serial console: 0 none, 1 ESC, 2 '['
     loop {
-        let byte = rt::call(SYS_READ, 0, 0) as u8;
+        let mut byte = rt::call(SYS_READ, 0, 0) as u8;
+        if byte == 0 {
+            rt::sleep(1);
+            continue;
+        }
+        // Serial arrow keys arrive as ESC [ D / ESC [ C.
+        if esc == 1 {
+            esc = if byte == b'[' { 2 } else { 0 };
+            continue;
+        }
+        if esc == 2 {
+            esc = 0;
+            match byte {
+                b'D' => byte = 0x12, // Left
+                b'C' => byte = 0x13, // Right
+                _ => continue,
+            }
+        } else if byte == 0x1b {
+            esc = 1;
+            continue;
+        }
         match byte {
-            0 => rt::sleep(1),
-            b'\n' => { rt::print("\n"); return String::from_utf8(bytes).unwrap_or_default(); }
-            8 => { if bytes.pop().is_some() { rt::call(SYS_WRITE, 8, 0); } }
-            32..=126 => { if bytes.len() < 1024 { bytes.push(byte); rt::call(SYS_WRITE, byte as u64, 0); } }
+            b'\n' => {
+                rt::print("\n");
+                return String::from_utf8(bytes).unwrap_or_default();
+            }
+            8 => {
+                // Delete before the cursor; redraw the shortened tail.
+                if pos > 0 {
+                    bytes.remove(pos - 1);
+                    pos -= 1;
+                    rt::vga_move(-1);
+                    redraw_tail(&bytes, pos, pos);
+                }
+            }
+            0x12 => {
+                if pos > 0 {
+                    pos -= 1;
+                    rt::vga_move(-1);
+                }
+            }
+            0x13 => {
+                if pos < bytes.len() {
+                    pos += 1;
+                    rt::vga_move(1);
+                }
+            }
+            0x10 | 0x11 => {} // Up/Down: reserved (history's seat)
+            32..=126 => {
+                if bytes.len() < 1024 {
+                    bytes.insert(pos, byte);
+                    redraw_tail(&bytes, pos, pos + 1);
+                    pos += 1;
+                }
+            }
             _ => {}
         }
     }
@@ -102,7 +187,7 @@ fn execute(command: &str) {
     let argument = argument.trim();
     match verb {
         "" => {}
-        "help" => rt::print("commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run ps kill proctest selftest pairtest churn faulttest fstest storageprobe rm mv df status sync reboot ping\nuserspace: run hello.elf / sysinfo.elf / netstat.elf / calc.elf 2+3*4 / udpsend.elf <msg>\n"),
+        "help" => rt::print("commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run ps kill proctest selftest pairtest churn faulttest fstest storageprobe rm mv df status sync reboot ping mkdir cd pwd\nuserspace: run hello.elf / sysinfo.elf / netstat.elf / calc.elf 2+3*4 / udpsend.elf <msg>\n"),
         "ls" => { rt::call(SYS_LIST_DIR, 0, 0); }
         "clear" => { rt::call(SYS_CLEAR, 0, 0); }
         "bench" => bench(),
@@ -119,6 +204,26 @@ fn execute(command: &str) {
             rt::close(fd);
         } else { rt::print("usage: echo text > file\n"); },
         "rm" => { if rt::remove(argument) { rt::print("REMOVED\n"); } else { fs_error("rm"); } }
+        // E40: the tree. mkdir/cd/pwd ride SYS_MKDIR/CHDIR/PWD; every
+        // path-taking command resolves against the shell's cwd.
+        "mkdir" => {
+            if argument.is_empty() { rt::print("usage: mkdir path\n"); }
+            else if rt::path_call(SYS_MKDIR, argument) == 0 { rt::print("MADE\n"); }
+            else { fs_error("mkdir"); }
+        }
+        "cd" => {
+            if rt::path_call(SYS_CHDIR, argument) == ERROR { fs_error("cd"); }
+        }
+        "pwd" => {
+            let mut buffer = [0u8; 64];
+            let len = rt::call3(SYS_PWD, buffer.as_mut_ptr() as u64, 64, 0);
+            if len <= 1 { rt::print("/\n"); }
+            else {
+                let text_len = ((len as usize) - 1).min(63);
+                let text = core::str::from_utf8(&buffer[..text_len]).unwrap_or("/");
+                rt::print_args(format_args!("{text}\n"));
+            }
+        }
         "mv" => {
             let words: Vec<_> = argument.split_whitespace().collect();
             if words.len() != 2 { rt::print("usage: mv old-name new-name\n"); }
@@ -213,7 +318,7 @@ fn main() {
     // promotion proof, etc.) goes straight to interactive mode.
     if rt::open_existing("boot.done") != ERROR {
         rt::print("shell: demo fleet already ran — interactive mode\n");
-        loop { rt::print("> "); let command = line(); execute(command.trim()); }
+        loop { prompt(); let command = line(); execute(command.trim()); }
     }
     // E35: crypt first — the master key must be demonstrated alive
     // before the rogue's condemnation fires the destruction cascade,
@@ -250,5 +355,5 @@ fn main() {
     // The fleet has run: mark the boot, forever after interactive.
     let fd = rt::open("boot.done");
     if fd != ERROR { rt::write(fd, b"fleet ran\n"); rt::close(fd); }
-    loop { rt::print("> "); let command = line(); execute(command.trim()); }
+    loop { prompt(); let command = line(); execute(command.trim()); }
 }

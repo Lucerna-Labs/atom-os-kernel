@@ -25,11 +25,21 @@ impl VgaWriter {
     }
 
     /// Persist the current cursor back to the global so the next VgaWriter
-    /// resumes here. Called after every mutation.
+    /// resumes here. Called after every mutation. Also drives the VGA's
+    /// blinking hardware cursor (CRT registers 0x0E/0x0F via 0x3D4/0x3D5)
+    /// so the user SEES where the editor's insertion point is — the whole
+    /// point of cursor movement.
     fn save_cursor(&self) {
         let mut c = CURSOR.lock();
         *c = (self.column_position, self.row_position);
+        let cell = (self.row_position * 80 + self.column_position) as u16;
         CURSOR.unlock();
+        let mut index = crate::io::Port::new(0x3D4);
+        let mut data = crate::io::Port::new(0x3D5);
+        index.write(0x0F);
+        data.write((cell & 0xFF) as u8);
+        index.write(0x0E);
+        data.write((cell >> 8) as u8);
     }
 
     pub fn write_byte(&mut self, byte: u8) {
@@ -113,4 +123,29 @@ impl VgaWriter {
             }
         }
     }
+}
+
+/// E40: move the persistent cursor by `delta` cells (negative moves
+/// left). Line-local navigation: the cursor clamps at column 0 and
+/// never crosses rows — the line editor redraws instead.
+pub fn move_cursor(delta: i64) {
+    let mut c = CURSOR.lock();
+    let (col, row) = *c;
+    let moved = col as i64 + delta;
+    let col = moved.clamp(0, 79) as usize;
+    *c = (col, row);
+    CURSOR.unlock();
+    // Reuse the writer's save path to drive the hardware cursor.
+    let mut writer = VgaWriter::new();
+    writer.column_position = col;
+    writer.row_position = row;
+    writer.save_cursor();
+}
+
+/// E40: the persistent cursor position (col, row).
+pub fn cursor_position() -> (usize, usize) {
+    let c = CURSOR.lock();
+    let pos = *c;
+    CURSOR.unlock();
+    pos
 }

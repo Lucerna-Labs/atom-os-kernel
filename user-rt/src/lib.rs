@@ -60,6 +60,12 @@ pub fn rename(old: &str, new: &str) -> bool {
 pub fn fs_error() -> u64 { call(SYS_FS_ERROR, 0, 0) }
 pub fn fs_stat(which: u64) -> u64 { call(SYS_FS_STAT, which, 0) }
 pub fn spawn(path: &str) -> u64 { path_call(SYS_SPAWN, path) }
+
+/// E40: move the VGA cursor by `delta` cells (negative = left).
+pub fn vga_move(delta: i64) { call3(SYS_VGA, 0, delta as u64, 0); }
+
+/// E40: the VGA cursor position, packed (col | row << 8).
+pub fn vga_pos() -> u64 { call3(SYS_VGA, 1, 0, 0) }
 pub fn wait(pid: u64) -> u64 { call(SYS_WAIT, pid, 0) }
 pub fn send(pid: u64, text: &str) -> bool {
     if text.len() > 255 || text.as_bytes().contains(&0) { return false; }

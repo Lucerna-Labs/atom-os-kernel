@@ -122,10 +122,14 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         }
     } else if is(number, SYS_OPEN) || is(number, SYS_OPEN_EXISTING) {
         let result = (|| {
+            // The 64-byte user_string cap is also the whole-path length
+            // limit; deeper navigation goes through chdir. (Accepted.)
             let name = user_string(context, arg, 64).map_err(|_| FsError::BadBuffer)?;
             let fd = context.open_files.iter().position(|entry| entry.is_none()).ok_or(FsError::BadHandle)?;
             let fs = kernel_kit::fs::ROOT_FS.lock();
-            let file = if is(number, SYS_OPEN_EXISTING) { fs.open_existing(&name) } else { fs.open(&name) };
+            // Absolute paths resolve from the root, everything else from cwd.
+            let file = if is(number, SYS_OPEN_EXISTING) { fs.open_existing_at(&context.cwd, &name) }
+                       else { fs.open_at(&context.cwd, &name) };
             kernel_kit::fs::ROOT_FS.unlock();
             context.open_files[fd] = Some(kernel_kit::fs::OpenFile { file: file?, cursor: 0 });
             Ok(fd as u64)
@@ -168,7 +172,8 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             let old = user_string(context, arg, 64).map_err(|_| FsError::BadBuffer)?;
             let new = if is(number, SYS_RENAME) { Some(user_string(context, arg1, 64).map_err(|_| FsError::BadBuffer)?) } else { None };
             let fs = kernel_kit::fs::ROOT_FS.lock();
-            let result = if let Some(new) = new { fs.rename(&old, &new) } else { fs.remove(&old) };
+            let result = if let Some(new) = new { fs.rename_at(&context.cwd, &old, &new) }
+                         else { fs.remove_at(&context.cwd, &old) };
             kernel_kit::fs::ROOT_FS.unlock();
             result.map(|()| 0)
         })();
@@ -192,10 +197,21 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             10 => kernel_kit::storage::available() as u64, _ => ERROR,
         };
     } else if is(number, SYS_LIST_DIR) {
-        let fs = kernel_kit::fs::ROOT_FS.lock();
-        let mut writer = kernel_kit::vga::VgaWriter::new();
-        for (name, _) in fs.entries() { writer.write_string(name); writer.write_string("  "); }
-        writer.write_string("\n"); kernel_kit::fs::ROOT_FS.unlock(); frame.rax = 0;
+        // arg = optional path pointer (0 or an empty string lists the
+        // caller's cwd, which is what the original argless callers pass).
+        // Directory entries print with a trailing '/'.
+        let result = (|| {
+            let path = if arg == 0 { String::from(".") } else { user_string(context, arg, 64).map_err(|_| FsError::BadBuffer)? };
+            let fs = kernel_kit::fs::ROOT_FS.lock();
+            let names = fs.list_dir_at(&context.cwd, &path);
+            kernel_kit::fs::ROOT_FS.unlock();
+            let names = names?;
+            let mut writer = kernel_kit::vga::VgaWriter::new();
+            for name in &names { writer.write_string(name); writer.write_string("  "); }
+            writer.write_string("\n");
+            Ok(0)
+        })();
+        fs_result(context, frame, result);
     } else if is(number, SYS_CLEAR) {
         kernel_kit::vga::VgaWriter::new().clear_screen(); frame.rax = 0;
     } else if is(number, SYS_EXEC) || is(number, SYS_EXEC_ARGS) || is(number, SYS_SPAWN) || is(number, SYS_SPAWN_ARGS) {
@@ -295,6 +311,45 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         }
     } else if is(number, SYS_SYNC) {
         let result = kernel_kit::storage::sync().map(|()| 0).map_err(|_| FsError::Io);
+        fs_result(context, frame, result);
+    } else if is(number, SYS_MKDIR) {
+        // Strict mkdir: every parent must already exist (no mkdir -p).
+        let result = (|| {
+            let path = user_string(context, arg, 64).map_err(|_| FsError::BadBuffer)?;
+            let fs = kernel_kit::fs::ROOT_FS.lock();
+            let result = fs.mkdir_at(&context.cwd, &path);
+            kernel_kit::fs::ROOT_FS.unlock();
+            result.map(|()| 0)
+        })();
+        fs_result(context, frame, result);
+    } else if is(number, SYS_CHDIR) {
+        let result = (|| {
+            let path = user_string(context, arg, 64).map_err(|_| FsError::BadBuffer)?;
+            let fs = kernel_kit::fs::ROOT_FS.lock();
+            let target = fs.directory_at(&context.cwd, &path);
+            kernel_kit::fs::ROOT_FS.unlock();
+            let target = target?;
+            let len = target.len() as u64;
+            context.cwd = target;
+            Ok(len)
+        })();
+        fs_result(context, frame, result);
+    } else if is(number, SYS_PWD) {
+        // arg = buffer pointer, arg1 = capacity; copies cwd + trailing NUL
+        // and returns the byte count written (SYS_ARGS copy-out style).
+        let result = (|| {
+            let pwd = if context.cwd.is_empty() { String::from("/") } else { context.cwd.clone() };
+            let total = pwd.len() + 1;
+            let space = context.space.as_ref().ok_or(FsError::BadBuffer)?;
+            if arg1 < total as u64 || !space.valid_user_range(arg, total, true) {
+                return Err(FsError::BadBuffer);
+            }
+            unsafe {
+                core::ptr::copy_nonoverlapping(pwd.as_ptr(), arg as *mut u8, pwd.len());
+                (arg as *mut u8).add(pwd.len()).write(0);
+            }
+            Ok(total as u64)
+        })();
         fs_result(context, frame, result);
     } else if is(number, SYS_FREE_FRAMES) {
         let (pool, flags) = kernel_kit::memory::FRAME_ALLOCATOR.lock();
@@ -578,6 +633,17 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                 Some((ip, port)) => (u32::from_be_bytes(ip) as u64) << 16 | port as u64,
                 None => ERROR,
             };
+        }
+    } else if is(number, SYS_VGA) {
+        // E40: the visible cursor. sub=arg: 0=move by arg cells
+        // (negative = left, line-local clamp), 1=read (col | row<<8).
+        let sub = arg;
+        if sub == 0 {
+            kernel_kit::vga::move_cursor(arg1 as i64);
+            frame.rax = 0;
+        } else if sub == 1 {
+            let (col, row) = kernel_kit::vga::cursor_position();
+            frame.rax = (col as u64) | ((row as u64) << 8);
         }
     } else if is(number, SYS_REBOOT) {
         if kernel_kit::storage::sync().is_ok() {
