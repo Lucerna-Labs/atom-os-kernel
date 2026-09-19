@@ -102,7 +102,7 @@ fn execute(command: &str) {
     let argument = argument.trim();
     match verb {
         "" => {}
-        "help" => rt::print("commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run ps kill proctest selftest pairtest churn faulttest fstest storageprobe rm mv df status sync reboot\n"),
+        "help" => rt::print("commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run ps kill proctest selftest pairtest churn faulttest fstest storageprobe rm mv df status sync reboot ping\n"),
         "ls" => { rt::call(SYS_LIST_DIR, 0, 0); }
         "clear" => { rt::call(SYS_CLEAR, 0, 0); }
         "bench" => bench(),
@@ -193,12 +193,25 @@ fn execute(command: &str) {
             else { rt::print("SYNC_FAILED\n"); fs_error("sync"); }
         },
         "reboot" => { rt::call(SYS_REBOOT, 0, 0); rt::print("reboot failed (sync required)\n"); }
+        // E38b: the shell's window onto the wire. Spawned, never
+        // inline — the child takes the taint, the shell stays clean.
+        "ping" => {
+            let child = rt::spawn("ping.elf");
+            if child == ERROR { rt::print("ping: spawn refused (slot or image)\n"); }
+        }
         _ => rt::print("Unknown command\n"),
     }
 }
 fn main() {
     rt::print("ATOM OS kernel shell\n");
     heap_test(); bench();
+    // One fleet per boot: the second shell (taint's promotion proof)
+    // skips the demo spawns so the task table keeps room for the
+    // interactive session — the OS is meant to be played with.
+    if rt::call(SYS_TASK_COUNT, 0, 0) > 6 {
+        rt::print("shell: demo fleet already running — interactive mode\n");
+        loop { rt::print("> "); let command = line(); execute(command.trim()); }
+    }
     // E35: crypt first — the master key must be demonstrated alive
     // before the rogue's condemnation fires the destruction cascade,
     // and cryptwalk destroys the key itself at the end (one life per

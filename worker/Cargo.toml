@@ -69,3 +69,7 @@ path = "src/netwalk.rs"
 [[bin]]
 name = "udpwalk"
 path = "src/udpwalk.rs"
+
+[[bin]]
+name = "pingwalk"
+path = "src/pingwalk.rs"

@@ -17,7 +17,9 @@ impl System {
     pub fn spawn_with_args(&mut self, parent: usize, name: &str, extra: &[u8]) -> Result<usize, ()> {
         let arguments = kernel_kit::arguments::pack(name, extra)?;
         self.scheduler.collect();
-        if !self.scheduler.has_slot() { return Err(()); }
+        // No has_slot() pre-gate: spawn() itself pressure-reaps
+        // zombie children under a full table (the interactive OS
+        // must outlive its demo fleet).
         let pid = self.next_pid;
         let next = pid.checked_add(1).ok_or(())?;
         let context = crate::process::create(pid, parent, name, arguments, self.kernel_root).map_err(|_| ())?;

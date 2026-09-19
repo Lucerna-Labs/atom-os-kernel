@@ -18,11 +18,26 @@ impl Scheduler {
     pub fn task_mut(&mut self, pid: usize) -> Option<&mut Context> { self.tasks.iter_mut().flatten().find(|t| t.id == pid) }
     pub fn has_slot(&self) -> bool { self.tasks.iter().any(|t| t.is_none()) }
     pub fn spawn(&mut self, ctx: Context) -> Result<(), Context> {
-        for slot in &mut self.tasks {
+        let current_slot = self.current;
+        for (index, slot) in self.tasks.iter_mut().enumerate() {
             // Resource-free orphans can release their slot immediately.
             if slot.as_ref().is_some_and(|t| t.state == TaskState::Terminated && t.parent == 0
                 && t.space.is_none() && t.kernel_stack_pages == 0) { *slot = None; }
             if slot.is_none() { *slot = Some(ctx); return Ok(()); }
+        }
+        // Pressure reaping: an exited child whose parent never waits
+        // still holds a slot; under a FULL table, the oldest such
+        // zombie yields it (collect() already released its pages).
+        // Honest degradation: the parent's later wait() on that pid
+        // misses — the alternative is an interactive OS that cannot
+        // run anything after its demo fleet retires.
+        if let Some(index) = self.tasks.iter().position(|t| {
+            matches!(t, Some(task) if task.state == TaskState::Terminated)
+        }) {
+            if Some(index) != current_slot {
+                self.tasks[index] = Some(ctx);
+                return Ok(());
+            }
         }
         Err(ctx)
     }
