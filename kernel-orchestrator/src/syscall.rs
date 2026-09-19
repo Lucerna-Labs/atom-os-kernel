@@ -489,6 +489,50 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             kernel_crypt::destroy();
             frame.rax = 0;
         }
+    } else if is(number, SYS_NET) {
+        // E37 the network ingress. sub = arg:
+        //   0=status, 1=recv (RECV_BASE; MARKS THE CALLER TAINTED —
+        //   reading network data is handling foreign content),
+        //   2=send(bytes=arg1,len=arg2) through the E24 egress cone,
+        //   out as an ICMP echo request, 3=heartbeat now,
+        //   4=ARP bootstrap probe.
+        let sub = arg;
+        if sub == 0 {
+            frame.rax = kernel_net::status();
+        } else if sub == 1 {
+            if let Some(space) = context.space.as_ref() {
+                if let Some(phys) = space.translate_user(RECV_BASE, true) {
+                    let target = phys_to_virt(phys) as *mut u8;
+                    unsafe { core::ptr::write_bytes(target, 0, 4096); }
+                    let page = unsafe { core::slice::from_raw_parts_mut(target, 4096) };
+                    match kernel_net::recv_into(page) {
+                        Some(len) => {
+                            // The ingress ceremony: this task now carries
+                            // foreign content. Derived stays data.
+                            kernel_taint::mark_tainted(pid as u64);
+                            frame.rax = len as u64;
+                        }
+                        None => frame.rax = ERROR,
+                    }
+                }
+            }
+        } else if sub == 2 {
+            if arg2 <= 1500 && context.space.as_ref().unwrap().valid_user_range(arg1, arg2 as usize, false) {
+                let bytes = unsafe { core::slice::from_raw_parts(arg1 as *const u8, arg2 as usize) };
+                let transmit = &mut |out: &[u8]| kernel_net::send_raw(out);
+                frame.rax = match kernel_net::send_probed(bytes, transmit) {
+                    Ok(()) => 1,
+                    Err(kernel_net::SendCause::Cone) => 2,
+                    Err(kernel_net::SendCause::NoRoute) => 3,
+                    Err(kernel_net::SendCause::Driver) => 4,
+                };
+            }
+        } else if sub == 3 {
+            kernel_net::heartbeat();
+            frame.rax = 0;
+        } else if sub == 4 {
+            frame.rax = kernel_net::arp_probe();
+        }
     } else if is(number, SYS_REBOOT) {
         if kernel_kit::storage::sync().is_ok() {
             let status = kernel_kit::io::Port::new(0x64);

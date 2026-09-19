@@ -69,6 +69,10 @@ impl Scheduler {
         // time, so a false positive recovers and a real rogue is
         // re-condemned the moment it resumes.
         kernel_sense::tick();
+        // E37: the wire is felt on the kernel's own heartbeat — the
+        // polled NIC means packets exist when the web looks, never on
+        // the device's clock.
+        kernel_net::heartbeat();
         // E22 fail-dead key: passive erosion every tick, and the
         // spider's condemnation signal destroys the key immediately.
         kernel_key::tick();

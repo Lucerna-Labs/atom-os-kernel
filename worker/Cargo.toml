@@ -61,3 +61,7 @@ path = "src/cryptwalk.rs"
 [[bin]]
 name = "seamwalk"
 path = "src/seamwalk.rs"
+
+[[bin]]
+name = "netwalk"
+path = "src/netwalk.rs"

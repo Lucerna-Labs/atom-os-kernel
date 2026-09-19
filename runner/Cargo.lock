@@ -27,6 +27,15 @@ name = "kernel-lane"
 version = "0.1.0"
 
 [[package]]
+name = "kernel-net"
+version = "0.1.0"
+dependencies = [
+ "kernel-egress",
+ "kernel-kit",
+ "kernel-taint",
+]
+
+[[package]]
 name = "kernel-orchestrator"
 version = "0.1.0"
 dependencies = [
@@ -36,6 +45,7 @@ dependencies = [
  "kernel-key",
  "kernel-kit",
  "kernel-lane",
+ "kernel-net",
  "kernel-sense",
  "kernel-taint",
 ]
@@ -58,6 +68,7 @@ dependencies = [
  "kernel-key",
  "kernel-kit",
  "kernel-lane",
+ "kernel-net",
  "kernel-orchestrator",
  "kernel-sense",
  "kernel-taint",

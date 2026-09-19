@@ -1,0 +1,12 @@
+[package]
+name = "kernel-net"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+kernel-kit = { path = "../kernel-kit" }
+kernel-egress = { path = "../kernel-egress" }
+kernel-taint = { path = "../kernel-taint" }
+
+[features]
+std = []

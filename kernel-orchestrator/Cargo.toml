@@ -12,3 +12,4 @@ kernel-egress = { path = "../kernel-egress" }
 kernel-lane = { path = "../kernel-lane" }
 kernel-taint = { path = "../kernel-taint" }
 kernel-crypt = { path = "../kernel-crypt" }
+kernel-net = { path = "../kernel-net" }

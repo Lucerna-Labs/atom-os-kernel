@@ -76,6 +76,10 @@ pub const SYS_TAINT: u64 = 48;
 /// 1=decrypt_word(ct=arg1, nonce=arg2) -> word, 2=last_nonce,
 /// 3=status ((ready<<63)|nonce_counter), 4=destroy.
 pub const SYS_CRYPT: u64 = 49;
+/// E37 the network ingress: sub=arg — 0=status, 1=recv (to RECV_BASE,
+/// marks the caller tainted), 2=send(bytes=arg,len=arg1) through the
+/// egress cone as an ICMP echo, 3=heartbeat now, 4=ARP bootstrap.
+pub const SYS_NET: u64 = 50;
 pub const MAX_ARGS: usize = 16;
 pub const MAX_ARG_BYTES: usize = 1024;
 pub const MAX_PROCESSES: usize = 16;

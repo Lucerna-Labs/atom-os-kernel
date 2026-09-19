@@ -13,6 +13,7 @@ kernel-egress = { path = "../kernel-egress", features = ["std"] }
 kernel-lane = { path = "../kernel-lane", features = ["std"] }
 kernel-taint = { path = "../kernel-taint", features = ["std"] }
 kernel-crypt = { path = "../kernel-crypt", features = ["std"] }
+kernel-net = { path = "../kernel-net", features = ["std"] }
 
 [[bin]]
 name = "e21"
@@ -49,3 +50,7 @@ path = "src/bin/e35.rs"
 [[bin]]
 name = "e36"
 path = "src/bin/e36.rs"
+
+[[bin]]
+name = "e37"
+path = "src/bin/e37.rs"

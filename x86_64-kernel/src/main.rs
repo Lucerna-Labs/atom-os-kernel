@@ -501,10 +501,11 @@ fn inject_payloads() {
     let taint_bytes = include_bytes!("../../target/x86_64-os/release/taintwalk");
     let crypt_bytes = include_bytes!("../../target/x86_64-os/release/cryptwalk");
     let seam_bytes = include_bytes!("../../target/x86_64-os/release/seamwalk");
+    let net_bytes = include_bytes!("../../target/x86_64-os/release/netwalk");
     let fs = kernel_kit::fs::ROOT_FS.lock();
     for (name, bytes) in [("shell.elf", &shell_bytes[..]), ("daemon.elf", &daemon_bytes[..]),
         ("spider.elf", &spider_bytes[..]), ("rogue.elf", &rogue_bytes[..]),
-        ("weave.elf", &weave_bytes[..]), ("keykeep.elf", &keykeep_bytes[..]), ("instant.elf", &instant_bytes[..]), ("smuggler.elf", &smuggler_bytes[..]), ("lane.elf", &lane_bytes[..]), ("metro.elf", &metro_bytes[..]), ("taint.elf", &taint_bytes[..]), ("crypt.elf", &crypt_bytes[..]), ("seam.elf", &seam_bytes[..]),
+        ("weave.elf", &weave_bytes[..]), ("keykeep.elf", &keykeep_bytes[..]), ("instant.elf", &instant_bytes[..]), ("smuggler.elf", &smuggler_bytes[..]), ("lane.elf", &lane_bytes[..]), ("metro.elf", &metro_bytes[..]), ("taint.elf", &taint_bytes[..]), ("crypt.elf", &crypt_bytes[..]), ("seam.elf", &seam_bytes[..]), ("net.elf", &net_bytes[..]),
                           ("worker.elf", &worker_bytes[..]), ("fault.elf", &fault_bytes[..]), ("fs-probe.elf", &fs_bytes[..])] {
         fs.insert_builtin(name, bytes).expect("embedded program");
     }
@@ -710,6 +711,11 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
     match kernel_kit::storage::mount() {
         Ok(generation) => { use core::fmt::Write; let _ = writeln!(EmergencySerial, "STORAGE_READY generation={}", generation); }
         Err(error) => { use core::fmt::Write; let _ = writeln!(EmergencySerial, "STORAGE_UNAVAILABLE {:?}", error); }
+    }
+    // E37: bring up the wire if one exists (silence on -nic none).
+    if kernel_net::boot_discover() {
+        use core::fmt::Write;
+        let _ = writeln!(EmergencySerial, "NET_UP virtio");
     }
     inject_payloads();
     let (obj, sif_4) = kernel_kit::serial::SERIAL1.lock();
