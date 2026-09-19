@@ -102,7 +102,7 @@ fn execute(command: &str) {
     let argument = argument.trim();
     match verb {
         "" => {}
-        "help" => rt::print("commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run ps kill proctest selftest pairtest churn faulttest fstest storageprobe rm mv df status sync reboot ping\n"),
+        "help" => rt::print("commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run ps kill proctest selftest pairtest churn faulttest fstest storageprobe rm mv df status sync reboot ping\nuserspace: run hello.elf / sysinfo.elf / netstat.elf / calc.elf 2+3*4 / udpsend.elf <msg>\n"),
         "ls" => { rt::call(SYS_LIST_DIR, 0, 0); }
         "clear" => { rt::call(SYS_CLEAR, 0, 0); }
         "bench" => bench(),
@@ -134,11 +134,13 @@ fn execute(command: &str) {
         "spawn" | "run" => match rt::arguments::words(argument) {
             Ok(words) => {
                 let args: Vec<_> = words[1..].iter().map(String::as_str).collect();
-                if verb == "spawn" {
-                    let pid = rt::spawn_args(&words[0], &args);
-                    if pid == ERROR { rt::print("spawn failed\n"); }
-                    else { rt::print_args(format_args!("spawned pid {}\n", pid)); }
-                } else { rt::exec_args(&words[0], &args); rt::print("exec failed\n"); }
+                // run = spawn-and-keep-the-session: exec semantics
+                // replaced the shell with the program, and an
+                // interactive OS that dies after one command is not
+                // playable. The shell survives its children.
+                let pid = rt::spawn_args(&words[0], &args);
+                if pid == ERROR { rt::print("spawn failed\n"); }
+                else { rt::print_args(format_args!("spawned pid {}\n", pid)); }
             }
             Err(()) => rt::print("invalid program arguments or quoting\n"),
         },
@@ -205,11 +207,12 @@ fn execute(command: &str) {
 fn main() {
     rt::print("ATOM OS kernel shell\n");
     heap_test(); bench();
-    // One fleet per boot: the second shell (taint's promotion proof)
-    // skips the demo spawns so the task table keeps room for the
-    // interactive session — the OS is meant to be played with.
-    if rt::call(SYS_TASK_COUNT, 0, 0) > 6 {
-        rt::print("shell: demo fleet already running — interactive mode\n");
+    // One fleet per boot, decided by a marker FILE (task-count
+    // heuristics fail once the fleet retires): the first shell runs
+    // the demos and drops boot.done; every later shell (taint's
+    // promotion proof, etc.) goes straight to interactive mode.
+    if rt::open_existing("boot.done") != ERROR {
+        rt::print("shell: demo fleet already ran — interactive mode\n");
         loop { rt::print("> "); let command = line(); execute(command.trim()); }
     }
     // E35: crypt first — the master key must be demonstrated alive
@@ -244,5 +247,8 @@ fn main() {
     // E38: the datagram demo (needs the host to send UDP to :5555).
     let sock = rt::spawn("sock.elf");
     if sock == ERROR { rt::print("shell: sock.elf not found\n"); }
+    // The fleet has run: mark the boot, forever after interactive.
+    let fd = rt::open("boot.done");
+    if fd != ERROR { rt::write(fd, b"fleet ran\n"); rt::close(fd); }
     loop { rt::print("> "); let command = line(); execute(command.trim()); }
 }

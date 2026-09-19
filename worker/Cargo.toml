@@ -73,3 +73,23 @@ path = "src/udpwalk.rs"
 [[bin]]
 name = "pingwalk"
 path = "src/pingwalk.rs"
+
+[[bin]]
+name = "hello"
+path = "src/hello.rs"
+
+[[bin]]
+name = "sysinfo"
+path = "src/sysinfo.rs"
+
+[[bin]]
+name = "netstat"
+path = "src/netstat.rs"
+
+[[bin]]
+name = "calc"
+path = "src/calc.rs"
+
+[[bin]]
+name = "udpsend"
+path = "src/udpsend.rs"
