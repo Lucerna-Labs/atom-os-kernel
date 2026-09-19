@@ -532,6 +532,52 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             frame.rax = 0;
         } else if sub == 4 {
             frame.rax = kernel_net::arp_probe();
+        } else if sub == 5 {
+            // E38: bind a listener port (the ceremony: a place you
+            // chose to receive foreign material).
+            frame.rax = u64::from(kernel_net::bind(arg1 as u16));
+        } else if sub == 6 {
+            // E38: udp_send. Buffer = [4B dst ip BE | 2B dst port BE
+            // | 2B src port BE | data...]. The cone judges the DATA
+            // (never the addressing header); taint applies on recv.
+            if arg2 >= 8 && arg2 <= 8 + 512
+                && context.space.as_ref().unwrap().valid_user_range(arg1, arg2 as usize, false) {
+                let bytes = unsafe { core::slice::from_raw_parts(arg1 as *const u8, arg2 as usize) };
+                let mut ip = [0u8; 4];
+                ip.copy_from_slice(&bytes[0..4]);
+                let dst_port = u16::from_be_bytes([bytes[4], bytes[5]]);
+                let src_port = u16::from_be_bytes([bytes[6], bytes[7]]);
+                let transmit = &mut |out: &[u8]| kernel_net::send_raw(out);
+                frame.rax = match kernel_net::udp_send(ip, dst_port, src_port, &bytes[8..], transmit) {
+                    Ok(()) => 1,
+                    Err(kernel_net::UdpCause::Cone) => 2,
+                    Err(kernel_net::UdpCause::NoRoute) => 3,
+                    Err(kernel_net::UdpCause::Driver) => 4,
+                };
+            }
+        } else if sub == 7 {
+            // E38: udp_recv(port) -> datagram at RECV_BASE; the
+            // caller is TAINTED (same ingress ceremony as raw recv).
+            if let Some(space) = context.space.as_ref() {
+                if let Some(phys) = space.translate_user(RECV_BASE, true) {
+                    let target = phys_to_virt(phys) as *mut u8;
+                    unsafe { core::ptr::write_bytes(target, 0, 4096); }
+                    let page = unsafe { core::slice::from_raw_parts_mut(target, 4096) };
+                    match kernel_net::udp_recv_into(arg1 as u16, page) {
+                        Some(len) => {
+                            kernel_taint::mark_tainted(pid as u64);
+                            frame.rax = len as u64;
+                        }
+                        None => frame.rax = ERROR,
+                    }
+                }
+            }
+        } else if sub == 8 {
+            // E38: last_sender(port) -> (ip<<16) | port, for replies.
+            frame.rax = match kernel_net::udp_last_sender(arg1 as u16) {
+                Some((ip, port)) => (u32::from_be_bytes(ip) as u64) << 16 | port as u64,
+                None => ERROR,
+            };
         }
     } else if is(number, SYS_REBOOT) {
         if kernel_kit::storage::sync().is_ok() {

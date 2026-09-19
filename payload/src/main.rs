@@ -228,5 +228,8 @@ fn main() {
     // E37: the network ingress demo.
     let net_demo = rt::spawn("net.elf");
     if net_demo == ERROR { rt::print("shell: net.elf not found\n"); }
+    // E38: the datagram demo (needs the host to send UDP to :5555).
+    let sock = rt::spawn("sock.elf");
+    if sock == ERROR { rt::print("shell: sock.elf not found\n"); }
     loop { rt::print("> "); let command = line(); execute(command.trim()); }
 }

@@ -215,9 +215,108 @@ pub fn icmp_echo_request(our_mac: [u8; 6], gateway_mac: [u8; 6], id: u16, seq: u
     Vec2 { bytes: out, len: 14 + total }
 }
 
+/// ---------------------------------------------------------------------------
+/// UDP — the datagram layer over the ceremony wire (E38).
+/// ---------------------------------------------------------------------------
+
+pub const PROTO_UDP: u8 = 17;
+/// Per-listener datagram capacity.
+pub const DG_SLOTS: usize = 4;
+pub const DG_BYTES: usize = 512;
+/// Fixed listener table — the house pattern (ports earn a slot).
+pub const LISTENERS: usize = 8;
+
+/// A parsed inbound datagram: addresses/ports plus the payload.
+pub struct UdpIn<'a> {
+    pub src_ip: [u8; 4],
+    pub src_port: u16,
+    pub dst_port: u16,
+    pub data: &'a [u8],
+}
+
+pub fn parse_udp(frame: &[u8]) -> Option<UdpIn<'_>> {
+    let (header, payload) = parse_eth(frame)?;
+    let _ = header;
+    if payload.len() < 20 { return None; }
+    if payload[0] >> 4 != 4 { return None; }
+    let ihl = (payload[0] & 0xF) as usize * 4;
+    if ihl < 20 || payload.len() < ihl + 8 { return None; }
+    if payload[9] != PROTO_UDP { return None; }
+    let total = u16::from_be_bytes([payload[2], payload[3]]) as usize;
+    if total < ihl + 8 { return None; }
+    let udp = &payload[ihl..total.min(payload.len())];
+    if udp.len() < 8 { return None; }
+    let udp_len = u16::from_be_bytes([udp[4], udp[5]]) as usize;
+    if udp_len < 8 { return None; }
+    let data_len = udp_len.saturating_sub(8).min(udp.len().saturating_sub(8));
+    let mut src_ip = [0u8; 4];
+    src_ip.copy_from_slice(&payload[12..16]);
+    Some(UdpIn {
+        src_ip,
+        src_port: u16::from_be_bytes([udp[0], udp[1]]),
+        dst_port: u16::from_be_bytes([udp[2], udp[3]]),
+        data: &udp[8..8 + data_len],
+    })
+}
+
+/// UDP checksum over the IPv4 pseudo-header + datagram. A zero
+/// checksum is legal on IPv4 UDP (unchecked send); we compute ours
+/// and verify inbound ones when present.
+pub fn udp_checksum(src_ip: [u8; 4], dst_ip: [u8; 4], udp: &[u8]) -> u16 {
+    let mut scratch = [0u8; 12 + DG_BYTES + 8];
+    scratch[0..4].copy_from_slice(&src_ip);
+    scratch[4..8].copy_from_slice(&dst_ip);
+    scratch[8] = 0;
+    scratch[9] = PROTO_UDP;
+    scratch[10..12].copy_from_slice(&(udp.len() as u16).to_be_bytes());
+    let n = udp.len().min(DG_BYTES + 8);
+    scratch[12..12 + n].copy_from_slice(&udp[..n]);
+    checksum(&scratch[..12 + n])
+}
+
+/// Build an Ethernet/IPv4/UDP frame. The cone has ALREADY approved
+/// `data` — this is the post-cone path.
+pub fn build_udp(
+    our_mac: [u8; 6],
+    next_mac: [u8; 6],
+    dst_ip: [u8; 4],
+    dst_port: u16,
+    src_port: u16,
+    data: &[u8],
+) -> Vec2 {
+    let udp_len = 8 + data.len();
+    let total = 20 + udp_len;
+    let mut out = [0u8; PACKET_BYTES];
+    out[0..6].copy_from_slice(&next_mac);
+    out[6..12].copy_from_slice(&our_mac);
+    out[12..14].copy_from_slice(&ETHERTYPE_IPV4.to_be_bytes());
+    {
+        let ip = &mut out[14..34];
+        ip[0] = 0x45;
+        ip[2..4].copy_from_slice(&(total as u16).to_be_bytes());
+        ip[4..6].copy_from_slice(&[0x38, 0x38]);
+        ip[6..8].copy_from_slice(&[0, 0]);
+        ip[8] = 64;
+        ip[9] = PROTO_UDP;
+        ip[12..16].copy_from_slice(&OUR_IP);
+        ip[16..20].copy_from_slice(&dst_ip);
+    }
+    let hck = checksum(&out[14..34]);
+    out[14 + 10..14 + 12].copy_from_slice(&hck.to_be_bytes());
+    out[14 + 20..14 + 22].copy_from_slice(&src_port.to_be_bytes());
+    out[14 + 22..14 + 24].copy_from_slice(&dst_port.to_be_bytes());
+    out[14 + 24..14 + 26].copy_from_slice(&(udp_len as u16).to_be_bytes());
+    out[14 + 26..14 + 28].copy_from_slice(&[0, 0]);
+    out[14 + 28..14 + 28 + data.len()].copy_from_slice(data);
+    let ick = udp_checksum(OUR_IP, dst_ip, &out[14 + 20..14 + 20 + udp_len]);
+    out[14 + 26..14 + 28].copy_from_slice(&ick.to_be_bytes());
+    Vec2 { bytes: out, len: 14 + total }
+}
+
 // ---------------------------------------------------------------------------
 // Kernel-side state (behind the house lock).
 // ---------------------------------------------------------------------------
+
 
 /// Minimal spin lock (same envelope as kernel-sense's).
 pub struct Lock<T> {
@@ -248,10 +347,33 @@ impl<T> Lock<T> {
     }
 }
 
+struct Listener {
+    port: u16,
+    ring: [[u8; DG_BYTES]; DG_SLOTS],
+    lens: [usize; DG_SLOTS],
+    head: usize,
+    count: usize,
+    last_sender_ip: [u8; 4],
+    last_sender_port: u16,
+}
+
+impl Listener {
+    const EMPTY: Self = Self {
+        port: 0,
+        ring: [[0; DG_BYTES]; DG_SLOTS],
+        lens: [0; DG_SLOTS],
+        head: 0,
+        count: 0,
+        last_sender_ip: [0; 4],
+        last_sender_port: 0,
+    };
+}
+
 struct NetState {
     up: bool,
     mac: [u8; 6],
     gateway_mac: [u8; 6],
+    listeners: [Listener; LISTENERS],
     /// App packet ring (foreign payloads beyond ARP/ICMP we answer).
     ring: [[u8; PACKET_BYTES]; RING_SLOTS],
     lens: [usize; RING_SLOTS],
@@ -274,6 +396,7 @@ static STATE: Lock<NetState> = Lock::new(NetState {
     lens: [0; RING_SLOTS],
     head: 0,
     count: 0,
+    listeners: [Listener::EMPTY; LISTENERS],
     rx_total: 0,
     arp_replied: 0,
     icmp_replied: 0,
@@ -345,6 +468,22 @@ pub fn handle_frame(packet: &[u8], transmit: &mut dyn FnMut(&[u8])) {
                 transmit(&reply.bytes[..reply.len]);
                 state.icmp_replied += 1;
                 return;
+            }
+        }
+    }
+    // UDP: demux by destination port to the listener that earned it.
+    if header.ethertype == ETHERTYPE_IPV4 {
+        if let Some(dg) = parse_udp(packet) {
+            if let Some(listener) = state.listeners.iter_mut().find(|l| l.port == dg.dst_port && l.port != 0) {
+                if listener.count < DG_SLOTS && dg.data.len() <= DG_BYTES {
+                    let slot = (listener.head + listener.count) % DG_SLOTS;
+                    listener.ring[slot][..dg.data.len()].copy_from_slice(dg.data);
+                    listener.lens[slot] = dg.data.len();
+                    listener.count += 1;
+                    listener.last_sender_ip = dg.src_ip;
+                    listener.last_sender_port = dg.src_port;
+                    return; // consumed by the socket layer
+                }
             }
         }
     }
@@ -505,6 +644,69 @@ pub fn arp_probe() -> u64 {
     if send_raw(&request) { 1 } else { 0 }
 }
 
+/// Bind a listener port (the ceremony: a port is a place you chose
+/// to receive foreign material). Returns success.
+pub fn bind(port: u16) -> bool {
+    if port == 0 { return false; }
+    let mut state = STATE.lock();
+    if state.listeners.iter().any(|l| l.port == port) { return true; }
+    match state.listeners.iter_mut().find(|l| l.port == 0) {
+        Some(listener) => { listener.port = port; true }
+        None => false,
+    }
+}
+
+/// Take the oldest datagram for a port. Returns None when empty;
+/// Some(len) with the payload copied into `out`.
+pub fn udp_recv_into(port: u16, out: &mut [u8]) -> Option<usize> {
+    let mut state = STATE.lock();
+    let listener = state.listeners.iter_mut().find(|l| l.port == port)?;
+    if listener.count == 0 { return None; }
+    let slot = listener.head;
+    let len = listener.lens[slot].min(out.len());
+    out[..len].copy_from_slice(&listener.ring[slot][..len]);
+    listener.head = (listener.head + 1) % DG_SLOTS;
+    listener.count -= 1;
+    Some(len)
+}
+
+/// The last sender on a port: (ip, port) for the reply path.
+pub fn udp_last_sender(port: u16) -> Option<([u8; 4], u16)> {
+    let state = STATE.lock();
+    let listener = state.listeners.iter().find(|l| l.port == port)?;
+    if listener.last_sender_port == 0 { return None; }
+    Some((listener.last_sender_ip, listener.last_sender_port))
+}
+
+/// The socket-layer send: the egress cone first (the DATA — never
+/// the addressing header), then out via the gateway next-hop.
+pub enum UdpCause { Cone, NoRoute, Driver }
+pub fn udp_send(dst_ip: [u8; 4], dst_port: u16, src_port: u16, data: &[u8], transmit: &mut dyn FnMut(&[u8]) -> bool) -> Result<(), UdpCause> {
+    if !kernel_egress::gate(data) {
+        STATE.lock().cone_blocked += 1;
+        return Err(UdpCause::Cone);
+    }
+    let (mac, next) = {
+        let state = STATE.lock();
+        (state.mac, state.gateway_mac)
+    };
+    if next == [0; 6] || mac == [0; 6] {
+        return Err(UdpCause::NoRoute);
+    }
+    let frame = build_udp(mac, next, dst_ip, dst_port, src_port, data);
+    STATE.lock().tx_total += 1;
+    if !transmit(&frame.bytes[..frame.len]) {
+        return Err(UdpCause::Driver);
+    }
+    Ok(())
+}
+
+/// Host-test support: set our MAC without a device.
+#[cfg(feature = "std")]
+pub fn set_mac(mac: [u8; 6]) {
+    STATE.lock().mac = mac;
+}
+
 /// Host-test reset.
 #[cfg(feature = "std")]
 pub fn reset() {
@@ -513,6 +715,7 @@ pub fn reset() {
     state.gateway_mac = [0; 6];
     state.head = 0;
     state.count = 0;
+    state.listeners = [Listener::EMPTY; LISTENERS];
     state.rx_total = 0;
     state.arp_replied = 0;
     state.icmp_replied = 0;

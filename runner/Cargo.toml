@@ -54,3 +54,7 @@ path = "src/bin/e36.rs"
 [[bin]]
 name = "e37"
 path = "src/bin/e37.rs"
+
+[[bin]]
+name = "e38"
+path = "src/bin/e38.rs"
