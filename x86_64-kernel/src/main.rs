@@ -416,7 +416,11 @@ unsafe fn activate(sys: &System) {
 
 #[no_mangle]
 pub extern "C" fn timer_interrupt_handler(rsp: u64) -> u64 {
-    TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
+    let tick = TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
+    // E41: the taskbar clock beats once a second.
+    if tick % 100 == 0 {
+        kernel_kit::vga::taskbar_update((tick + 1) as u64);
+    }
     let mut next = rsp;
     unsafe {
         if let Some(sys) = &mut *(&raw mut SYSTEM) {
@@ -642,6 +646,8 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
     let (obj, sif_2) = kernel_kit::serial::SERIAL1.lock();
 
     obj.send(b'A');
+    // E41: the desktop — mode 13h chrome before any text renders.
+    kernel_kit::vga::desktop_init();
 
     kernel_kit::serial::SERIAL1.unlock(sif_2);
 

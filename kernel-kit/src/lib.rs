@@ -17,6 +17,7 @@ pub mod paging;
 pub mod pic;
 pub mod trap;
 pub mod vga;
+pub mod font8x8;
 
 pub mod address_space;
 pub mod virtio_blk;
