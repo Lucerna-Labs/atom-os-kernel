@@ -207,6 +207,16 @@ Run `bash scripts/vm-test-userspace.sh` on the configured host for focused nativ
 KVM and TCG verification. See [userspace reuse](docs/USERSPACE-REUSE.md) for the API,
 source provenance, acceptance cases, and compatibility decisions.
 
+### Passive network Lightcone
+
+The independent `kernel-lightcone` crate implements Atom's causal geometry over
+an immutable trained world. The network adapter observes explicit causal claims
+on incoming and successfully transmitted packets and exposes read-only facts;
+it does not classify or block traffic. The embedded ring world is a development
+calibration control, not a production-trained network. See
+[network Lightcone](docs/NETWORK-LIGHTCONE.md) for the definition, provenance,
+wire claims, build commands, calibration workflow and evidence limits.
+
 ## Shell commands
 
 | Command | Behavior |

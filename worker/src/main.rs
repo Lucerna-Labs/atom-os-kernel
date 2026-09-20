@@ -4,6 +4,7 @@ extern crate alloc;
 use user_rt::{self as rt, abi::*};
 mod process_probe;
 mod ipc_probe;
+mod lightcone_probe;
 user_rt::entry!(main);
 
 fn main() {

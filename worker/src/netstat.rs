@@ -22,5 +22,7 @@ fn main() {
         sense >> 63,
         (sense >> 32) & 0x7FFF_FFFF
     ));
+    rt::print_args(format_args!("Lightcone world={} v={} ingress={} egress={} claims={}\n",
+        rt::call3(SYS_LIGHTCONE,0,0,0),rt::call3(SYS_LIGHTCONE,0,2,0),rt::call3(SYS_LIGHTCONE,0,3,0),rt::call3(SYS_LIGHTCONE,0,4,0),rt::call3(SYS_LIGHTCONE,0,5,0)));
     rt::exit(0);
 }

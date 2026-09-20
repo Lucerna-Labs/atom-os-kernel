@@ -25,6 +25,7 @@ pub fn dispatch() {
     let args = rt::args(); assert_eq!(args[0], "worker.elf");
     if args.len() == 1 { return; }
     match args[1].as_str() {
+        "--lightcone-test" => crate::lightcone_probe::run(),
         "--ipc-test" => { crate::ipc_probe::run(); rt::exit(0) }
         "--args" => {
             rt::print_args(format_args!("ARGS pid={} count={}\n", pid(), args.len()));

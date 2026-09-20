@@ -9,7 +9,7 @@ mkdir -p "$out"
 # Compile their real implementations in dependency order; no stand-in modules.
 deps=()
 : > "$out/compile.log"
-for crate in kernel-kit kernel-sense kernel-key kernel-instant kernel-egress kernel-lane kernel-taint kernel-crypt kernel-net; do
+for crate in kernel-kit kernel-sense kernel-key kernel-instant kernel-egress kernel-lane kernel-taint kernel-crypt kernel-lightcone kernel-net; do
   name=${crate//-/_}
   rustc +"$toolchain" --edition=2024 --crate-name "$name" --crate-type rlib \
     "$root/$crate/src/lib.rs" -L "dependency=$out" "${deps[@]}" \

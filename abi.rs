@@ -118,3 +118,6 @@ pub struct ProcessInfo {
 impl ProcessInfo {
     pub const EMPTY: Self = Self { pid: 0, parent: 0, state: 0, exit_code: 0, name: [0; 64] };
 }
+
+/// Read-only network Lightcone: sub 0=status(arg1); sub 1=record(index=arg1,field=arg2).
+pub const SYS_LIGHTCONE: u64 = 55;
