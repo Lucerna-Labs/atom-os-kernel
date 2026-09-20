@@ -7,13 +7,16 @@ fn main() {
     rt::print("[Daemon] Started\n");
     let mut heartbeat = rt::call(SYS_TICKS, 0, 0);
     loop {
+        let mut buffer = [0u8; rt::ipc::MAX_MESSAGE_BYTES];
         loop {
-            let pointer = rt::call(SYS_IPC_RECV, 0, 0);
-            if pointer == 0 || pointer == ERROR { break; }
-            let bytes = unsafe { core::slice::from_raw_parts(pointer as *const u8, 256) };
-            let len = bytes.iter().position(|&b| b == 0).unwrap_or(255);
-            if let Ok(message) = core::str::from_utf8(&bytes[..len]) {
-                rt::print_args(format_args!("[Daemon] Received IPC: {}\n", message));
+            match rt::receive_into(&mut buffer) {
+                Ok(Some(len)) => {
+                    if let Ok(message) = core::str::from_utf8(&buffer[..len]) {
+                        rt::print_args(format_args!("[Daemon] Received IPC: {}\n", message));
+                    }
+                }
+                Ok(None) => break,
+                Err(_) => { rt::print("[Daemon] IPC receive error\n"); break; }
             }
         }
         let ticks = rt::call(SYS_TICKS, 0, 0);

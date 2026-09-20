@@ -196,6 +196,17 @@ passed to `vm-run.sh` refer to the VM. Changes made after the last successful
 `sync` remain in RAM and are lost on exit. The daemon keeps an active shell's
 prompt quiet; its standalone heartbeat remains available after the shell exits.
 
+### Buffered IPC and executable preflight
+
+The build now validates every embedded userspace executable with the kernel's
+own ELF parser before producing the boot image. `user_rt::receive_into` provides
+allocation-free, caller-owned IPC messages; the daemon uses it, and short
+buffers are rejected without consuming a queued message.
+
+Run `bash scripts/vm-test-userspace.sh` on the configured host for focused native,
+KVM and TCG verification. See [userspace reuse](docs/USERSPACE-REUSE.md) for the API,
+source provenance, acceptance cases, and compatibility decisions.
+
 ## Shell commands
 
 | Command | Behavior |

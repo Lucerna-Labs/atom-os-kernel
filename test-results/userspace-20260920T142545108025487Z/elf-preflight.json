@@ -1,0 +1,42 @@
+{
+  "valid": {
+    "accepted": true,
+    "output": "ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142545108025487Z/source/target/userspace-host-tests/elf-cases/valid.elf entry=0xffffffff80100000 span=53248\n"
+  },
+  "truncated": {
+    "accepted": false,
+    "output": "ELF_REJECTED /home/jesse/atom-os-kernel-tests/userspace-20260920T142545108025487Z/source/target/userspace-host-tests/elf-cases/truncated.elf: kernel loader rejected Header\n"
+  },
+  "wrong_machine": {
+    "accepted": false,
+    "output": "ELF_REJECTED /home/jesse/atom-os-kernel-tests/userspace-20260920T142545108025487Z/source/target/userspace-host-tests/elf-cases/wrong_machine.elf: kernel loader rejected Header\n"
+  },
+  "overflowing_headers": {
+    "accepted": false,
+    "output": "ELF_REJECTED /home/jesse/atom-os-kernel-tests/userspace-20260920T142545108025487Z/source/target/userspace-host-tests/elf-cases/overflowing_headers.elf: kernel loader rejected Bounds\n"
+  },
+  "writable_executable": {
+    "accepted": false,
+    "output": "ELF_REJECTED /home/jesse/atom-os-kernel-tests/userspace-20260920T142545108025487Z/source/target/userspace-host-tests/elf-cases/writable_executable.elf: kernel loader rejected Permissions\n"
+  },
+  "entry_outside_image": {
+    "accepted": false,
+    "output": "ELF_REJECTED /home/jesse/atom-os-kernel-tests/userspace-20260920T142545108025487Z/source/target/userspace-host-tests/elf-cases/entry_outside_image.elf: kernel loader rejected Entry\n"
+  },
+  "bad_magic": {
+    "accepted": false,
+    "output": "ELF_REJECTED /home/jesse/atom-os-kernel-tests/userspace-20260920T142545108025487Z/source/target/userspace-host-tests/elf-cases/bad_magic.elf: kernel loader rejected Header\n"
+  },
+  "missing": {
+    "accepted": false,
+    "output": "ELF_REJECTED /home/jesse/atom-os-kernel-tests/userspace-20260920T142545108025487Z/source/target/userspace-host-tests/elf-cases/missing.elf: No such file or directory (os error 2)\n"
+  },
+  "mixed_batch": {
+    "accepted": false,
+    "output": "ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142545108025487Z/source/target/x86_64-os/release/payload entry=0xffffffff80100000 span=53248\nELF_REJECTED /home/jesse/atom-os-kernel-tests/userspace-20260920T142545108025487Z/source/target/userspace-host-tests/elf-cases/bad_magic.elf: kernel loader rejected Header\n"
+  },
+  "no_arguments": {
+    "accepted": false,
+    "output": "usage: check-elf PROGRAM [PROGRAM ...]\n"
+  }
+}

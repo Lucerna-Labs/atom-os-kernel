@@ -72,17 +72,31 @@ pub fn send(pid: u64, text: &str) -> bool {
     let mut bytes = [0; 256]; bytes[..text.len()].copy_from_slice(text.as_bytes());
     call(SYS_IPC_SEND, pid, bytes.as_ptr() as u64) == 0
 }
-pub fn receive() -> Option<alloc::string::String> {
+pub mod ipc;
+pub use ipc::ReceiveError;
+
+/// Receive one complete message into caller-owned storage without allocation.
+/// Buffers must hold MAX_MESSAGE_BYTES, even for shorter messages. Too-small
+/// buffers are rejected BEFORE the syscall, leaving the pending message queued.
+/// The returned length excludes the NUL; bytes after it are untouched.
+/// Ok(None) means an empty mailbox; Ok(Some(0)) is an actual empty message.
+pub fn receive_into(buffer: &mut [u8]) -> Result<Option<usize>, ReceiveError> {
+    ipc::check_capacity(buffer)?;
     let pointer = call(SYS_IPC_RECV, 0, 0);
-    if pointer == 0 || pointer == ERROR { return None; }
-    let mut bytes = alloc::vec::Vec::new();
-    unsafe {
-        for offset in 0..255 {
-            let byte = *((pointer + offset) as *const u8);
-            if byte == 0 { break; } bytes.push(byte);
-        }
-    }
-    alloc::string::String::from_utf8(bytes).ok()
+    if pointer == 0 { return Ok(None); }
+    if pointer == ERROR { return Err(ReceiveError::Syscall); }
+    // SYS_IPC_RECV maps a process-private 4 KiB receive page and writes a
+    // NUL-terminated message of <=255 bytes. Copy before another receive can
+    // replace it; no reference to that page escapes this function.
+    let source = unsafe { core::slice::from_raw_parts(pointer as *const u8, ipc::RECEIVE_BYTES) };
+    ipc::copy_message(source, buffer).map(Some)
+}
+
+/// Compatibility convenience API. Persistent receivers should use receive_into.
+pub fn receive() -> Option<alloc::string::String> {
+    let mut buffer = [0; ipc::MAX_MESSAGE_BYTES];
+    let len = receive_into(&mut buffer).ok()??;
+    alloc::string::String::from_utf8(buffer[..len].to_vec()).ok()
 }
 
 struct ProcessHeap;

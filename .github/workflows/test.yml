@@ -20,6 +20,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86
       - name: Build userspace and kernel image
         run: bash scripts/build.sh
+      - name: Buffered IPC helpers and executable rejection checks
+        run: bash scripts/test-userspace-host.sh
+      - name: Buffered IPC and daemon acceptance
+        run: python3 scripts/test-userspace-imports.py --accel tcg --output test-results/ci-userspace
       - name: Native regression tests
         run: bash scripts/test-native.sh
       - name: Boot, process, IPC and persistent-storage acceptance
@@ -34,6 +38,8 @@ jobs:
         with:
           name: atom-os-test-results
           path: |
+            test-results/ci-userspace/
+            target/userspace-host-tests/elf-cases/result.json
             test-results/ci/
             test-results/ci-recovery/
             test-results/ci-console/

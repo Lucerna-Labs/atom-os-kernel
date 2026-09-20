@@ -1,0 +1,1281 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/daemon/Cargo.toml
+workspace: /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/x86_64-kernel/Cargo.toml
+workspace: /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/Cargo.toml
+   Compiling compiler_builtins v0.1.160 (/home/jesse/.rustup/toolchains/nightly-2026-08-18-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+   Compiling core v0.0.0 (/home/jesse/.rustup/toolchains/nightly-2026-08-18-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling payload v0.1.0 (/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/payload)
+   Compiling alloc v0.0.0 (/home/jesse/.rustup/toolchains/nightly-2026-08-18-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+   Compiling user-rt v0.1.0 (/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/user-rt)
+    Finished `release` profile [optimized] target(s) in 8.81s
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/daemon/Cargo.toml
+workspace: /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/x86_64-kernel/Cargo.toml
+workspace: /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/Cargo.toml
+   Compiling compiler_builtins v0.1.160 (/home/jesse/.rustup/toolchains/nightly-2026-08-18-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+   Compiling core v0.0.0 (/home/jesse/.rustup/toolchains/nightly-2026-08-18-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling daemon v0.1.0 (/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/daemon)
+   Compiling alloc v0.0.0 (/home/jesse/.rustup/toolchains/nightly-2026-08-18-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+   Compiling user-rt v0.1.0 (/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/user-rt)
+    Finished `release` profile [optimized] target(s) in 8.15s
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/daemon/Cargo.toml
+workspace: /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/x86_64-kernel/Cargo.toml
+workspace: /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/Cargo.toml
+   Compiling compiler_builtins v0.1.160 (/home/jesse/.rustup/toolchains/nightly-2026-08-18-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+   Compiling core v0.0.0 (/home/jesse/.rustup/toolchains/nightly-2026-08-18-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling worker v0.1.0 (/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/worker)
+   Compiling alloc v0.0.0 (/home/jesse/.rustup/toolchains/nightly-2026-08-18-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+   Compiling user-rt v0.1.0 (/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/user-rt)
+warning: variable `refused` is assigned to, but never used
+  --> worker/src/smuggler.rs:66:9
+   |
+66 |     let mut refused = 0;
+   |         ^^^^^^^^^^^
+   |
+   = note: consider using `_refused` instead
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `refused` is never read
+  --> worker/src/smuggler.rs:73:9
+   |
+73 |         refused += 1;
+   |         ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+83 |         refused += 1;
+   |         ------------ `refused` is overwritten here before the previous value is read
+   |
+   = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `refused` is never read
+  --> worker/src/smuggler.rs:83:9
+   |
+83 |         refused += 1;
+   |         ^^^^^^^^^^^^ this value is reassigned later and never used
+...
+96 |         refused += 1;
+   |         ------------ `refused` is overwritten here before the previous value is read
+
+warning: value assigned to `refused` is never read
+  --> worker/src/smuggler.rs:96:9
+   |
+96 |         refused += 1;
+   |         ^^^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+
+warning: constant `HEX` is never used
+  --> worker/src/smuggler.rs:19:7
+   |
+19 | const HEX: &[u8] = b"8d20fb625f6f5cc46808d70f372ec4ad917c3ba4e2f155190dc27e41b89d0251f730a1cc6e194b8a2d7603c9aa5e71f0442bbe87d612c49...
+   |       ^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `vec::Vec`
+ --> worker/src/process_probe.rs:2:42
+  |
+2 | use alloc::{format, string::String, vec, vec::Vec};
+  |                                          ^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `revoked`
+  --> worker/src/lanewalk.rs:81:16
+   |
+81 |     let (_, _, revoked, real, honey) = (0u64, false, false, 0u64, 0u64);
+   |                ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_revoked`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `real`
+  --> worker/src/lanewalk.rs:81:25
+   |
+81 |     let (_, _, revoked, real, honey) = (0u64, false, false, 0u64, 0u64);
+   |                         ^^^^ help: if this is intentional, prefix it with an underscore: `_real`
+
+warning: unused variable: `honey`
+  --> worker/src/lanewalk.rs:81:31
+   |
+81 |     let (_, _, revoked, real, honey) = (0u64, false, false, 0u64, 0u64);
+   |                               ^^^^^ help: if this is intentional, prefix it with an underscore: `_honey`
+
+warning: unused import: `abi::*`
+  --> worker/src/weave_probe.rs:25:27
+   |
+25 | use user_rt::{self as rt, abi::*};
+   |                           ^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `worker` (bin "lanewalk") generated 3 warnings (run `cargo fix --bin "lanewalk" -p worker` to apply 3 suggestions)
+warning: `worker` (bin "smuggler") generated 5 warnings
+warning: `worker` (bin "weave-probe") generated 1 warning (run `cargo fix --bin "weave-probe" -p worker` to apply 1 suggestion)
+warning: `worker` (bin "worker") generated 1 warning (run `cargo fix --bin "worker" -p worker` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 8.18s
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/payload entry=0xffffffff80100000 span=53248
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/daemon entry=0xffffffff80100000 span=12288
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/worker entry=0xffffffff80100000 span=65536
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/fault-probe entry=0xffffffff80100000 span=8192
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/fs-probe entry=0xffffffff80100000 span=28672
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/spider entry=0xffffffff80100000 span=20480
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/rogue entry=0xffffffff80100000 span=16384
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/weave-probe entry=0xffffffff80100000 span=57344
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/keykeep entry=0xffffffff80100000 span=16384
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/instantkeep entry=0xffffffff80100000 span=16384
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/smuggler entry=0xffffffff80100000 span=20480
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/lanewalk entry=0xffffffff80100000 span=20480
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/metronome entry=0xffffffff80100000 span=16384
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/taintwalk entry=0xffffffff80100000 span=20480
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/cryptwalk entry=0xffffffff80100000 span=20480
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/seamwalk entry=0xffffffff80100000 span=20480
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/netwalk entry=0xffffffff80100000 span=20480
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/udpwalk entry=0xffffffff80100000 span=20480
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/pingwalk entry=0xffffffff80100000 span=20480
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/hello entry=0xffffffff80100000 span=24576
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/sysinfo entry=0xffffffff80100000 span=16384
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/netstat entry=0xffffffff80100000 span=16384
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/calc entry=0xffffffff80100000 span=24576
+ELF_OK /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/udpsend entry=0xffffffff80100000 span=24576
+WARNING: `CARGO_MANIFEST_DIR` env variable not set
+Building kernel
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/daemon/Cargo.toml
+workspace: /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/x86_64-kernel/Cargo.toml
+workspace: /home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/Cargo.toml
+ Downloading crates ...
+  Downloaded font8x8 v0.2.7
+   Compiling kernel-kit v0.1.0 (/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/kernel-kit)
+   Compiling kernel-egress v0.1.0 (/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/kernel-egress)
+   Compiling kernel-taint v0.1.0 (/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/kernel-taint)
+   Compiling bootloader v0.9.35
+   Compiling kernel-crypt v0.1.0 (/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/kernel-crypt)
+   Compiling kernel-lane v0.1.0 (/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/kernel-lane)
+   Compiling kernel-instant v0.1.0 (/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/kernel-instant)
+   Compiling kernel-key v0.1.0 (/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/kernel-key)
+warning: unused import: `core::ptr`
+   --> kernel-kit/src/slab.rs:620:9
+    |
+620 |     use core::ptr;
+    |         ^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `compare`
+ --> kernel-kit/src/memory.rs:5:29
+  |
+5 | use crate::atoms::{combine, compare};
+  |                             ^^^^^^^
+
+   Compiling kernel-sense v0.1.0 (/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/kernel-sense)
+   Compiling font8x8 v0.2.7
+warning: unused variable: `at`
+   --> kernel-sense/src/lib.rs:256:9
+    |
+256 |     let at = |index: usize| -> u64 { slot.gaps[(slot.head + slot.len + index - GAP_WINDOW) % GAP_WINDOW] };
+    |         ^^ help: if this is intentional, prefix it with an underscore: `_at`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:178:24
+    |
+178 |             let next = *((node.add(HEADER_BYTES)) as *mut *mut u8);
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> kernel-kit/src/slab.rs:171:5
+    |
+171 |     unsafe fn free_list_pop(bucket: &mut Bucket) -> Option<*mut u8> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+    = note: `#[warn(unsafe_op_in_unsafe_fn)]` (part of `#[warn(rust_2024_compatibility)]`) on by default
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::add` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:178:26
+    |
+178 |             let next = *((node.add(HEADER_BYTES)) as *mut *mut u8);
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::add` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:182:18
+    |
+182 |             Some(node.add(HEADER_BYTES))
+    |                  ^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::sub` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:193:26
+    |
+193 |         let header_ptr = (user_ptr.sub(HEADER_BYTES)) as *mut SlabHeader;
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> kernel-kit/src/slab.rs:192:5
+    |
+192 |     unsafe fn avalanche_tag_write(user_ptr: *mut u8, layout: &Layout, bucket_idx: usize) {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:194:9
+    |
+194 |         (*header_ptr).tag = avalanche_hash(layout.size(), layout.align());
+    |         ^^^^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:195:9
+    |
+195 |         (*header_ptr).bucket_plus_one = bucket_idx.wrapping_add(1) as u8;
+    |         ^^^^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::sub` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:205:26
+    |
+205 |         let header_ptr = (user_ptr.sub(HEADER_BYTES)) as *mut SlabHeader;
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> kernel-kit/src/slab.rs:204:5
+    |
+204 |     unsafe fn avalanche_tag_verify(user_ptr: *mut u8, layout: &Layout) -> (bool, u8) {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:207:22
+    |
+207 |         let actual = (*header_ptr).tag;
+    |                      ^^^^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:208:32
+    |
+208 |         ((actual == expected), (*header_ptr).bucket_plus_one)
+    |                                ^^^^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::sub` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:218:20
+    |
+218 |         let node = user_ptr.sub(HEADER_BYTES);
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> kernel-kit/src/slab.rs:217:5
+    |
+217 |     unsafe fn free_list_push(bucket: &mut Bucket, user_ptr: *mut u8) {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::add` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:219:25
+    |
+219 |         let next_slot = (node.add(HEADER_BYTES)) as *mut *mut u8;
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:220:9
+    |
+220 |         *next_slot = bucket.head;
+    |         ^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:224:9
+    |
+224 |         (*header_ptr).tag = 0;
+    |         ^^^^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:225:9
+    |
+225 |         (*header_ptr).bucket_plus_one = 0;
+    |         ^^^^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::large_alloc` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:247:24
+    |
+247 |                 return self.large_alloc(layout, bump);
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> kernel-kit/src/slab.rs:238:5
+    |
+238 |     pub unsafe fn alloc(&mut self, layout: Layout, bump: &mut BumpAllocator) -> *mut u8 {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::free_list_pop` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:252:30
+    |
+252 |         let user_ptr = match Self::free_list_pop(&mut self.buckets[bucket_idx]) {
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::<impl memory::BumpAllocator>::bump_alloc_bytes` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:261:28
+    |
+261 |                 let node = bump.bump_alloc_bytes(total, 16);
+    |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::add` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:265:17
+    |
+265 |                 node.add(HEADER_BYTES)
+    |                 ^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::avalanche_tag_write` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:270:9
+    |
+270 |         Self::avalanche_tag_write(user_ptr, &layout, bucket_idx);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:278:16
+    |
+278 |         while !(*link).is_null() {
+    |                ^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> kernel-kit/src/slab.rs:276:5
+    |
+276 |     unsafe fn large_alloc(&mut self, layout: Layout, bump: &mut BumpAllocator) -> *mut u8 {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:279:24
+    |
+279 |             let node = *link;
+    |                        ^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:280:24
+    |
+280 |             let user = (*node).user;
+    |                        ^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:281:16
+    |
+281 |             if (*node).capacity >= layout.size() && (user as usize & (layout.align() - 1)) == 0 {
+    |                ^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:282:17
+    |
+282 |                 *link = (*node).next;
+    |                 ^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:282:25
+    |
+282 |                 *link = (*node).next;
+    |                         ^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::avalanche_tag_write` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:283:17
+    |
+283 |                 Self::avalanche_tag_write(user, &layout, usize::MAX);
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:286:25
+    |
+286 |             link = &mut (*node).next;
+    |                         ^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::<impl memory::BumpAllocator>::bump_alloc_bytes` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:293:20
+    |
+293 |         let base = bump.bump_alloc_bytes(total, 16);
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::write` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:297:9
+    |
+297 |         core::ptr::write(node, LargeNode { next: core::ptr::null_mut(), capacity: layout.size(), user });
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::write_unaligned` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:298:9
+    |
+298 |         core::ptr::write_unaligned(user.sub(HEADER_BYTES + 8) as *mut *mut LargeNode, node);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::sub` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:298:36
+    |
+298 |         core::ptr::write_unaligned(user.sub(HEADER_BYTES + 8) as *mut *mut LargeNode, node);
+    |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::avalanche_tag_write` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:299:9
+    |
+299 |         Self::avalanche_tag_write(user, &layout, usize::MAX);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::avalanche_tag_verify` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:307:37
+    |
+307 |         let (ok, bucket_plus_one) = Self::avalanche_tag_verify(ptr, &layout);
+    |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> kernel-kit/src/slab.rs:303:5
+    |
+303 |     pub unsafe fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::read_unaligned` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:324:24
+    |
+324 |             let node = core::ptr::read_unaligned(ptr.sub(HEADER_BYTES + 8) as *const *mut LargeNode);
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::sub` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:324:50
+    |
+324 |             let node = core::ptr::read_unaligned(ptr.sub(HEADER_BYTES + 8) as *const *mut LargeNode);
+    |                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:325:13
+    |
+325 |             (*(ptr.sub(HEADER_BYTES) as *mut SlabHeader)).tag = 0;
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `core::ptr::mut_ptr::<impl *mut T>::sub` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:325:16
+    |
+325 |             (*(ptr.sub(HEADER_BYTES) as *mut SlabHeader)).tag = 0;
+    |                ^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:326:13
+    |
+326 |             (*node).next = self.large_free;
+    |             ^^^^^^^ dereference of raw pointer
+    |
+    = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::free_list_push` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:332:9
+    |
+332 |         Self::free_list_push(&mut self.buckets[bucket_idx], ptr);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::alloc` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:399:19
+    |
+399 |         let ptr = heap.alloc(layout, bump);
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> kernel-kit/src/slab.rs:393:5
+    |
+393 |     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: call to unsafe function `slab::SlabHeap::dealloc` is unsafe and requires unsafe block
+   --> kernel-kit/src/slab.rs:406:9
+    |
+406 |         inner.heap.dealloc(ptr, layout);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> kernel-kit/src/slab.rs:404:5
+    |
+404 |     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning: variable does not need to be mutable
+   --> kernel-kit/src/slab.rs:521:9
+    |
+521 |     let mut hits2 = 0usize;
+    |         ----^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `hits2`
+   --> kernel-kit/src/slab.rs:521:9
+    |
+521 |     let mut hits2 = 0usize;
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_hits2`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+  --> kernel-kit/src/paging.rs:41:17
+   |
+41 |     let pml4 = &*(phys_to_virt(cr3_phys) as *const PageTable);
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ dereference of raw pointer
+   |
+   = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+  --> kernel-kit/src/paging.rs:39:1
+   |
+39 | pub unsafe fn walk(cr3_phys: u64, vaddr: u64) -> (u64, u8) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+  --> kernel-kit/src/paging.rs:44:17
+   |
+44 |     let pdpt = &*(phys_to_virt(p4 & 0x000FFFFFFFFFF000) as *const PageTable);
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ dereference of raw pointer
+   |
+   = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+   = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+  --> kernel-kit/src/paging.rs:48:15
+   |
+48 |     let pd = &*(phys_to_virt(p3 & 0x000FFFFFFFFFF000) as *const PageTable);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ dereference of raw pointer
+   |
+   = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+   = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning[E0133]: dereference of raw pointer is unsafe and requires unsafe block
+  --> kernel-kit/src/paging.rs:52:15
+   |
+52 |     let pt = &*(phys_to_virt(p2 & 0x000FFFFFFFFFF000) as *const PageTable);
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ dereference of raw pointer
+   |
+   = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior
+   = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+
+warning: variable does not need to be mutable
+   --> kernel-kit/src/vga.rs:147:17
+    |
+147 |             let mut c = CURSOR.lock();
+    |                 ----^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> kernel-kit/src/vga.rs:202:17
+    |
+202 |             let mut grid = GRID.lock();
+    |                 ----^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> kernel-kit/src/vga.rs:225:17
+    |
+225 |             let mut grid = GRID.lock();
+    |                 ----^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> kernel-kit/src/vga.rs:242:17
+    |
+242 |             let mut grid = GRID.lock();
+    |                 ----^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> kernel-kit/src/vga.rs:292:13
+    |
+292 |         let mut c = CURSOR.lock();
+    |             ----^
+    |             |
+    |             help: remove this `mut`
+
+warning: unnecessary `unsafe` block
+   --> kernel-kit/src/virtio_net.rs:249:9
+    |
+249 |         unsafe {
+    |         ^^^^^^ unnecessary `unsafe` block
+    |
+    = note: `#[warn(unused_unsafe)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `SLAB_PREALLOC_PER_BUCKET` is never used
+  --> kernel-kit/src/slab.rs:46:7
+   |
+46 | const SLAB_PREALLOC_PER_BUCKET: usize = 32;
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `kernel-sense` (lib) generated 1 warning (run `cargo fix --lib -p kernel-sense` to apply 1 suggestion)
+   Compiling kernel-net v0.1.0 (/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/kernel-net)
+warning: variable does not need to be mutable
+   --> kernel-net/src/lib.rs:535:9
+    |
+535 |     let mut probe = icmp_echo_request(mac, gateway_mac, id, 1, data);
+    |         ----^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling kernel-orchestrator v0.1.0 (/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/kernel-orchestrator)
+warning: unused variable: `index`
+  --> kernel-orchestrator/src/scheduler.rs:22:14
+   |
+22 |         for (index, slot) in self.tasks.iter_mut().enumerate() {
+   |              ^^^^^ help: if this is intentional, prefix it with an underscore: `_index`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> kernel-orchestrator/src/syscall.rs:42:10
+   |
+42 |     let (mut serial, flags) = kernel_kit::serial::SERIAL1.lock();
+   |          ----^^^^^^
+   |          |
+   |          help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `kernel-net` (lib) generated 1 warning (run `cargo fix --lib -p kernel-net` to apply 1 suggestion)
+For more information about this error, try `rustc --explain E0133`.
+warning: `kernel-kit` (lib) generated 56 warnings (run `cargo fix --lib -p kernel-kit` to apply 19 suggestions)
+warning: `kernel-orchestrator` (lib) generated 2 warnings (run `cargo fix --lib -p kernel-orchestrator` to apply 2 suggestions)
+   Compiling x86_64-kernel v0.1.0 (/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/x86_64-kernel)
+warning: unused import: `kernel_kit::vga::VgaWriter`
+  --> x86_64-kernel/src/main.rs:10:5
+   |
+10 | use kernel_kit::vga::VgaWriter;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `AtomHeap`
+  --> x86_64-kernel/src/main.rs:15:26
+   |
+15 | use kernel_kit::memory::{AtomHeap, BumpAllocator, Spinlock};
+   |                          ^^^^^^^^
+
+warning: unnecessary `unsafe` block
+   --> x86_64-kernel/src/main.rs:659:5
+    |
+659 |     unsafe {
+    |     ^^^^^^ unnecessary `unsafe` block
+    |
+    = note: `#[warn(unused_unsafe)]` (part of `#[warn(unused)]`) on by default
+
+warning: unnecessary `unsafe` block
+   --> x86_64-kernel/src/main.rs:668:5
+    |
+668 |     unsafe {
+    |     ^^^^^^ unnecessary `unsafe` block
+
+warning: unnecessary `unsafe` block
+   --> x86_64-kernel/src/main.rs:694:5
+    |
+694 |     unsafe {
+    |     ^^^^^^ unnecessary `unsafe` block
+
+warning: static `BUMP_BASELINE` is never used
+  --> x86_64-kernel/src/main.rs:29:8
+   |
+29 | static BUMP_BASELINE: Spinlock<BumpAllocator> = Spinlock::new(BumpAllocator::new());
+   |        ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: direct cast of function item into an integer
+   --> x86_64-kernel/src/main.rs:361:37
+    |
+361 |     wrmsr(0xC0000082, syscall_entry as u64);
+    |                                     ^^^^^^
+    |
+    = note: `#[warn(function_casts_as_integer)]` on by default
+help: first cast to a pointer `as *const ()`
+    |
+361 |     wrmsr(0xC0000082, syscall_entry as *const () as u64);
+    |                                     ++++++++++++
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:430:9
+    |
+430 |         PICS.notify_end_of_interrupt(32);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+    = note: `#[warn(static_mut_refs)]` (part of `#[warn(rust_2024_compatibility)]`) on by default
+
+warning: creating a shared reference to mutable static
+   --> x86_64-kernel/src/main.rs:532:33
+    |
+532 |         if let Some(scancode) = KEYBOARD.read_scancode() {
+    |                                 ^^^^^^^^^^^^^^^^^^^^^^^^ shared reference to mutable static
+    |
+    = note: shared references to mutable statics are dangerous; it's undefined behavior if the static is mutated or if a mutable reference is created for it while the shared reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:541:9
+    |
+541 |         PICS.notify_end_of_interrupt(33);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:753:9
+    |
+753 |         IDT.set_handler(32, timer_interrupt_wrapper as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:757:9
+    |
+757 |         IDT.set_handler(33, keyboard_interrupt_wrapper as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:760:9
+    |
+760 |         IDT.set_handler_user(0x80, syscall_interrupt_wrapper as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:765:9
+    |
+765 |         IDT.set_handler(0, exception_entry_0 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:766:9
+    |
+766 |         IDT.set_handler(1, exception_entry_1 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:767:9
+    |
+767 |         IDT.set_handler(2, exception_entry_2 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:768:9
+    |
+768 |         IDT.set_handler(3, exception_entry_3 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:769:9
+    |
+769 |         IDT.set_handler(4, exception_entry_4 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:770:9
+    |
+770 |         IDT.set_handler(5, exception_entry_5 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:771:9
+    |
+771 |         IDT.set_handler(6, exception_entry_6 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:772:9
+    |
+772 |         IDT.set_handler(7, exception_entry_7 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:773:9
+    |
+773 |         IDT.set_handler(8, exception_entry_8 as *const () as u64);  // #DF (errcode)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:774:9
+    |
+774 |         IDT.set_handler(9, exception_entry_9 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:775:9
+    |
+775 |         IDT.set_handler(10, exception_entry_10 as *const () as u64); // #TS (errcode)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:776:9
+    |
+776 |         IDT.set_handler(11, exception_entry_11 as *const () as u64); // #NP (errcode)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:777:9
+    |
+777 |         IDT.set_handler(12, exception_entry_12 as *const () as u64); // #SS (errcode)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:778:9
+    |
+778 |         IDT.set_handler(13, exception_entry_13 as *const () as u64); // #GP (errcode)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:779:9
+    |
+779 |         IDT.set_handler(14, exception_entry_14 as *const () as u64); // #PF (errcode)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:780:9
+    |
+780 |         IDT.set_handler(15, exception_entry_15 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:781:9
+    |
+781 |         IDT.set_handler(16, exception_entry_16 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:782:9
+    |
+782 |         IDT.set_handler(17, exception_entry_17 as *const () as u64); // #AC (errcode)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:783:9
+    |
+783 |         IDT.set_handler(18, exception_entry_18 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:784:9
+    |
+784 |         IDT.set_handler(19, exception_entry_19 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:785:9
+    |
+785 |         IDT.set_handler(20, exception_entry_20 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:786:9
+    |
+786 |         IDT.set_handler(21, exception_entry_21 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:787:9
+    |
+787 |         IDT.set_handler(22, exception_entry_22 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:788:9
+    |
+788 |         IDT.set_handler(23, exception_entry_23 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:789:9
+    |
+789 |         IDT.set_handler(24, exception_entry_24 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:790:9
+    |
+790 |         IDT.set_handler(25, exception_entry_25 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:791:9
+    |
+791 |         IDT.set_handler(26, exception_entry_26 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:792:9
+    |
+792 |         IDT.set_handler(27, exception_entry_27 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:793:9
+    |
+793 |         IDT.set_handler(28, exception_entry_28 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:794:9
+    |
+794 |         IDT.set_handler(29, exception_entry_29 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:795:9
+    |
+795 |         IDT.set_handler(30, exception_entry_30 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:796:9
+    |
+796 |         IDT.set_handler(31, exception_entry_31 as *const () as u64);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a shared reference to mutable static
+   --> x86_64-kernel/src/main.rs:798:9
+    |
+798 |         IDT.load();
+    |         ^^^^^^^^^^ shared reference to mutable static
+    |
+    = note: shared references to mutable statics are dangerous; it's undefined behavior if the static is mutated or if a mutable reference is created for it while the shared reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:806:9
+    |
+806 |         PICS.initialize(32, 40); // Map PIC1 to IRQ 32-39, PIC2 to IRQ 40-47
+    |         ^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:812:9
+    |
+812 |         PICS.unmask(0);
+    |         ^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:813:9
+    |
+813 |         PICS.unmask(1);
+    |         ^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a mutable reference to mutable static
+   --> x86_64-kernel/src/main.rs:824:9
+    |
+824 |         GDT.set_tss(&raw const TSS);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable reference to mutable static
+    |
+    = note: mutable references to mutable statics are dangerous; it's undefined behavior if any other pointer to the static is used or if any other reference is created for the static while the mutable reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a shared reference to mutable static
+   --> x86_64-kernel/src/main.rs:825:9
+    |
+825 |         GDT.load();
+    |         ^^^^^^^^^^ shared reference to mutable static
+    |
+    = note: shared references to mutable statics are dangerous; it's undefined behavior if the static is mutated or if a mutable reference is created for it while the shared reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: creating a shared reference to mutable static
+   --> x86_64-kernel/src/main.rs:826:9
+    |
+826 |         GDT.load_tss();
+    |         ^^^^^^^^^^^^^^ shared reference to mutable static
+    |
+    = note: shared references to mutable statics are dangerous; it's undefined behavior if the static is mutated or if a mutable reference is created for it while the shared reference lives
+    = help: use a type that relies on "interior mutability" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>
+
+warning: `x86_64-kernel` (bin "x86_64-kernel") generated 52 warnings (run `cargo fix --bin "x86_64-kernel" -p x86_64-kernel` to apply 3 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.82s
+Building bootloader
+ Downloading crates ...
+  Downloaded font8x8 v0.2.5
+   Compiling compiler_builtins v0.1.160 (/home/jesse/.rustup/toolchains/nightly-2026-08-18-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+   Compiling core v0.0.0 (/home/jesse/.rustup/toolchains/nightly-2026-08-18-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling serde v1.0.116
+   Compiling bitflags v1.2.1
+   Compiling x86_64 v0.14.7
+   Compiling llvm-tools v0.1.1
+   Compiling toml v0.5.6
+   Compiling bootloader v0.9.35 (/home/jesse/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bootloader-0.9.35)
+   Compiling volatile v0.4.4
+   Compiling zero v0.1.2
+   Compiling bit_field v0.10.1
+   Compiling font8x8 v0.2.5
+   Compiling rlibc v1.0.0
+   Compiling usize_conversions v0.2.0
+   Compiling xmas-elf v0.6.2
+   Compiling fixedvec v0.2.4
+    Finished `release` profile [optimized + debuginfo] target(s) in 7.56s
+Created bootimage for `x86_64-kernel` at `/home/jesse/atom-os-kernel-tests/userspace-20260920T142419312675278Z/source/target/x86_64-os/release/bootimage-x86_64-kernel.bin`

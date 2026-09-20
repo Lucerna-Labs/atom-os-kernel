@@ -1,0 +1,32 @@
+ABooting Fearless Hypatia...
+oom_after_n: slab=100000 (oom=no , capped=100000)  bump=4096 (oom=yes)
+oom_after_n: GATE PASS — slab reached the 100000-round cap, bump OOMed
+BSTORAGE_READY generation=1
+CHeap Allocation Test: PASS!
+DEPIC Initialized.
+Orchestrator Initialized.
+Ring 3 Multi-Tasking Spawned.
+System running autonomously. Awaiting hardware events...
+ATOM OS kernel shell
+HEAP_OK
+[Daemon] Started
+10,000 SYS_YIELDs took (CPU cycles): 131697973
+shell: demo fleet already ran — interactive mode
+/> s p a w n   w o r k e r . e l f   - - i p c - t e s t 
+spawned pid 3
+/> IPC_SHORT_BUFFER_PRESERVES_QUEUE_OK
+IPC_EMPTY_MAXIMUM_UTF8_OWNERSHIP_OK
+IPC_FIFO_BACKPRESSURE_OK
+IPC_BUFFER_OK rounds=32 free_before=16281 free_after=16281
+w a i t   3 
+wait pid=3 status=0
+/> m s g   b u f f e r e d - 6 c 9 e 5 b b 2 d 4 7 0 4 1 9 1 
+Message sent to Daemon
+/> [Daemon] Received IPC: buffered-6c9e5bb2d4704191
+m k d i r   i m p o r t s 
+MADE
+/> e c h o   b u f f e r e d - 6 c 9 e 5 b b 2 d 4 7 0 4 1 9 1   >   i m p o r t s / n o t e 
+/> s y n c 
+SYNC_OK
+FS_STATUS saved files=2/128 bytes=101/524288 buffers=60/1048576 generation=2 disk=1
+/> 

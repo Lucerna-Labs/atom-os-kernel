@@ -1,0 +1,25 @@
+{
+  "success": false,
+  "acceleration": "kvm",
+  "nonce": "buffered-ad9f012da3ec4c4c",
+  "image_sha256": "35f0c6660651200cedbba054abfb5a085d1645af56befa75d2fe353584638441",
+  "fixture": "isolated v2 disk with boot.done; existing interactive mode",
+  "checks": {
+    "BOOT_INTERACTIVE_CURRENT_IMAGE": true,
+    "IPC_SHORT_BUFFER_PRESERVES_QUEUE_OK": true,
+    "IPC_EMPTY_MAXIMUM_UTF8_OWNERSHIP_OK": true,
+    "IPC_FIFO_BACKPRESSURE_OK": true,
+    "BUFFERED_IPC_NO_FRAME_LEAK": true,
+    "DAEMON_USES_BUFFERED_RECEIVE": true
+  },
+  "qmp_kvm": {
+    "enabled": true,
+    "present": true
+  },
+  "free_frames": {
+    "before": 16281,
+    "after": 16281
+  },
+  "error": "{'error': {'class': 'GenericError', 'desc': \"Parameter 'data' does not accept value '/'\"}}",
+  "elapsed_seconds": 7.085
+}

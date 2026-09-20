@@ -8,4 +8,5 @@ if [ "${ATOM_OFFLINE:-0}" = 1 ]; then offline=(--offline); fi
 for program in payload daemon worker; do
   (cd "$root/$program" && cargo +"$toolchain" build -Zjson-target-spec --release --locked "${offline[@]}")
 done
+bash "$root/scripts/check-elf.sh"
 (cd "$root/x86_64-kernel" && cargo +"$toolchain" bootimage -Zjson-target-spec --release --locked "${offline[@]}")

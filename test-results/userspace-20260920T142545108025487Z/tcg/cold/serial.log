@@ -1,0 +1,25 @@
+ABooting Fearless Hypatia...
+oom_after_n: slab=100000 (oom=no , capped=100000)  bump=4096 (oom=yes)
+oom_after_n: GATE PASS — slab reached the 100000-round cap, bump OOMed
+BSTORAGE_READY generation=2
+CHeap Allocation Test: PASS!
+DEPIC Initialized.
+Orchestrator Initialized.
+Ring 3 Multi-Tasking Spawned.
+System running autonomously. Awaiting hardware events...
+ATOM OS kernel shell
+HEAP_OK
+[Daemon] Started
+10,000 SYS_YIELDs took (CPU cycles): 133091431
+shell: demo fleet already ran — interactive mode
+/> c a t   i m p o r t s / n o t e 
+buffered-6c9e5bb2d4704191
+
+/> s p a w n   h e l l o . e l f 
+spawned pid 3
+/> hello from the atom userspace
+pid 3
+arg: hello.elf
+w a i t   3 
+wait pid=3 status=0
+/> 

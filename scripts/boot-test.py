@@ -92,7 +92,7 @@ class Guest:
         raise RuntimeError(f"missing {expression!r}; serial tail: {self.serial()[-2500:]}")
 
     def keys(self, text):
-        mapping = {" ": "spc", "\n": "ret", ".": "dot", ">": "kp_add", "-": "minus"}
+        mapping = {" ": "spc", "\n": "ret", ".": "dot", ">": "kp_add", "-": "minus", "/": "slash"}
         for character in text:
             self.qmp("send-key", {"keys": [{"type": "qcode", "data": mapping.get(character, character)}], "hold-time": 20})
             time.sleep(0.04)

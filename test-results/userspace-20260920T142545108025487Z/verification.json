@@ -1,0 +1,40 @@
+{
+  "source_base_commit": "e812b97f672c54c18b66eb6c0e3b156c25c253f8",
+  "image_sha256": "35f0c6660651200cedbba054abfb5a085d1645af56befa75d2fe353584638441",
+  "embedded_executables_validated": 24,
+  "native_tests": 32,
+  "ipc_host_tests": 4,
+  "elf_cli_cases": 10,
+  "backends": {
+    "kvm": {
+      "checks": 8,
+      "success": true,
+      "free_frames": {
+        "before": 16281,
+        "after": 16281
+      },
+      "qmp_kvm": {
+        "enabled": true,
+        "present": true
+      }
+    },
+    "tcg": {
+      "checks": 8,
+      "success": true,
+      "free_frames": {
+        "before": 16281,
+        "after": 16281
+      },
+      "qmp_kvm": {
+        "enabled": false,
+        "present": true
+      }
+    }
+  },
+  "compiled_sources_match_build_snapshot": true,
+  "post_run_changes": [
+    "README.md",
+    "docs/USERSPACE-REUSE.md"
+  ],
+  "failed_attempt": "../userspace-20260920T142419312675278Z: QMP slash key missing; six IPC/daemon gates had passed; corrected harness and reran"
+}
