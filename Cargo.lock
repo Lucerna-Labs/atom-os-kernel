@@ -49,16 +49,11 @@ name = "kernel-lane"
 version = "0.1.0"
 
 [[package]]
-name = "kernel-lightcone"
-version = "0.1.0"
-
-[[package]]
 name = "kernel-net"
 version = "0.1.0"
 dependencies = [
  "kernel-egress",
  "kernel-kit",
- "kernel-lightcone",
  "kernel-taint",
 ]
 

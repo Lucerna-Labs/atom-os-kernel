@@ -24,8 +24,6 @@
 #[cfg(any(test, feature = "std"))]
 extern crate std;
 
-pub mod lightcone;
-
 use core::cell::UnsafeCell;
 use core::hint::spin_loop;
 use core::ops::{Deref, DerefMut};
@@ -424,7 +422,6 @@ pub fn is_up() -> bool { STATE.lock().up }
 /// (including ICMP echo REPLIES to our probes) lands in the app ring.
 /// The `transmit` closure is the driver's send path.
 pub fn handle_frame(packet: &[u8], transmit: &mut dyn FnMut(&[u8])) {
-    lightcone::observe(0, packet);
     let (header, _) = match parse_eth(packet) {
         Some(split) => split,
         None => return,
@@ -631,12 +628,11 @@ pub fn heartbeat() {
 
 /// Raw transmit through the registry. Returns success.
 pub fn send_raw(bytes: &[u8]) -> bool {
-    let sent = {
-        let mut device = DEVICE.lock();
-        match device.as_mut() { Some(net) => net.transmit(bytes).is_ok(), None => false }
-    };
-    if sent { lightcone::observe(1, bytes); }
-    sent
+    let mut device = DEVICE.lock();
+    match device.as_mut() {
+        Some(net) => net.transmit(bytes).is_ok(),
+        None => false,
+    }
 }
 
 /// SYS_NET sub 4: ARP bootstrap probe (broadcast ask for the

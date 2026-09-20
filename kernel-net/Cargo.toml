@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-kernel-lightcone = { path = "../kernel-lightcone" }
 kernel-kit = { path = "../kernel-kit" }
 kernel-egress = { path = "../kernel-egress" }
 kernel-taint = { path = "../kernel-taint" }

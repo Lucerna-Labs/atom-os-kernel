@@ -24,10 +24,8 @@ jobs:
         run: bash scripts/test-userspace-host.sh
       - name: Buffered IPC and daemon acceptance
         run: python3 scripts/test-userspace-imports.py --accel tcg --output test-results/ci-userspace
-      - name: Native regressions and passive Lightcone geometry
-        run: bash scripts/test-network-lightcone.sh
-      - name: Bidirectional passive Lightcone on a real virtual NIC
-        run: python3 scripts/test-network-lightcone-vm.py --accel tcg --output test-results/ci-lightcone
+      - name: Native regression tests
+        run: bash scripts/test-native.sh
       - name: Boot, process, IPC and persistent-storage acceptance
         run: python3 scripts/boot-test.py --accel tcg --output test-results/ci
       - name: Interrupted virtio writes and flush recovery
@@ -40,7 +38,6 @@ jobs:
         with:
           name: atom-os-test-results
           path: |
-            test-results/ci-lightcone/
             test-results/ci-userspace/
             target/userspace-host-tests/elf-cases/result.json
             test-results/ci/

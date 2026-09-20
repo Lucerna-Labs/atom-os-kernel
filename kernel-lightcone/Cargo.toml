@@ -1,7 +1,0 @@
-[package]
-name = "kernel-lightcone"
-version = "0.1.0"
-edition = "2021"
-description = "Passive causal geometry over an immutable trained network world"
-[features]
-std = []

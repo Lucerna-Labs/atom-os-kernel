@@ -15,7 +15,7 @@ import uuid
 
 
 class Guest:
-    def __init__(self, source, output, disk, accel, *, blkdebug=None, netdev=None):
+    def __init__(self, source, output, disk, accel, *, blkdebug=None):
         self.output = output
         output.mkdir()
         self.control = tempfile.TemporaryDirectory(prefix="atom-qmp-")
@@ -29,13 +29,9 @@ class Guest:
                    "-drive", f"if=none,format=raw,file={disk_source},id=atomdata,cache=writeback,werror=report,rerror=report",
                    "-device", "virtio-blk-pci,drive=atomdata,disable-modern=on",
                    "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
-                   "-display", "none", "-serial", f"file:{output / 'serial.log'}",
+                   "-display", "none", "-nic", "none", "-serial", f"file:{output / 'serial.log'}",
                    "-qmp", f"unix:{self.qmp_path},server=on,wait=off", "-pidfile", str(self.pidfile),
                    "-no-shutdown", "-d", "guest_errors", "-D", str(output / "guest-errors.log")]
-        if netdev is None:
-            command += ["-nic", "none"]
-        else:
-            command += ["-netdev", netdev, "-device", "virtio-net-pci,netdev=atomnet,disable-modern=on,mac=52:54:00:12:34:56"]
         if blkdebug is not None:
             command = ["stdbuf", "-oL"] + command
         if accel == "kvm" and not os.access("/dev/kvm", os.R_OK | os.W_OK):

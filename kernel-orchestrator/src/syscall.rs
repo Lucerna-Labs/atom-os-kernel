@@ -634,11 +634,6 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                 None => ERROR,
             };
         }
-    } else if is(number, SYS_LIGHTCONE) {
-        frame.rax = match arg {
-            0 => kernel_net::lightcone::status(arg1),
-            1 => kernel_net::lightcone::record(arg1,arg2), _ => None,
-        }.unwrap_or(ERROR);
     } else if is(number, SYS_VGA) {
         // E40: the visible cursor. sub=arg: 0=move by arg cells
         // (negative = left, line-local clamp), 1=read (col | row<<8).
