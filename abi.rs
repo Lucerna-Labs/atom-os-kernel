@@ -118,3 +118,9 @@ pub struct ProcessInfo {
 impl ProcessInfo {
     pub const EMPTY: Self = Self { pid: 0, parent: 0, state: 0, exit_code: 0, name: [0; 64] };
 }
+
+/// Read-only network causal-world admission records and provenance.
+pub const SYS_LIGHTCONE: u64 = 55;
+
+/// Read-only Lightcone response page (same per-process page as network receive).
+pub const LIGHTCONE_PAGE: u64 = 0x0000_7f00_0000_0000;

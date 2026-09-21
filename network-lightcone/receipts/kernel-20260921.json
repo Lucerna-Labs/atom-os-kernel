@@ -1,0 +1,43 @@
+{
+  "status": "implemented_and_VM_validated_local_diagnostic",
+  "sealed": false,
+  "accelerator_acceptance": "blocked_pending_specific_Kaggle_upload_authorization",
+  "long_term_reliability": "not_established",
+  "native_tests_passed": 40,
+  "native_graph_oracle_queries": 14850,
+  "kvm_checks": {
+    "PACK_IDENTITY_AND_READONLY_WORLD": true,
+    "REAL_VIRTIO_BOTH_DIRECTIONS": true,
+    "UNKNOWN_FRAGMENT_MALFORMED_AND_PAYLOAD_ISOLATION": true,
+    "UNMODIFIED_WIRE_BYTES_BOUND_TO_RECEIPTS": true,
+    "EXACT_TYPED_GRAPH_AND_INDEPENDENT_RECEIPT_HASH": true,
+    "PROVENANCE_AND_FULL_GEOMETRY_FROM_KERNEL": true,
+    "EXISTING_IPC_SURVIVES": true
+  },
+  "tcg_checks": {
+    "PACK_IDENTITY_AND_READONLY_WORLD": true,
+    "REAL_VIRTIO_BOTH_DIRECTIONS": true,
+    "UNKNOWN_FRAGMENT_MALFORMED_AND_PAYLOAD_ISOLATION": true,
+    "UNMODIFIED_WIRE_BYTES_BOUND_TO_RECEIPTS": true,
+    "EXACT_TYPED_GRAPH_AND_INDEPENDENT_RECEIPT_HASH": true,
+    "PROVENANCE_AND_FULL_GEOMETRY_FROM_KERNEL": true,
+    "EXISTING_IPC_SURVIVES": true
+  },
+  "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+  "image_sha256": "d560f90b8bc5f111fdeee2b0c860c1b546898acb82b5dcbf228d00cabd7cde79",
+  "compiled_source_files_verified_current": 113,
+  "source_snapshot_sha256": "554d6ed76033fd9f6e0198197d17944130d034a4a725229af1a5236c4300f747",
+  "local_evidence": "/home/jesse/Desktop/Projects/atom-os-kernel/test-results/network-world-20260921T125022375611069Z",
+  "vm_evidence": "/home/jesse/atom-os-kernel-tests/network-world-20260921T125022375611069Z",
+  "failure_evidence": [
+    "receipts/failed-local-001",
+    "test-results/network-world-20260921T124436534499416Z",
+    "test-results/network-world-20260921T124658763490310Z"
+  ],
+  "limits": [
+    "small source-bound protocol world; six fresh held-out edges",
+    "pairwise relation ranking is not threat detection accuracy",
+    "no copy prevention or packet authorization in Lightcone",
+    "TPU job prepared but not uploaded"
+  ]
+}

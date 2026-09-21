@@ -1,0 +1,9 @@
+[package]
+name = "kernel-lightcone"
+version = "0.2.0"
+edition = "2021"
+description = "Passive admission from a sourced network causal world and trained full geometry"
+[dependencies]
+sha2 = { version = "0.10.9", default-features = false }
+[features]
+std = []

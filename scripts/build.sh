@@ -3,6 +3,7 @@ set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 export PATH="$HOME/.cargo/bin:$PATH"
 toolchain=${ATOM_TOOLCHAIN:-nightly-2026-08-18}
+python3 "$root/network-lightcone/tools/verify.py"
 offline=()
 if [ "${ATOM_OFFLINE:-0}" = 1 ]; then offline=(--offline); fi
 for program in payload daemon worker; do

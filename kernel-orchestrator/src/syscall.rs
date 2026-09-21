@@ -544,6 +544,15 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             kernel_crypt::destroy();
             frame.rax = 0;
         }
+    } else if is(number, SYS_LIGHTCONE) {
+        if let Some(space) = context.space.as_ref() {
+            if let Some(phys) = space.translate_user(RECV_BASE, true) {
+                let target = phys_to_virt(phys) as *mut u8;
+                unsafe { core::ptr::write_bytes(target, 0, 4096); }
+                let page = unsafe { core::slice::from_raw_parts_mut(target, 4096) };
+                frame.rax = kernel_net::lightcone::read(arg, arg1, page).map(|n| n as u64).unwrap_or(ERROR);
+            }
+        }
     } else if is(number, SYS_NET) {
         // E37 the network ingress. sub = arg:
         //   0=status, 1=recv (RECV_BASE; MARKS THE CALLER TAINTED —

@@ -1,0 +1,15 @@
+{
+  "destination": "Private Kaggle job jessealicea/atom-os-network-lightcone-v2",
+  "files": {
+    "kernel-metadata.json": {
+      "bytes": 347,
+      "sha256": "56db3b2796a31236424b128c482331e2247d0711ec9dfa9709447084fb9fb636"
+    },
+    "run.py": {
+      "bytes": 100364,
+      "sha256": "0a8693fd6be398ebb5dcdbb3f4718eaef00bca2935027d4ad809855a2ad4db1a"
+    }
+  },
+  "contents": "Trainer source and 55 authored protocol concepts with 60 typed relations. No packet captures, private user data, credentials, or sibling trained artifacts.",
+  "source_revision": "20940b9b03b57decd08d7d9cb126a33df6fad773"
+}

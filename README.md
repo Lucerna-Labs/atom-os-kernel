@@ -388,3 +388,12 @@ including the [original failed baseline](test-results/20260905T202917Z/REPORT.md
 Generated images, test data disks, caches and large trace archives remain local.
 [BACKUP.md](BACKUP.md) explains the backup scope and the inherited, unused
 `atom-3d-engine` Git link.
+
+## Network causal-world Lightcone
+
+The separate network Lightcone uses sourced typed relationships and trained
+48D geometry, with passive admission on ingress and successful egress. It
+preserves provenance and emits read-only receipts; it is not the substrate or
+the existing egress filter. The current embedded world is a **local diagnostic**;
+TPU acceptance, broad coverage and long-term reliability remain open.
+See [construction, build, evidence and limits](network-lightcone/README.md).

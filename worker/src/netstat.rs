@@ -22,5 +22,10 @@ fn main() {
         sense >> 63,
         (sense >> 32) & 0x7FFF_FFFF
     ));
+    let n = rt::call3(SYS_LIGHTCONE, 0, 0, 0);
+    if n != ERROR && n <= 4096 {
+        let b = unsafe { core::slice::from_raw_parts(LIGHTCONE_PAGE as *const u8, n as usize) };
+        if let Ok(text) = core::str::from_utf8(b) { rt::print("network Lightcone: "); rt::print(text); rt::print("\n"); }
+    }
     rt::exit(0);
 }
