@@ -1,0 +1,28 @@
+{
+  "open_world": true,
+  "revision": 2,
+  "status": "sourced",
+  "covered": [
+    "Ethernet observations",
+    "ARP context",
+    "IPv4 context",
+    "UDP context",
+    "ICMP context",
+    "TCP header context",
+    "ingress and egress admission"
+  ],
+  "gaps": [
+    "IPv6",
+    "TCP transport implementation",
+    "IP reassembly",
+    "TLS/application semantics",
+    "authenticated session ancestry",
+    "copy provenance enforcement",
+    "long-term traffic reliability"
+  ],
+  "lanes": {
+    "causal": "passive graph only",
+    "geometry": "48D plus observer shadow",
+    "reasoning": "separate consumer, not inside Lightcone"
+  }
+}
