@@ -1,0 +1,713 @@
+{
+  "schema": 1,
+  "status": "ready_for_private_tpu_training",
+  "seal_ready": false,
+  "sealed": false,
+  "upload_authorized": true,
+  "upload_submitted": false,
+  "world_id": "atom-network-causal-v3",
+  "world_version": 3,
+  "pack_sha256": "e6a97fde814d04ea4a5b306b19aad2cf98d370fbedd0d364dadd11cf497d4eae",
+  "source_sha256": "4566ed15399dcc19bef0c0c61f3bad13c658928905b5ad7b739f6e23684f2716",
+  "split_manifest_sha256": "8d495c17cf8c0a830dbd691286a8d4aae79fdaa6e0d5026a659ecf9f4f51cc8e",
+  "native_tests_passed": 41,
+  "graph_oracle_queries": 17010,
+  "training_gates": {
+    "cross_composition_ranking": true,
+    "finite": true,
+    "nonexpansion": true,
+    "orthonormal": true,
+    "sealed_ranking": true,
+    "train_ranking": true,
+    "validation_ranking": true
+  },
+  "training_metrics": {
+    "cross_composition": {
+      "edges": 2,
+      "mrr": 0.12142857142857143,
+      "pairwise_tail_ranking": 0.8762295081967213,
+      "ranks": [
+        7,
+        10
+      ],
+      "top1": 0.0,
+      "worst": 0.8524590163934426
+    },
+    "regression": {
+      "edges": 16,
+      "mrr": 0.35990899674263643,
+      "pairwise_tail_ranking": 0.8565443525979439,
+      "ranks": [
+        1,
+        2,
+        22,
+        17,
+        8,
+        7,
+        1,
+        2,
+        9,
+        32,
+        8,
+        2,
+        12,
+        28,
+        1,
+        2
+      ],
+      "top1": 0.1875,
+      "worst": 0.4745762711864407
+    },
+    "sealed_test": {
+      "edges": 2,
+      "mrr": 0.12272727272727274,
+      "pairwise_tail_ranking": 0.7950819672131147,
+      "ranks": [
+        22,
+        5
+      ],
+      "top1": 0.0,
+      "worst": 0.6557377049180327
+    },
+    "train": {
+      "edges": 44,
+      "mrr": 1.0,
+      "pairwise_tail_ranking": 1.0,
+      "ranks": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "top1": 1.0,
+      "worst": 1.0
+    },
+    "validation": {
+      "edges": 2,
+      "mrr": 0.075,
+      "pairwise_tail_ranking": 0.6229508196721312,
+      "ranks": [
+        8,
+        40
+      ],
+      "top1": 0.0,
+      "worst": 0.36065573770491804
+    }
+  },
+  "training_devices": [
+    {
+      "id": 0,
+      "kind": "NVIDIA GeForce RTX 5070 Ti",
+      "platform": "gpu"
+    }
+  ],
+  "training_elapsed_seconds": 3.9980154037475586,
+  "dynamic_isolation": {
+    "passed": true,
+    "changed_evaluation_only_node": "endpoint_addresses",
+    "evaluation_only_nodes": [
+      "endpoint_addresses",
+      "flow_control",
+      "header_problem",
+      "icmp_parameter_problem",
+      "icmp_redirect",
+      "pseudo_header",
+      "route_advice",
+      "tcp_window"
+    ],
+    "max_training_coordinate_change": 0.0,
+    "max_relation_vector_change": 0.0,
+    "trainer_returncode": 1
+  },
+  "audit_checks": [
+    {
+      "name": "current_world_validates",
+      "passed": true,
+      "owner": "world_compiler",
+      "error": null
+    },
+    {
+      "name": "dangling_endpoint",
+      "passed": true,
+      "owner": "world_compiler",
+      "error": "ValueError('edge e000 has dangling endpoint')",
+      "required": true
+    },
+    {
+      "name": "unknown_source",
+      "passed": true,
+      "owner": "world_compiler",
+      "error": "ValueError('node frame references an unknown source')",
+      "required": true
+    },
+    {
+      "name": "duplicate_id",
+      "passed": true,
+      "owner": "world_compiler",
+      "error": "ValueError('duplicate node id: frame')",
+      "required": true
+    },
+    {
+      "name": "empty_provenance",
+      "passed": true,
+      "owner": "world_compiler",
+      "error": "ValueError('edge e000 has no provenance')",
+      "required": true
+    },
+    {
+      "name": "forbidden_rights",
+      "passed": true,
+      "owner": "world_compiler",
+      "error": "ValueError('source rfc768 has forbidden or unknown rights')",
+      "required": true
+    },
+    {
+      "name": "missing_rights",
+      "passed": true,
+      "owner": "world_compiler",
+      "error": "ValueError('source rfc768 has forbidden or unknown rights')",
+      "required": true
+    },
+    {
+      "name": "duplicate_statement",
+      "passed": true,
+      "owner": "world_compiler",
+      "error": "ValueError('duplicate normalized statement: arp_request and frame')",
+      "required": true
+    },
+    {
+      "name": "missing_source_digest",
+      "passed": true,
+      "owner": "world_compiler",
+      "error": "ValueError('source rfc768 has invalid sha256')",
+      "required": true
+    },
+    {
+      "name": "negative_relation_positive_polarity",
+      "passed": true,
+      "owner": "world_compiler",
+      "error": "ValueError('edge e003 polarity conflicts with does_not_establish')",
+      "required": true
+    },
+    {
+      "name": "same_relation_in_train_and_test_with_renamed_group",
+      "passed": true,
+      "owner": "world_compiler",
+      "error": "ValueError(\"relation ('arp_request', 'arp_mapping', 'requires', 1) leaks across splits\")",
+      "required": true
+    },
+    {
+      "name": "cpu_cannot_promote_normally",
+      "passed": true,
+      "owner": "artifact_promotion",
+      "returncode": 1,
+      "produced_status": null
+    },
+    {
+      "name": "cpu_cannot_promote_under_python_optimization",
+      "passed": true,
+      "owner": "artifact_promotion",
+      "returncode": 1,
+      "produced_status": null
+    },
+    {
+      "name": "missing_named_gates_rejected",
+      "passed": true,
+      "owner": "artifact_promotion",
+      "returncode": 1,
+      "produced_status": null
+    },
+    {
+      "name": "evaluation_only_nodes_excluded_from_training_negatives",
+      "passed": true,
+      "owner": "training_isolation",
+      "evaluation_only_nodes": [
+        "endpoint_addresses",
+        "flow_control",
+        "header_problem",
+        "icmp_parameter_problem",
+        "icmp_redirect",
+        "pseudo_header",
+        "route_advice",
+        "tcp_window"
+      ],
+      "negative_candidate_ids": [
+        "arp_mapping",
+        "arp_not_identity",
+        "arp_reply",
+        "arp_request",
+        "copy",
+        "export",
+        "foreign",
+        "frame",
+        "icmp_error",
+        "icmp_match",
+        "icmp_not_identity",
+        "icmp_quote",
+        "icmp_reply",
+        "icmp_request",
+        "ip_checksum",
+        "ip_fragment",
+        "ip_header",
+        "ip_length",
+        "ip_not_identity",
+        "ip_options",
+        "ip_protocol",
+        "ipv4",
+        "opaque",
+        "reassembly",
+        "tcp",
+        "tcp_ack",
+        "tcp_checksum",
+        "tcp_not_identity",
+        "tcp_payload",
+        "tcp_ports",
+        "tcp_retransmit",
+        "tcp_sequence",
+        "tcp_state",
+        "tcp_syn",
+        "udp",
+        "udp_application",
+        "udp_checksum",
+        "udp_integrity",
+        "udp_length",
+        "udp_not_identity",
+        "udp_ports",
+        "udp_unreliable"
+      ]
+    }
+  ],
+  "vm": {
+    "kvm": {
+      "image_sha256": "11d8281ce3a959db44d832b91202389b40136362173a6c63a3401f05ed63c972",
+      "elapsed_seconds": 85.33563027600758,
+      "checks": {
+        "udp_delivery_valid": {
+          "passed": true,
+          "expected_delivery": true,
+          "observed_delivery": true
+        },
+        "udp_delivery_bad-ip-checksum": {
+          "passed": true,
+          "expected_delivery": false,
+          "observed_delivery": false
+        },
+        "udp_delivery_bad-udp-checksum": {
+          "passed": true,
+          "expected_delivery": false,
+          "observed_delivery": false
+        },
+        "udp_delivery_ip-total-too-long": {
+          "passed": true,
+          "expected_delivery": false,
+          "observed_delivery": false
+        },
+        "udp_delivery_udp-length-too-long": {
+          "passed": true,
+          "expected_delivery": false,
+          "observed_delivery": false
+        },
+        "udp_delivery_fragment-offset": {
+          "passed": true,
+          "expected_delivery": false,
+          "observed_delivery": false
+        },
+        "udp_delivery_wrong-destination": {
+          "passed": true,
+          "expected_delivery": false,
+          "observed_delivery": false
+        },
+        "udp_delivery_short-ihl": {
+          "passed": true,
+          "expected_delivery": false,
+          "observed_delivery": false
+        },
+        "wire_observed_valid": {
+          "passed": true
+        },
+        "wire_observed_bad-ip-checksum": {
+          "passed": true
+        },
+        "wire_observed_bad-udp-checksum": {
+          "passed": true
+        },
+        "wire_observed_ip-total-too-long": {
+          "passed": true
+        },
+        "wire_observed_udp-length-too-long": {
+          "passed": true
+        },
+        "wire_observed_fragment-offset": {
+          "passed": true
+        },
+        "wire_observed_wrong-destination": {
+          "passed": true
+        },
+        "wire_observed_short-ihl": {
+          "passed": true
+        },
+        "all_sustained_rounds_complete": {
+          "passed": true,
+          "rounds": [
+            {
+              "round": 0,
+              "free": 16254,
+              "info": {
+                "world_version": 3,
+                "nodes": 63,
+                "edges": 66,
+                "dimensions": 48,
+                "rx": 264,
+                "tx": 256,
+                "failures": 0,
+                "latest": 520,
+                "oldest": 489,
+                "pack_sha256": "e6a97fde814d04ea4a5b306b19aad2cf98d370fbedd0d364dadd11cf497d4eae",
+                "source_sha256": "4566ed15399dcc19bef0c0c61f3bad13c658928905b5ad7b739f6e23684f2716",
+                "training_sha256": "33766fc7e85fd8eddef5a91db654e85dc9dacace025eb6d7f3cbde7849d25666",
+                "training_platform": "local_diagnostic",
+                "sealed": false,
+                "passive": true,
+                "holds_verdict": false
+              }
+            },
+            {
+              "round": 1,
+              "free": 16254,
+              "info": {
+                "world_version": 3,
+                "nodes": 63,
+                "edges": 66,
+                "dimensions": 48,
+                "rx": 520,
+                "tx": 512,
+                "failures": 0,
+                "latest": 1032,
+                "oldest": 1001,
+                "pack_sha256": "e6a97fde814d04ea4a5b306b19aad2cf98d370fbedd0d364dadd11cf497d4eae",
+                "source_sha256": "4566ed15399dcc19bef0c0c61f3bad13c658928905b5ad7b739f6e23684f2716",
+                "training_sha256": "33766fc7e85fd8eddef5a91db654e85dc9dacace025eb6d7f3cbde7849d25666",
+                "training_platform": "local_diagnostic",
+                "sealed": false,
+                "passive": true,
+                "holds_verdict": false
+              }
+            },
+            {
+              "round": 2,
+              "free": 16254,
+              "info": {
+                "world_version": 3,
+                "nodes": 63,
+                "edges": 66,
+                "dimensions": 48,
+                "rx": 776,
+                "tx": 768,
+                "failures": 0,
+                "latest": 1544,
+                "oldest": 1513,
+                "pack_sha256": "e6a97fde814d04ea4a5b306b19aad2cf98d370fbedd0d364dadd11cf497d4eae",
+                "source_sha256": "4566ed15399dcc19bef0c0c61f3bad13c658928905b5ad7b739f6e23684f2716",
+                "training_sha256": "33766fc7e85fd8eddef5a91db654e85dc9dacace025eb6d7f3cbde7849d25666",
+                "training_platform": "local_diagnostic",
+                "sealed": false,
+                "passive": true,
+                "holds_verdict": false
+              }
+            }
+          ]
+        },
+        "sustained_wire_bytes_and_checksums": {
+          "passed": true,
+          "outbound": 768,
+          "echoed_inbound": 768,
+          "reader_errors": []
+        },
+        "kernel_ledger_retains_32": {
+          "passed": true,
+          "counts": [
+            32,
+            32,
+            1513,
+            1544
+          ]
+        },
+        "ledger_summary_is_reliable": {
+          "passed": true,
+          "counts": [
+            32,
+            32,
+            1513,
+            1544
+          ]
+        },
+        "free_frames_stable_after_warmup": {
+          "passed": true
+        },
+        "observed_receipts_exact_and_immutable": {
+          "passed": true,
+          "verified_receipts": 8
+        },
+        "interactive_ipc_after_sustained_load": {
+          "passed": true
+        }
+      }
+    },
+    "tcg": {
+      "image_sha256": "11d8281ce3a959db44d832b91202389b40136362173a6c63a3401f05ed63c972",
+      "elapsed_seconds": 82.81786892299715,
+      "checks": {
+        "udp_delivery_valid": {
+          "passed": true,
+          "expected_delivery": true,
+          "observed_delivery": true
+        },
+        "udp_delivery_bad-ip-checksum": {
+          "passed": true,
+          "expected_delivery": false,
+          "observed_delivery": false
+        },
+        "udp_delivery_bad-udp-checksum": {
+          "passed": true,
+          "expected_delivery": false,
+          "observed_delivery": false
+        },
+        "udp_delivery_ip-total-too-long": {
+          "passed": true,
+          "expected_delivery": false,
+          "observed_delivery": false
+        },
+        "udp_delivery_udp-length-too-long": {
+          "passed": true,
+          "expected_delivery": false,
+          "observed_delivery": false
+        },
+        "udp_delivery_fragment-offset": {
+          "passed": true,
+          "expected_delivery": false,
+          "observed_delivery": false
+        },
+        "udp_delivery_wrong-destination": {
+          "passed": true,
+          "expected_delivery": false,
+          "observed_delivery": false
+        },
+        "udp_delivery_short-ihl": {
+          "passed": true,
+          "expected_delivery": false,
+          "observed_delivery": false
+        },
+        "wire_observed_valid": {
+          "passed": true
+        },
+        "wire_observed_bad-ip-checksum": {
+          "passed": true
+        },
+        "wire_observed_bad-udp-checksum": {
+          "passed": true
+        },
+        "wire_observed_ip-total-too-long": {
+          "passed": true
+        },
+        "wire_observed_udp-length-too-long": {
+          "passed": true
+        },
+        "wire_observed_fragment-offset": {
+          "passed": true
+        },
+        "wire_observed_wrong-destination": {
+          "passed": true
+        },
+        "wire_observed_short-ihl": {
+          "passed": true
+        },
+        "all_sustained_rounds_complete": {
+          "passed": true,
+          "rounds": [
+            {
+              "round": 0,
+              "free": 16254,
+              "info": {
+                "world_version": 3,
+                "nodes": 63,
+                "edges": 66,
+                "dimensions": 48,
+                "rx": 264,
+                "tx": 256,
+                "failures": 0,
+                "latest": 520,
+                "oldest": 489,
+                "pack_sha256": "e6a97fde814d04ea4a5b306b19aad2cf98d370fbedd0d364dadd11cf497d4eae",
+                "source_sha256": "4566ed15399dcc19bef0c0c61f3bad13c658928905b5ad7b739f6e23684f2716",
+                "training_sha256": "33766fc7e85fd8eddef5a91db654e85dc9dacace025eb6d7f3cbde7849d25666",
+                "training_platform": "local_diagnostic",
+                "sealed": false,
+                "passive": true,
+                "holds_verdict": false
+              }
+            },
+            {
+              "round": 1,
+              "free": 16254,
+              "info": {
+                "world_version": 3,
+                "nodes": 63,
+                "edges": 66,
+                "dimensions": 48,
+                "rx": 520,
+                "tx": 512,
+                "failures": 0,
+                "latest": 1032,
+                "oldest": 1001,
+                "pack_sha256": "e6a97fde814d04ea4a5b306b19aad2cf98d370fbedd0d364dadd11cf497d4eae",
+                "source_sha256": "4566ed15399dcc19bef0c0c61f3bad13c658928905b5ad7b739f6e23684f2716",
+                "training_sha256": "33766fc7e85fd8eddef5a91db654e85dc9dacace025eb6d7f3cbde7849d25666",
+                "training_platform": "local_diagnostic",
+                "sealed": false,
+                "passive": true,
+                "holds_verdict": false
+              }
+            },
+            {
+              "round": 2,
+              "free": 16254,
+              "info": {
+                "world_version": 3,
+                "nodes": 63,
+                "edges": 66,
+                "dimensions": 48,
+                "rx": 776,
+                "tx": 768,
+                "failures": 0,
+                "latest": 1544,
+                "oldest": 1513,
+                "pack_sha256": "e6a97fde814d04ea4a5b306b19aad2cf98d370fbedd0d364dadd11cf497d4eae",
+                "source_sha256": "4566ed15399dcc19bef0c0c61f3bad13c658928905b5ad7b739f6e23684f2716",
+                "training_sha256": "33766fc7e85fd8eddef5a91db654e85dc9dacace025eb6d7f3cbde7849d25666",
+                "training_platform": "local_diagnostic",
+                "sealed": false,
+                "passive": true,
+                "holds_verdict": false
+              }
+            }
+          ]
+        },
+        "sustained_wire_bytes_and_checksums": {
+          "passed": true,
+          "outbound": 768,
+          "echoed_inbound": 768,
+          "reader_errors": []
+        },
+        "kernel_ledger_retains_32": {
+          "passed": true,
+          "counts": [
+            32,
+            32,
+            1513,
+            1544
+          ]
+        },
+        "ledger_summary_is_reliable": {
+          "passed": true,
+          "counts": [
+            32,
+            32,
+            1513,
+            1544
+          ]
+        },
+        "free_frames_stable_after_warmup": {
+          "passed": true
+        },
+        "observed_receipts_exact_and_immutable": {
+          "passed": true,
+          "verified_receipts": 8
+        },
+        "interactive_ipc_after_sustained_load": {
+          "passed": true
+        }
+      }
+    }
+  },
+  "evidence": {
+    "compiler_and_promotion_audit": {
+      "path": "/home/jesse/Desktop/Projects/atom-os-kernel/target/network-lightcone/pre-tpu-audit-v3-002/result.json",
+      "sha256": "10a5bdf75eabe071ace750ccf17b397b3acdeab892f3ee70b2cc7031bdda90bd"
+    },
+    "dynamic_training_isolation": {
+      "path": "/home/jesse/Desktop/Projects/atom-os-kernel/target/network-lightcone/isolation-v3-002/result.json",
+      "sha256": "753f185592709c88a8cd5cd8bc765e9a0d1a3f42bb6f2e2caa95fda0a5b65fbb"
+    },
+    "kvm": {
+      "path": "/home/jesse/Desktop/Projects/atom-os-kernel/test-results/network-world-20260921T213126280497027Z/pre-tpu-kvm/result.json",
+      "sha256": "cd965da7774a6375b400ba04866fa983c3dbb00a31747d2a2895146807b77964"
+    },
+    "tcg": {
+      "path": "/home/jesse/Desktop/Projects/atom-os-kernel/test-results/network-world-20260921T213126280497027Z/pre-tpu-tcg/result.json",
+      "sha256": "255ddedee59983f1efa15245f845a5f91fc6bbd1bcd922405883e19dd6075f18"
+    },
+    "baseline_kvm": {
+      "path": "/home/jesse/Desktop/Projects/atom-os-kernel/test-results/network-world-20260921T213126280497027Z/kvm/result.json",
+      "sha256": "199d570317fc9caf8511fcd38b28131f67b6fc017b87a1ac4f040fa68be44de7"
+    },
+    "baseline_tcg": {
+      "path": "/home/jesse/Desktop/Projects/atom-os-kernel/test-results/network-world-20260921T213126280497027Z/tcg/result.json",
+      "sha256": "5d5a6bb8556f7edd8fffb7e37e9de30aad9b84f167f057daf77f20bef34d6ff2"
+    },
+    "training": {
+      "path": "/home/jesse/Desktop/Projects/atom-os-kernel/network-lightcone/worlds/v3-local-rtx-diagnostic/training.json",
+      "sha256": "33766fc7e85fd8eddef5a91db654e85dc9dacace025eb6d7f3cbde7849d25666"
+    },
+    "manifest": {
+      "path": "/home/jesse/Desktop/Projects/atom-os-kernel/network-lightcone/worlds/v3-local-rtx-diagnostic/manifest.json",
+      "sha256": "d4b5912f4a0116f951a11a42e56a5e0ad2b93234d28eb90b87a5ccadca37c9a0"
+    }
+  },
+  "limits": [
+    "local CPU training is diagnostic, not accelerator acceptance",
+    "fresh heldout top-1 is 0 of 6 despite passing frozen pairwise gates",
+    "long-term workload, topology, clock, and adversarial reliability remains open",
+    "IPv6, reassembly, TLS/application semantics, authenticated lineage, and copy-provenance enforcement remain open",
+    "a TPU run does not automatically create a seal"
+  ]
+}

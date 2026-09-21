@@ -28,12 +28,13 @@ key handling, egress filter and authorization.
   entries. The same pack can serve both directions; wire direction is separate
   from causal graph traversal direction.
 
-Current embedded pack: `worlds/v3-local-diagnostic`. Its recorded platform is
-`local_diagnostic`, **not TPU accepted or sealed**. The compiler, promotion,
-training-isolation, malformed-packet and sustained KVM/TCG gates pass. The user
-authorized a private Kaggle upload after this local gate. See
-[the v3 pre-TPU report](receipts/pre-tpu-v3-20260921.md). The runtime reports
-training platform and `sealed=false`.
+Current embedded pack: `worlds/v3-local-rtx-diagnostic`. JAX 0.11.2 trained
+it on the local NVIDIA GeForce RTX 5070 Ti in 3.998 seconds. Its recorded
+platform remains `local_diagnostic`, **not TPU accepted or sealed**. The
+compiler, promotion, training-isolation, malformed-packet and sustained
+KVM/TCG gates pass. See
+[the RTX validation report](receipts/local-rtx-v3-20260921.md). The runtime
+reports training platform and `sealed=false`.
 
 ## Build and inspect
 

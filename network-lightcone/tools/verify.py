@@ -9,7 +9,7 @@ def sha(b):return hashlib.sha256(b).hexdigest()
 def check(test,message):
  if not test:raise ValueError(message)
 def main():
- p=argparse.ArgumentParser();p.add_argument('--pack',type=Path,default=ROOT/'network-lightcone/worlds/v3-local-diagnostic');p.add_argument('--require-tpu',action='store_true');a=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument('--pack',type=Path,default=ROOT/'network-lightcone/worlds/v3-local-rtx-diagnostic');p.add_argument('--require-tpu',action='store_true');a=p.parse_args()
  m=json.loads((a.pack/'manifest.json').read_bytes())
  for name,expected in m['files'].items():check(sha((a.pack/name).read_bytes())==expected,'file hash: '+name)
  raw=(a.pack/'world.bin').read_bytes();wraw=(a.pack/'world.json').read_bytes();w=json.loads(wraw);t=json.loads((a.pack/'training.json').read_bytes());g=json.loads((a.pack/'geometry.json').read_bytes())

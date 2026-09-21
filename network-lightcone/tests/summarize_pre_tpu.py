@@ -66,6 +66,8 @@ receipt = {
     "graph_oracle_queries": 63 * 3 * 5 * 6 * 3,
     "training_gates": evidence["training"]["gates"],
     "training_metrics": evidence["training"]["metrics"],
+    "training_devices": evidence["training"]["devices"],
+    "training_elapsed_seconds": evidence["training"]["elapsed_seconds"],
     "dynamic_isolation": evidence["dynamic_training_isolation"],
     "audit_checks": evidence["compiler_and_promotion_audit"]["checks"],
     "vm": {
@@ -111,6 +113,9 @@ report = f"""# Network Lightcone v3 pre-TPU result
 The repaired local development gate passes. This revision is ready to submit
 to the authorized private Kaggle TPU job. It is **not sealed** and is not yet
 accelerator-validated.
+
+Training device evidence: {evidence['training']['devices']}; elapsed time
+{evidence['training']['elapsed_seconds']:.6f} seconds.
 
 The compiler/promotion audit passes every control: source rights and hashes,
 duplicate content, polarity, provenance, split leakage, complete named gates,

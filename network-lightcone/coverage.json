@@ -32,5 +32,14 @@
     "upload_submitted": false,
     "seal_ready": false,
     "remaining_gate": "real Kaggle TPU training plus declared long-term and open-world closure"
+  },
+  "local_gpu_review": {
+    "passed": true,
+    "device": "NVIDIA GeForce RTX 5070 Ti",
+    "jax": "0.11.2",
+    "report": "receipts/local-rtx-v3-20260921.json",
+    "pack_sha256": "e6a97fde814d04ea4a5b306b19aad2cf98d370fbedd0d364dadd11cf497d4eae",
+    "accelerator_acceptance": false,
+    "sealed": false
   }
 }
