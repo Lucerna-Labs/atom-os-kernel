@@ -1,7 +1,7 @@
 {
   "open_world": true,
-  "revision": 2,
-  "status": "sourced",
+  "revision": 3,
+  "status": "locally_validated",
   "covered": [
     "Ethernet observations",
     "ARP context",
@@ -26,11 +26,11 @@
     "reasoning": "separate consumer, not inside Lightcone"
   },
   "pre_tpu_review": {
-    "passed": false,
-    "report": "receipts/pre-tpu-20260921.json",
-    "baseline": "9223955",
+    "passed": true,
+    "report": "receipts/pre-tpu-v3-20260921.json",
     "upload_authorized": true,
     "upload_submitted": false,
-    "reason": "Observed local validation, holdout-isolation, packet-delivery and console-output failures"
+    "seal_ready": false,
+    "remaining_gate": "real Kaggle TPU training plus declared long-term and open-world closure"
   }
 }

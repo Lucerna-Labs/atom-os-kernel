@@ -1,10 +1,15 @@
-# Prepared TPU payload: submission on hold
+# Private TPU payload
 
-The user authorized this private Kaggle upload on 2026-09-21, contingent on
-local testing first. The pre-TPU audit failed. `run.py` remains the original
-prepared payload for source commit 20940b9; it has not been submitted.
+The user authorized a private Kaggle upload after the local gate passed. The v3
+gate is recorded in ../receipts/pre-tpu-v3-20260921.md.
 
-Do not confuse the earlier passing small local metric battery with the deeper
-review. See `../receipts/pre-tpu-20260921.md`. The tested defects must be repaired
-and locally retested before submitting a corrected payload with fresh source
-and input hashes. No automatic seal follows a TPU run.
+Generate the upload only from a clean committed revision:
+
+    python3 network-lightcone/tools/prepare_kaggle.py \
+      --output target/network-lightcone/kaggle-v3
+
+The generator verifies that the world and trainer match HEAD, embeds only those
+two files, and writes exact hashes to UPLOAD-MANIFEST.json. It includes no
+packet captures, credentials, private user data, or sibling trained worlds.
+The Kaggle program requires actual TPU devices. A completed run is accelerator
+training evidence only; it does not automatically authorize a seal.

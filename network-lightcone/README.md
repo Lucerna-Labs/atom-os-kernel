@@ -7,7 +7,7 @@ key handling, egress filter and authorization.
 
 ## What exists
 
-- 55 source-bound network concepts and 60 typed relationships. Every edge
+- 63 source-bound network concepts and 66 typed relationships. Every edge
   retains its relation, polarity, condition, exception, mechanism split, scope
   and source IDs. The world covers protocol context; admitted concepts are
   conditional knowledge, not assertions that an observed packet is legitimate.
@@ -28,13 +28,12 @@ key handling, egress filter and authorization.
   entries. The same pack can serve both directions; wire direction is separate
   from causal graph traversal direction.
 
-Current embedded pack: `worlds/v2-local-diagnostic`. Its recorded platform is
-`local_diagnostic`, **not TPU accepted or sealed**. The user authorized the
-private Kaggle upload on 2026-09-21 conditional on testing first. The deeper
-local review failed, so no job has been submitted. The blocker is the observed
-validation, training-isolation, UDP-delivery and diagnostic-output defects,
-not missing upload permission. See [the pre-TPU report](receipts/pre-tpu-20260921.md).
-The runtime reports training platform and `sealed=false`.
+Current embedded pack: `worlds/v3-local-diagnostic`. Its recorded platform is
+`local_diagnostic`, **not TPU accepted or sealed**. The compiler, promotion,
+training-isolation, malformed-packet and sustained KVM/TCG gates pass. The user
+authorized a private Kaggle upload after this local gate. See
+[the v3 pre-TPU report](receipts/pre-tpu-v3-20260921.md). The runtime reports
+training platform and `sealed=false`.
 
 ## Build and inspect
 
@@ -78,8 +77,9 @@ JAX_PLATFORMS=cpu python3 network-lightcone/tools/train.py \
 This command creates a new local diagnostic and refuses an existing output
 folder. For accelerator acceptance, run the same trainer with `--require-tpu`
 on actual TPU devices; a requested device label cannot satisfy that check.
-The prepared private job and exact export manifest are under `kaggle/`.
-No packet captures, credentials or sibling trained worlds are in that payload.
+The clean-revision payload generator is
+`network-lightcone/tools/prepare_kaggle.py`. No packet captures, credentials
+or sibling trained worlds enter that payload.
 
 The finalizer checks world/trainer/output identities, gates, actual platform,
 projection reconstruction and quantization, then creates a new versioned pack:
@@ -107,8 +107,9 @@ verifies packet bytes and recomputes every received graph receipt independently.
 It uses only loopback Ethernet and isolated test disks.
 
 The training world is small. Pairwise corrupt-tail ranking is not attack
-recognition accuracy, and its few held-out mechanisms do not establish general
-security or long-term robustness. `coverage.json` keeps gaps open: IPv6, full
+recognition accuracy. Fresh v3 holdouts pass the frozen pairwise gates but rank
+0/6 at top-1, so broad generalization is not established. `coverage.json`
+keeps gaps open: IPv6, full
 TCP transport, reassembly, TLS/application context, authenticated lineage,
 copy-provenance enforcement and sustained adversarial operation. An admission
 receipt cannot itself stop copying or authorize packet release. No copied-data

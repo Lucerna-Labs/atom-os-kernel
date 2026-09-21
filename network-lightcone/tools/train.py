@@ -9,8 +9,6 @@ import re
 import time
 from pathlib import Path
 
-import numpy as np
-
 SPLITS = ("train", "validation", "sealed_test", "cross_composition", "regression")
 REQUIRED_GATES = (
     "train_ranking",
@@ -259,6 +257,8 @@ def validate(world):
 
 
 def ranking_metrics(world, node_index, coordinates, relation_vectors):
+    import numpy as np
+
     metrics = {}
     for split in SPLITS:
         pairwise = []
@@ -288,10 +288,12 @@ def ranking_metrics(world, node_index, coordinates, relation_vectors):
                 float((distances[target] < distances[negatives]).mean())
             )
             ranks.append(
-                1
-                + sum(
+                int(
+                    1
+                    + sum(
                     distances[candidate] <= distances[target]
                     for candidate in negatives
+                    )
                 )
             )
         require(pairwise, f"split {split} has no evaluation edges")
@@ -307,6 +309,8 @@ def ranking_metrics(world, node_index, coordinates, relation_vectors):
 
 
 def main():
+    import numpy as np
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--world", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)

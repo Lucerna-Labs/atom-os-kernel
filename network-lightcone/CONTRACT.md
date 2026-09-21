@@ -66,3 +66,21 @@ error variants and fragmented transports were frozen before the next run. The
 ranking gates remain 0.95 train and 0.60 for each new held-out split. Prior
 regression metrics remain separately reported. New heldouts are not optimizer
 inputs. This is a small protocol world, not extensive general security training.
+
+## Source revision 3: pre-TPU repair
+
+Revision 3 rejects forbidden or missing source rights, absent hashes,
+normalized statement duplication, polarity conflicts, missing provenance and
+typed-relation leakage across splits. Training gradients and corrupt-tail
+negatives use train endpoints only; evaluation-only text is transformed after
+training and cannot alter trained parameters. Artifact promotion uses explicit
+checks that remain active under optimized Python and requires every named gate.
+
+The UDP stack, outside Lightcone, now rejects checksum, length, fragment and
+destination violations before application delivery. The Lightcone continues to
+record those wire observations passively. Diagnostics verify the read-only
+ledger and emit checked summaries without bypassing console policy.
+
+Fresh revision-3 holdouts retain the original pairwise thresholds. Top-1 is
+reported separately and remains weak; it is not silently substituted for the
+frozen gate. Local acceptance permits a private TPU attempt, not sealing.
