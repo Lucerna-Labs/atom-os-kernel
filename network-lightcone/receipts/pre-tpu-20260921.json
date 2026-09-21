@@ -1,0 +1,1870 @@
+{
+  "baseline": "9223955321899966be5ed3b3a318926382e505f9",
+  "pre_tpu_ready": false,
+  "upload_authorized": true,
+  "upload_submitted": false,
+  "sealed": false,
+  "production_runtime_and_world_unchanged": true,
+  "production_pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+  "evidence": {
+    "audit": {
+      "path": "/home/jesse/Desktop/Projects/atom-os-kernel/test-results/pre-tpu-audit-20260921/result.json",
+      "sha256": "6a470d8bfd5d296ce15e344418308767a3d8abb43d8c52cd371087207614224b"
+    },
+    "replay": {
+      "path": "/home/jesse/Desktop/Projects/atom-os-kernel/test-results/pre-tpu-replay-20260921/result.json",
+      "sha256": "af923e9ebee08fd605f2c0525a851d71ecc060c780f8dc0f65c3fd027b09ae67"
+    },
+    "isolation": {
+      "path": "/home/jesse/Desktop/Projects/atom-os-kernel/test-results/pre-tpu-isolation-20260921/result.json",
+      "sha256": "63425cfb8790efbaf4768d40b1fd4d4b988bade5cfff78b4fd9289d91749a59d"
+    },
+    "kvm": {
+      "path": "/home/jesse/Desktop/Projects/atom-os-kernel/test-results/network-world-20260921T170859141554973Z/pre-tpu-kvm/result.json",
+      "sha256": "48771e27de75007a6c2ec2bff15a0a012d24941764fc826a9c955b1901a0c5dc"
+    },
+    "tcg": {
+      "path": "/home/jesse/Desktop/Projects/atom-os-kernel/test-results/network-world-20260921T170859141554973Z/pre-tpu-tcg/result.json",
+      "sha256": "487908380a919d023e7d40f46ab5236de5acec3591bfe105a53a0b5b809ed553"
+    },
+    "baseline_kvm": {
+      "path": "/home/jesse/Desktop/Projects/atom-os-kernel/test-results/network-world-20260921T170859141554973Z/kvm/result.json",
+      "sha256": "c1f002245b503e48508546b00e794cb2ff6cd9eecd9deff977267847dafb5d61"
+    },
+    "baseline_tcg": {
+      "path": "/home/jesse/Desktop/Projects/atom-os-kernel/test-results/network-world-20260921T170859141554973Z/tcg/result.json",
+      "sha256": "296e54e003ca551332174e99015ed13ea388c3ec45316ebf765ede068554eb00"
+    }
+  },
+  "results": {
+    "audit": {
+      "baseline_revision": "9223955321899966be5ed3b3a318926382e505f9",
+      "passed": false,
+      "checks": [
+        {
+          "name": "dangling_endpoint",
+          "passed": true,
+          "owner": "world_compiler",
+          "error": "AssertionError()",
+          "required": true
+        },
+        {
+          "name": "unknown_source",
+          "passed": true,
+          "owner": "world_compiler",
+          "error": "AssertionError()",
+          "required": true
+        },
+        {
+          "name": "duplicate_id",
+          "passed": true,
+          "owner": "world_compiler",
+          "error": "AssertionError()",
+          "required": true
+        },
+        {
+          "name": "empty_provenance",
+          "passed": true,
+          "owner": "world_compiler",
+          "error": "AssertionError()",
+          "required": true
+        },
+        {
+          "name": "forbidden_rights",
+          "passed": false,
+          "owner": "world_compiler",
+          "error": null,
+          "required": true
+        },
+        {
+          "name": "missing_rights",
+          "passed": false,
+          "owner": "world_compiler",
+          "error": null,
+          "required": true
+        },
+        {
+          "name": "duplicate_statement",
+          "passed": false,
+          "owner": "world_compiler",
+          "error": null,
+          "required": true
+        },
+        {
+          "name": "missing_source_digest",
+          "passed": false,
+          "owner": "world_compiler",
+          "error": null,
+          "required": true
+        },
+        {
+          "name": "negative_relation_positive_polarity",
+          "passed": false,
+          "owner": "world_compiler",
+          "error": null,
+          "required": true
+        },
+        {
+          "name": "same_relation_in_train_and_test_with_renamed_group",
+          "passed": false,
+          "owner": "world_compiler",
+          "error": null,
+          "required": true
+        },
+        {
+          "name": "cpu_cannot_promote_normally",
+          "passed": true,
+          "owner": "artifact_promotion",
+          "returncode": 1,
+          "produced_status": null
+        },
+        {
+          "name": "cpu_cannot_promote_under_python_optimization",
+          "passed": false,
+          "owner": "artifact_promotion",
+          "returncode": 0,
+          "produced_status": "accelerator_validated"
+        },
+        {
+          "name": "missing_named_gates_rejected",
+          "passed": false,
+          "owner": "artifact_promotion",
+          "returncode": 0,
+          "produced_status": "local_diagnostic"
+        },
+        {
+          "name": "evaluation_only_nodes_excluded_from_training_negatives",
+          "passed": false,
+          "owner": "training_isolation",
+          "evaluation_only_nodes": [
+            "fragmented_icmp",
+            "fragmented_udp",
+            "icmp_expired",
+            "icmp_unreachable",
+            "ip_df",
+            "udp_source_zero"
+          ],
+          "qualification": "Transductive negatives do not use held-out edge labels, but they do use held-out node descriptions; strict mechanism isolation is not established."
+        }
+      ],
+      "ranking_diagnostics": {
+        "train": {
+          "count": 44,
+          "top1": 1.0,
+          "mrr": 1.0,
+          "ranks": [
+            {
+              "edge": "e000",
+              "rank": 1
+            },
+            {
+              "edge": "e001",
+              "rank": 1
+            },
+            {
+              "edge": "e004",
+              "rank": 1
+            },
+            {
+              "edge": "e005",
+              "rank": 1
+            },
+            {
+              "edge": "e006",
+              "rank": 1
+            },
+            {
+              "edge": "e007",
+              "rank": 1
+            },
+            {
+              "edge": "e008",
+              "rank": 1
+            },
+            {
+              "edge": "e009",
+              "rank": 1
+            },
+            {
+              "edge": "e011",
+              "rank": 1
+            },
+            {
+              "edge": "e012",
+              "rank": 1
+            },
+            {
+              "edge": "e013",
+              "rank": 1
+            },
+            {
+              "edge": "e014",
+              "rank": 1
+            },
+            {
+              "edge": "e015",
+              "rank": 1
+            },
+            {
+              "edge": "e016",
+              "rank": 1
+            },
+            {
+              "edge": "e017",
+              "rank": 1
+            },
+            {
+              "edge": "e018",
+              "rank": 1
+            },
+            {
+              "edge": "e019",
+              "rank": 1
+            },
+            {
+              "edge": "e020",
+              "rank": 1
+            },
+            {
+              "edge": "e022",
+              "rank": 1
+            },
+            {
+              "edge": "e023",
+              "rank": 1
+            },
+            {
+              "edge": "e024",
+              "rank": 1
+            },
+            {
+              "edge": "e025",
+              "rank": 1
+            },
+            {
+              "edge": "e026",
+              "rank": 1
+            },
+            {
+              "edge": "e027",
+              "rank": 1
+            },
+            {
+              "edge": "e030",
+              "rank": 1
+            },
+            {
+              "edge": "e031",
+              "rank": 1
+            },
+            {
+              "edge": "e032",
+              "rank": 1
+            },
+            {
+              "edge": "e033",
+              "rank": 1
+            },
+            {
+              "edge": "e034",
+              "rank": 1
+            },
+            {
+              "edge": "e035",
+              "rank": 1
+            },
+            {
+              "edge": "e036",
+              "rank": 1
+            },
+            {
+              "edge": "e039",
+              "rank": 1
+            },
+            {
+              "edge": "e041",
+              "rank": 1
+            },
+            {
+              "edge": "e042",
+              "rank": 1
+            },
+            {
+              "edge": "e043",
+              "rank": 1
+            },
+            {
+              "edge": "e045",
+              "rank": 1
+            },
+            {
+              "edge": "e046",
+              "rank": 1
+            },
+            {
+              "edge": "e047",
+              "rank": 1
+            },
+            {
+              "edge": "e048",
+              "rank": 1
+            },
+            {
+              "edge": "e049",
+              "rank": 1
+            },
+            {
+              "edge": "e050",
+              "rank": 1
+            },
+            {
+              "edge": "e051",
+              "rank": 1
+            },
+            {
+              "edge": "e052",
+              "rank": 1
+            },
+            {
+              "edge": "e053",
+              "rank": 1
+            }
+          ]
+        },
+        "regression": {
+          "count": 10,
+          "top1": 0.2,
+          "mrr": 0.3663461538461538,
+          "ranks": [
+            {
+              "edge": "e002",
+              "rank": 2
+            },
+            {
+              "edge": "e003",
+              "rank": 1
+            },
+            {
+              "edge": "e010",
+              "rank": 20
+            },
+            {
+              "edge": "e021",
+              "rank": 6
+            },
+            {
+              "edge": "e028",
+              "rank": 12
+            },
+            {
+              "edge": "e029",
+              "rank": 8
+            },
+            {
+              "edge": "e037",
+              "rank": 1
+            },
+            {
+              "edge": "e038",
+              "rank": 2
+            },
+            {
+              "edge": "e040",
+              "rank": 5
+            },
+            {
+              "edge": "e044",
+              "rank": 26
+            }
+          ]
+        },
+        "validation": {
+          "count": 2,
+          "top1": 0.0,
+          "mrr": 0.3055555555555556,
+          "ranks": [
+            {
+              "edge": "e054",
+              "rank": 2
+            },
+            {
+              "edge": "e056",
+              "rank": 9
+            }
+          ]
+        },
+        "sealed_test": {
+          "count": 2,
+          "top1": 0.5,
+          "mrr": 0.525,
+          "ranks": [
+            {
+              "edge": "e055",
+              "rank": 1
+            },
+            {
+              "edge": "e057",
+              "rank": 20
+            }
+          ]
+        },
+        "cross_composition": {
+          "count": 2,
+          "top1": 0.5,
+          "mrr": 0.75,
+          "ranks": [
+            {
+              "edge": "e058",
+              "rank": 1
+            },
+            {
+              "edge": "e059",
+              "rank": 2
+            }
+          ]
+        }
+      },
+      "production_pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+      "accelerator_submitted": false,
+      "sealed": false
+    },
+    "replay": {
+      "passed": true,
+      "geometry_sha256": {
+        "network-lightcone/worlds/v2-local-diagnostic/geometry.json": "b0af679dc70ea65f903c705211c3bae7fbd6cb0625cd0ce424d5f28540757005",
+        "test-results/pre-tpu-replay-20260921/first/geometry.json": "b0af679dc70ea65f903c705211c3bae7fbd6cb0625cd0ce424d5f28540757005",
+        "test-results/pre-tpu-replay-20260921/second/geometry.json": "b0af679dc70ea65f903c705211c3bae7fbd6cb0625cd0ce424d5f28540757005"
+      },
+      "training_gates": [
+        {
+          "cross_composition_ranking": true,
+          "finite": true,
+          "nonexpansion": true,
+          "orthonormal": true,
+          "sealed_ranking": true,
+          "train_ranking": true,
+          "validation_ranking": true
+        },
+        {
+          "cross_composition_ranking": true,
+          "finite": true,
+          "nonexpansion": true,
+          "orthonormal": true,
+          "sealed_ranking": true,
+          "train_ranking": true,
+          "validation_ranking": true
+        }
+      ]
+    },
+    "isolation": {
+      "strict_heldout_isolation_passed": false,
+      "changed_only_node": "ip_df",
+      "node_is_training_endpoint": false,
+      "max_training_coordinate_change": 0.11464823782444,
+      "changed_input_is_synthetic_control_only": true,
+      "production_pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f"
+    },
+    "kvm": {
+      "success": false,
+      "accel": "kvm",
+      "checks": {
+        "udp_delivery_valid": {
+          "passed": true,
+          "expected_delivery": true,
+          "observed_delivery": true
+        },
+        "udp_delivery_bad-ip-checksum": {
+          "passed": false,
+          "expected_delivery": false,
+          "observed_delivery": true
+        },
+        "udp_delivery_bad-udp-checksum": {
+          "passed": false,
+          "expected_delivery": false,
+          "observed_delivery": true
+        },
+        "udp_delivery_ip-total-too-long": {
+          "passed": false,
+          "expected_delivery": false,
+          "observed_delivery": true
+        },
+        "udp_delivery_udp-length-too-long": {
+          "passed": false,
+          "expected_delivery": false,
+          "observed_delivery": true
+        },
+        "udp_delivery_fragment-offset": {
+          "passed": false,
+          "expected_delivery": false,
+          "observed_delivery": true
+        },
+        "udp_delivery_wrong-destination": {
+          "passed": false,
+          "expected_delivery": false,
+          "observed_delivery": true
+        },
+        "udp_delivery_short-ihl": {
+          "passed": true,
+          "expected_delivery": false,
+          "observed_delivery": false
+        },
+        "wire_observed_valid": {
+          "passed": true
+        },
+        "wire_observed_bad-ip-checksum": {
+          "passed": true
+        },
+        "wire_observed_bad-udp-checksum": {
+          "passed": true
+        },
+        "wire_observed_ip-total-too-long": {
+          "passed": true
+        },
+        "wire_observed_udp-length-too-long": {
+          "passed": true
+        },
+        "wire_observed_fragment-offset": {
+          "passed": true
+        },
+        "wire_observed_wrong-destination": {
+          "passed": true
+        },
+        "wire_observed_short-ihl": {
+          "passed": true
+        },
+        "all_sustained_rounds_complete": {
+          "passed": true,
+          "rounds": [
+            {
+              "round": 0,
+              "free": 16254,
+              "info": {
+                "world_version": 2,
+                "nodes": 55,
+                "edges": 60,
+                "dimensions": 48,
+                "rx": 264,
+                "tx": 256,
+                "failures": 0,
+                "latest": 520,
+                "oldest": 489,
+                "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+                "source_sha256": "99ef91dec52908627a59165a2a5932a32e3383025972959ab578b6261de364ab",
+                "training_sha256": "7f009a57bbf400ef640d0909fdc3cd3c88b1287113f00ac8de03a660e31a0c2d",
+                "training_platform": "local_diagnostic",
+                "sealed": false,
+                "passive": true,
+                "holds_verdict": false
+              }
+            },
+            {
+              "round": 1,
+              "free": 16254,
+              "info": {
+                "world_version": 2,
+                "nodes": 55,
+                "edges": 60,
+                "dimensions": 48,
+                "rx": 520,
+                "tx": 512,
+                "failures": 0,
+                "latest": 1032,
+                "oldest": 1001,
+                "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+                "source_sha256": "99ef91dec52908627a59165a2a5932a32e3383025972959ab578b6261de364ab",
+                "training_sha256": "7f009a57bbf400ef640d0909fdc3cd3c88b1287113f00ac8de03a660e31a0c2d",
+                "training_platform": "local_diagnostic",
+                "sealed": false,
+                "passive": true,
+                "holds_verdict": false
+              }
+            },
+            {
+              "round": 2,
+              "free": 16254,
+              "info": {
+                "world_version": 2,
+                "nodes": 55,
+                "edges": 60,
+                "dimensions": 48,
+                "rx": 776,
+                "tx": 768,
+                "failures": 0,
+                "latest": 1544,
+                "oldest": 1513,
+                "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+                "source_sha256": "99ef91dec52908627a59165a2a5932a32e3383025972959ab578b6261de364ab",
+                "training_sha256": "7f009a57bbf400ef640d0909fdc3cd3c88b1287113f00ac8de03a660e31a0c2d",
+                "training_platform": "local_diagnostic",
+                "sealed": false,
+                "passive": true,
+                "holds_verdict": false
+              }
+            }
+          ]
+        },
+        "sustained_wire_bytes_and_checksums": {
+          "passed": true,
+          "outbound": 768,
+          "echoed_inbound": 768,
+          "reader_errors": []
+        },
+        "kernel_ledger_retains_32": {
+          "passed": true,
+          "counts": [
+            32,
+            12,
+            20,
+            1513,
+            1544
+          ]
+        },
+        "console_exposes_every_retained_receipt": {
+          "passed": false,
+          "emitted": 12,
+          "console_rejected": 20
+        },
+        "free_frames_stable_after_warmup": {
+          "passed": true
+        },
+        "emitted_receipts_exact_and_immutable": {
+          "passed": true,
+          "verified_receipts": 20
+        },
+        "interactive_ipc_after_sustained_load": {
+          "passed": true
+        }
+      },
+      "failures": [
+        "udp_delivery_bad-ip-checksum",
+        "udp_delivery_bad-udp-checksum",
+        "udp_delivery_ip-total-too-long",
+        "udp_delivery_udp-length-too-long",
+        "udp_delivery_fragment-offset",
+        "udp_delivery_wrong-destination",
+        "console_exposes_every_retained_receipt"
+      ],
+      "runtime_source": "unchanged from 9223955; userspace test probes added",
+      "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+      "image_sha256": "ccf33f5cf7eeeaacd1217b23289f22def61410594cb5d2d6799f71723646a3e8",
+      "sealed": false,
+      "accelerator_submitted": false,
+      "delivered_tags": [
+        "valid",
+        "bad-ip-checksum",
+        "bad-udp-checksum",
+        "ip-total-too-long",
+        "udp-length-too-long",
+        "fragment-offset",
+        "wrong-destination"
+      ],
+      "ingress_observations": {
+        "valid": 0,
+        "bad-ip-checksum": 2,
+        "bad-udp-checksum": 2,
+        "ip-total-too-long": 2,
+        "udp-length-too-long": 2,
+        "fragment-offset": 3,
+        "wrong-destination": 0,
+        "short-ihl": 2
+      },
+      "elapsed_seconds": 85.75158680300228
+    },
+    "tcg": {
+      "success": false,
+      "accel": "tcg",
+      "checks": {
+        "udp_delivery_valid": {
+          "passed": true,
+          "expected_delivery": true,
+          "observed_delivery": true
+        },
+        "udp_delivery_bad-ip-checksum": {
+          "passed": false,
+          "expected_delivery": false,
+          "observed_delivery": true
+        },
+        "udp_delivery_bad-udp-checksum": {
+          "passed": false,
+          "expected_delivery": false,
+          "observed_delivery": true
+        },
+        "udp_delivery_ip-total-too-long": {
+          "passed": false,
+          "expected_delivery": false,
+          "observed_delivery": true
+        },
+        "udp_delivery_udp-length-too-long": {
+          "passed": false,
+          "expected_delivery": false,
+          "observed_delivery": true
+        },
+        "udp_delivery_fragment-offset": {
+          "passed": false,
+          "expected_delivery": false,
+          "observed_delivery": true
+        },
+        "udp_delivery_wrong-destination": {
+          "passed": false,
+          "expected_delivery": false,
+          "observed_delivery": true
+        },
+        "udp_delivery_short-ihl": {
+          "passed": true,
+          "expected_delivery": false,
+          "observed_delivery": false
+        },
+        "wire_observed_valid": {
+          "passed": true
+        },
+        "wire_observed_bad-ip-checksum": {
+          "passed": true
+        },
+        "wire_observed_bad-udp-checksum": {
+          "passed": true
+        },
+        "wire_observed_ip-total-too-long": {
+          "passed": true
+        },
+        "wire_observed_udp-length-too-long": {
+          "passed": true
+        },
+        "wire_observed_fragment-offset": {
+          "passed": true
+        },
+        "wire_observed_wrong-destination": {
+          "passed": true
+        },
+        "wire_observed_short-ihl": {
+          "passed": true
+        },
+        "all_sustained_rounds_complete": {
+          "passed": true,
+          "rounds": [
+            {
+              "round": 0,
+              "free": 16254,
+              "info": {
+                "world_version": 2,
+                "nodes": 55,
+                "edges": 60,
+                "dimensions": 48,
+                "rx": 264,
+                "tx": 256,
+                "failures": 0,
+                "latest": 520,
+                "oldest": 489,
+                "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+                "source_sha256": "99ef91dec52908627a59165a2a5932a32e3383025972959ab578b6261de364ab",
+                "training_sha256": "7f009a57bbf400ef640d0909fdc3cd3c88b1287113f00ac8de03a660e31a0c2d",
+                "training_platform": "local_diagnostic",
+                "sealed": false,
+                "passive": true,
+                "holds_verdict": false
+              }
+            },
+            {
+              "round": 1,
+              "free": 16254,
+              "info": {
+                "world_version": 2,
+                "nodes": 55,
+                "edges": 60,
+                "dimensions": 48,
+                "rx": 520,
+                "tx": 512,
+                "failures": 0,
+                "latest": 1032,
+                "oldest": 1001,
+                "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+                "source_sha256": "99ef91dec52908627a59165a2a5932a32e3383025972959ab578b6261de364ab",
+                "training_sha256": "7f009a57bbf400ef640d0909fdc3cd3c88b1287113f00ac8de03a660e31a0c2d",
+                "training_platform": "local_diagnostic",
+                "sealed": false,
+                "passive": true,
+                "holds_verdict": false
+              }
+            },
+            {
+              "round": 2,
+              "free": 16254,
+              "info": {
+                "world_version": 2,
+                "nodes": 55,
+                "edges": 60,
+                "dimensions": 48,
+                "rx": 776,
+                "tx": 768,
+                "failures": 0,
+                "latest": 1544,
+                "oldest": 1513,
+                "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+                "source_sha256": "99ef91dec52908627a59165a2a5932a32e3383025972959ab578b6261de364ab",
+                "training_sha256": "7f009a57bbf400ef640d0909fdc3cd3c88b1287113f00ac8de03a660e31a0c2d",
+                "training_platform": "local_diagnostic",
+                "sealed": false,
+                "passive": true,
+                "holds_verdict": false
+              }
+            }
+          ]
+        },
+        "sustained_wire_bytes_and_checksums": {
+          "passed": true,
+          "outbound": 768,
+          "echoed_inbound": 768,
+          "reader_errors": []
+        },
+        "kernel_ledger_retains_32": {
+          "passed": true,
+          "counts": [
+            32,
+            12,
+            20,
+            1513,
+            1544
+          ]
+        },
+        "console_exposes_every_retained_receipt": {
+          "passed": false,
+          "emitted": 12,
+          "console_rejected": 20
+        },
+        "free_frames_stable_after_warmup": {
+          "passed": true
+        },
+        "emitted_receipts_exact_and_immutable": {
+          "passed": true,
+          "verified_receipts": 20
+        },
+        "interactive_ipc_after_sustained_load": {
+          "passed": true
+        }
+      },
+      "failures": [
+        "udp_delivery_bad-ip-checksum",
+        "udp_delivery_bad-udp-checksum",
+        "udp_delivery_ip-total-too-long",
+        "udp_delivery_udp-length-too-long",
+        "udp_delivery_fragment-offset",
+        "udp_delivery_wrong-destination",
+        "console_exposes_every_retained_receipt"
+      ],
+      "runtime_source": "unchanged from 9223955; userspace test probes added",
+      "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+      "image_sha256": "ccf33f5cf7eeeaacd1217b23289f22def61410594cb5d2d6799f71723646a3e8",
+      "sealed": false,
+      "accelerator_submitted": false,
+      "delivered_tags": [
+        "valid",
+        "bad-ip-checksum",
+        "bad-udp-checksum",
+        "ip-total-too-long",
+        "udp-length-too-long",
+        "fragment-offset",
+        "wrong-destination"
+      ],
+      "ingress_observations": {
+        "valid": 0,
+        "bad-ip-checksum": 2,
+        "bad-udp-checksum": 2,
+        "ip-total-too-long": 2,
+        "udp-length-too-long": 2,
+        "fragment-offset": 3,
+        "wrong-destination": 0,
+        "short-ihl": 2
+      },
+      "elapsed_seconds": 84.43392533800215
+    },
+    "baseline_kvm": {
+      "success": true,
+      "acceleration": "kvm",
+      "checks": {
+        "PACK_IDENTITY_AND_READONLY_WORLD": true,
+        "REAL_VIRTIO_BOTH_DIRECTIONS": true,
+        "UNKNOWN_FRAGMENT_MALFORMED_AND_PAYLOAD_ISOLATION": true,
+        "UNMODIFIED_WIRE_BYTES_BOUND_TO_RECEIPTS": true,
+        "EXACT_TYPED_GRAPH_AND_INDEPENDENT_RECEIPT_HASH": true,
+        "PROVENANCE_AND_FULL_GEOMETRY_FROM_KERNEL": true,
+        "EXISTING_IPC_SURVIVES": true
+      },
+      "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+      "image_sha256": "ccf33f5cf7eeeaacd1217b23289f22def61410594cb5d2d6799f71723646a3e8",
+      "records": [
+        {
+          "sequence": 1,
+          "direction": "in",
+          "observation": 0,
+          "policy": "network-context-v1",
+          "hops": 3,
+          "max_nodes": 32,
+          "causal_direction": "both",
+          "relations": 31,
+          "polarity": 0,
+          "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+          "query_sha256": "1cc4576ec64f367ddc6506dbed36d270668cd1f490452d972df277748f759171",
+          "receipt_sha256": "f2b080d3b2c6284070f33bc655a2ade23111979c39aabbdfde65135f6ad0d12d",
+          "seeds": [
+            6,
+            15,
+            19
+          ],
+          "nodes": [
+            6,
+            7,
+            8,
+            9,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            26,
+            27,
+            28,
+            29,
+            31,
+            36,
+            39,
+            43,
+            45,
+            46,
+            47,
+            48,
+            49,
+            51,
+            52
+          ],
+          "edges": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            28,
+            31,
+            32,
+            33,
+            40,
+            44,
+            46,
+            47,
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            55,
+            56,
+            57
+          ],
+          "excluded": [
+            10,
+            25,
+            30,
+            32,
+            33,
+            38,
+            42
+          ],
+          "hop_frontier": [],
+          "passive": true,
+          "holds_verdict": false
+        },
+        {
+          "sequence": 2,
+          "direction": "in",
+          "observation": 0,
+          "policy": "network-context-v1",
+          "hops": 3,
+          "max_nodes": 32,
+          "causal_direction": "both",
+          "relations": 31,
+          "polarity": 0,
+          "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+          "query_sha256": "cb7d94bb0a883332118e659d38d4f03c72033f94239986bf437f8ecbf0b09e71",
+          "receipt_sha256": "b74cc8c53edae8038697c723d0a19823fe2995fee4ec28c29d0cf387aab4e0cc",
+          "seeds": [
+            6,
+            15,
+            19
+          ],
+          "nodes": [
+            6,
+            7,
+            8,
+            9,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            26,
+            27,
+            28,
+            29,
+            31,
+            36,
+            39,
+            43,
+            45,
+            46,
+            47,
+            48,
+            49,
+            51,
+            52
+          ],
+          "edges": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            28,
+            31,
+            32,
+            33,
+            40,
+            44,
+            46,
+            47,
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            55,
+            56,
+            57
+          ],
+          "excluded": [
+            10,
+            25,
+            30,
+            32,
+            33,
+            38,
+            42
+          ],
+          "hop_frontier": [],
+          "passive": true,
+          "holds_verdict": false
+        },
+        {
+          "sequence": 3,
+          "direction": "in",
+          "observation": 1,
+          "policy": "network-context-v1",
+          "hops": 3,
+          "max_nodes": 32,
+          "causal_direction": "both",
+          "relations": 31,
+          "polarity": 0,
+          "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+          "query_sha256": "9ac0182c8f02e6d6fb6dbc65ac4734add50c6742b6bb176803dee23809abfefc",
+          "receipt_sha256": "358600c5b93400a3d46b9577b0ebd023b23dac528959fd02f16b264aa4dbf806",
+          "seeds": [],
+          "nodes": [],
+          "edges": [],
+          "excluded": [],
+          "hop_frontier": [],
+          "passive": true,
+          "holds_verdict": false
+        },
+        {
+          "sequence": 4,
+          "direction": "in",
+          "observation": 3,
+          "policy": "network-context-v1",
+          "hops": 3,
+          "max_nodes": 32,
+          "causal_direction": "both",
+          "relations": 31,
+          "polarity": 0,
+          "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+          "query_sha256": "77713324cfe82afc860ec97c2b95c3e79b42620f6589a6d66c8403b7f6632a5a",
+          "receipt_sha256": "afe6603912875184a2a170006bf0d55b5658df8ae803f81c868ad362b391f9e8",
+          "seeds": [
+            6,
+            10
+          ],
+          "nodes": [
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            20,
+            21,
+            24,
+            26,
+            27,
+            28,
+            29,
+            31,
+            36,
+            39,
+            43,
+            45,
+            46,
+            47,
+            48,
+            49,
+            50,
+            51,
+            53
+          ],
+          "edges": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            19,
+            20,
+            22,
+            26,
+            28,
+            31,
+            32,
+            33,
+            40,
+            44,
+            46,
+            47,
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            54,
+            56,
+            57,
+            58
+          ],
+          "excluded": [
+            19,
+            22,
+            23,
+            25,
+            30,
+            32,
+            33,
+            38,
+            42,
+            52,
+            54
+          ],
+          "hop_frontier": [],
+          "passive": true,
+          "holds_verdict": false
+        },
+        {
+          "sequence": 5,
+          "direction": "in",
+          "observation": 2,
+          "policy": "network-context-v1",
+          "hops": 3,
+          "max_nodes": 32,
+          "causal_direction": "both",
+          "relations": 31,
+          "polarity": 0,
+          "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+          "query_sha256": "95a4cb10cfa841f07f717bbe2b452f086d60f19ef94b6eaa613eabf8c3ea9420",
+          "receipt_sha256": "65a511deaadd61305b9e0b7f5dc2ec5ced00c55961f299b3a21d987cf0b52aa7",
+          "seeds": [],
+          "nodes": [],
+          "edges": [],
+          "excluded": [],
+          "hop_frontier": [],
+          "passive": true,
+          "holds_verdict": false
+        },
+        {
+          "sequence": 6,
+          "direction": "out",
+          "observation": 0,
+          "policy": "network-context-v1",
+          "hops": 3,
+          "max_nodes": 32,
+          "causal_direction": "both",
+          "relations": 31,
+          "polarity": 0,
+          "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+          "query_sha256": "f6ccd37b71e6795d26ea856b305be57b6a71c45e81edae079212ce6309c872f7",
+          "receipt_sha256": "6b2f0c2b511e91e8cae52ca29a8474b1d4449b5ba24be3971fe2f9106934d87e",
+          "seeds": [
+            6,
+            15,
+            18
+          ],
+          "nodes": [
+            6,
+            7,
+            8,
+            9,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            20,
+            21,
+            22,
+            23,
+            24,
+            26,
+            27,
+            28,
+            29,
+            31,
+            36,
+            39,
+            42,
+            43,
+            45,
+            46,
+            47,
+            48,
+            49,
+            51,
+            52
+          ],
+          "edges": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            22,
+            23,
+            24,
+            25,
+            26,
+            28,
+            31,
+            32,
+            33,
+            40,
+            43,
+            44,
+            46,
+            47,
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            55,
+            56,
+            57
+          ],
+          "excluded": [
+            10,
+            19,
+            25,
+            30,
+            32,
+            33,
+            38,
+            41
+          ],
+          "hop_frontier": [],
+          "passive": true,
+          "holds_verdict": false
+        }
+      ],
+      "world_info": {
+        "world_version": 2,
+        "nodes": 55,
+        "edges": 60,
+        "dimensions": 48,
+        "rx": 5,
+        "tx": 1,
+        "failures": 0,
+        "latest": 6,
+        "oldest": 1,
+        "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+        "source_sha256": "99ef91dec52908627a59165a2a5932a32e3383025972959ab578b6261de364ab",
+        "training_sha256": "7f009a57bbf400ef640d0909fdc3cd3c88b1287113f00ac8de03a660e31a0c2d",
+        "training_platform": "local_diagnostic",
+        "sealed": false,
+        "passive": true,
+        "holds_verdict": false
+      }
+    },
+    "baseline_tcg": {
+      "success": true,
+      "acceleration": "tcg",
+      "checks": {
+        "PACK_IDENTITY_AND_READONLY_WORLD": true,
+        "REAL_VIRTIO_BOTH_DIRECTIONS": true,
+        "UNKNOWN_FRAGMENT_MALFORMED_AND_PAYLOAD_ISOLATION": true,
+        "UNMODIFIED_WIRE_BYTES_BOUND_TO_RECEIPTS": true,
+        "EXACT_TYPED_GRAPH_AND_INDEPENDENT_RECEIPT_HASH": true,
+        "PROVENANCE_AND_FULL_GEOMETRY_FROM_KERNEL": true,
+        "EXISTING_IPC_SURVIVES": true
+      },
+      "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+      "image_sha256": "ccf33f5cf7eeeaacd1217b23289f22def61410594cb5d2d6799f71723646a3e8",
+      "records": [
+        {
+          "sequence": 1,
+          "direction": "in",
+          "observation": 0,
+          "policy": "network-context-v1",
+          "hops": 3,
+          "max_nodes": 32,
+          "causal_direction": "both",
+          "relations": 31,
+          "polarity": 0,
+          "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+          "query_sha256": "1cc4576ec64f367ddc6506dbed36d270668cd1f490452d972df277748f759171",
+          "receipt_sha256": "f2b080d3b2c6284070f33bc655a2ade23111979c39aabbdfde65135f6ad0d12d",
+          "seeds": [
+            6,
+            15,
+            19
+          ],
+          "nodes": [
+            6,
+            7,
+            8,
+            9,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            26,
+            27,
+            28,
+            29,
+            31,
+            36,
+            39,
+            43,
+            45,
+            46,
+            47,
+            48,
+            49,
+            51,
+            52
+          ],
+          "edges": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            28,
+            31,
+            32,
+            33,
+            40,
+            44,
+            46,
+            47,
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            55,
+            56,
+            57
+          ],
+          "excluded": [
+            10,
+            25,
+            30,
+            32,
+            33,
+            38,
+            42
+          ],
+          "hop_frontier": [],
+          "passive": true,
+          "holds_verdict": false
+        },
+        {
+          "sequence": 2,
+          "direction": "in",
+          "observation": 0,
+          "policy": "network-context-v1",
+          "hops": 3,
+          "max_nodes": 32,
+          "causal_direction": "both",
+          "relations": 31,
+          "polarity": 0,
+          "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+          "query_sha256": "cb7d94bb0a883332118e659d38d4f03c72033f94239986bf437f8ecbf0b09e71",
+          "receipt_sha256": "b74cc8c53edae8038697c723d0a19823fe2995fee4ec28c29d0cf387aab4e0cc",
+          "seeds": [
+            6,
+            15,
+            19
+          ],
+          "nodes": [
+            6,
+            7,
+            8,
+            9,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            26,
+            27,
+            28,
+            29,
+            31,
+            36,
+            39,
+            43,
+            45,
+            46,
+            47,
+            48,
+            49,
+            51,
+            52
+          ],
+          "edges": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            28,
+            31,
+            32,
+            33,
+            40,
+            44,
+            46,
+            47,
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            55,
+            56,
+            57
+          ],
+          "excluded": [
+            10,
+            25,
+            30,
+            32,
+            33,
+            38,
+            42
+          ],
+          "hop_frontier": [],
+          "passive": true,
+          "holds_verdict": false
+        },
+        {
+          "sequence": 3,
+          "direction": "in",
+          "observation": 1,
+          "policy": "network-context-v1",
+          "hops": 3,
+          "max_nodes": 32,
+          "causal_direction": "both",
+          "relations": 31,
+          "polarity": 0,
+          "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+          "query_sha256": "9ac0182c8f02e6d6fb6dbc65ac4734add50c6742b6bb176803dee23809abfefc",
+          "receipt_sha256": "358600c5b93400a3d46b9577b0ebd023b23dac528959fd02f16b264aa4dbf806",
+          "seeds": [],
+          "nodes": [],
+          "edges": [],
+          "excluded": [],
+          "hop_frontier": [],
+          "passive": true,
+          "holds_verdict": false
+        },
+        {
+          "sequence": 4,
+          "direction": "in",
+          "observation": 3,
+          "policy": "network-context-v1",
+          "hops": 3,
+          "max_nodes": 32,
+          "causal_direction": "both",
+          "relations": 31,
+          "polarity": 0,
+          "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+          "query_sha256": "77713324cfe82afc860ec97c2b95c3e79b42620f6589a6d66c8403b7f6632a5a",
+          "receipt_sha256": "afe6603912875184a2a170006bf0d55b5658df8ae803f81c868ad362b391f9e8",
+          "seeds": [
+            6,
+            10
+          ],
+          "nodes": [
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            20,
+            21,
+            24,
+            26,
+            27,
+            28,
+            29,
+            31,
+            36,
+            39,
+            43,
+            45,
+            46,
+            47,
+            48,
+            49,
+            50,
+            51,
+            53
+          ],
+          "edges": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            19,
+            20,
+            22,
+            26,
+            28,
+            31,
+            32,
+            33,
+            40,
+            44,
+            46,
+            47,
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            54,
+            56,
+            57,
+            58
+          ],
+          "excluded": [
+            19,
+            22,
+            23,
+            25,
+            30,
+            32,
+            33,
+            38,
+            42,
+            52,
+            54
+          ],
+          "hop_frontier": [],
+          "passive": true,
+          "holds_verdict": false
+        },
+        {
+          "sequence": 5,
+          "direction": "in",
+          "observation": 2,
+          "policy": "network-context-v1",
+          "hops": 3,
+          "max_nodes": 32,
+          "causal_direction": "both",
+          "relations": 31,
+          "polarity": 0,
+          "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+          "query_sha256": "95a4cb10cfa841f07f717bbe2b452f086d60f19ef94b6eaa613eabf8c3ea9420",
+          "receipt_sha256": "65a511deaadd61305b9e0b7f5dc2ec5ced00c55961f299b3a21d987cf0b52aa7",
+          "seeds": [],
+          "nodes": [],
+          "edges": [],
+          "excluded": [],
+          "hop_frontier": [],
+          "passive": true,
+          "holds_verdict": false
+        },
+        {
+          "sequence": 6,
+          "direction": "out",
+          "observation": 0,
+          "policy": "network-context-v1",
+          "hops": 3,
+          "max_nodes": 32,
+          "causal_direction": "both",
+          "relations": 31,
+          "polarity": 0,
+          "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+          "query_sha256": "f6ccd37b71e6795d26ea856b305be57b6a71c45e81edae079212ce6309c872f7",
+          "receipt_sha256": "6b2f0c2b511e91e8cae52ca29a8474b1d4449b5ba24be3971fe2f9106934d87e",
+          "seeds": [
+            6,
+            15,
+            18
+          ],
+          "nodes": [
+            6,
+            7,
+            8,
+            9,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            20,
+            21,
+            22,
+            23,
+            24,
+            26,
+            27,
+            28,
+            29,
+            31,
+            36,
+            39,
+            42,
+            43,
+            45,
+            46,
+            47,
+            48,
+            49,
+            51,
+            52
+          ],
+          "edges": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            22,
+            23,
+            24,
+            25,
+            26,
+            28,
+            31,
+            32,
+            33,
+            40,
+            43,
+            44,
+            46,
+            47,
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            55,
+            56,
+            57
+          ],
+          "excluded": [
+            10,
+            19,
+            25,
+            30,
+            32,
+            33,
+            38,
+            41
+          ],
+          "hop_frontier": [],
+          "passive": true,
+          "holds_verdict": false
+        }
+      ],
+      "world_info": {
+        "world_version": 2,
+        "nodes": 55,
+        "edges": 60,
+        "dimensions": 48,
+        "rx": 5,
+        "tx": 1,
+        "failures": 0,
+        "latest": 6,
+        "oldest": 1,
+        "pack_sha256": "75548e2f88e2183a1badb1c33cc71eba13b816f3722dd25358cec11d7c6d434f",
+        "source_sha256": "99ef91dec52908627a59165a2a5932a32e3383025972959ab578b6261de364ab",
+        "training_sha256": "7f009a57bbf400ef640d0909fdc3cd3c88b1287113f00ac8de03a660e31a0c2d",
+        "training_platform": "local_diagnostic",
+        "sealed": false,
+        "passive": true,
+        "holds_verdict": false
+      }
+    }
+  }
+}

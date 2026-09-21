@@ -24,5 +24,13 @@
     "causal": "passive graph only",
     "geometry": "48D plus observer shadow",
     "reasoning": "separate consumer, not inside Lightcone"
+  },
+  "pre_tpu_review": {
+    "passed": false,
+    "report": "receipts/pre-tpu-20260921.json",
+    "baseline": "9223955",
+    "upload_authorized": true,
+    "upload_submitted": false,
+    "reason": "Observed local validation, holdout-isolation, packet-delivery and console-output failures"
   }
 }

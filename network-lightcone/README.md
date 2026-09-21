@@ -29,9 +29,12 @@ key handling, egress filter and authorization.
   from causal graph traversal direction.
 
 Current embedded pack: `worlds/v2-local-diagnostic`. Its recorded platform is
-`local_diagnostic`, **not TPU accepted or sealed**. The private Kaggle job's
-prepared payload has not been uploaded without the separately requested export
-approval. The runtime reports training platform and `sealed=false`.
+`local_diagnostic`, **not TPU accepted or sealed**. The user authorized the
+private Kaggle upload on 2026-09-21 conditional on testing first. The deeper
+local review failed, so no job has been submitted. The blocker is the observed
+validation, training-isolation, UDP-delivery and diagnostic-output defects,
+not missing upload permission. See [the pre-TPU report](receipts/pre-tpu-20260921.md).
+The runtime reports training platform and `sealed=false`.
 
 ## Build and inspect
 

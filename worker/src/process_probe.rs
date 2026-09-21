@@ -25,6 +25,8 @@ pub fn dispatch() {
     let args = rt::args(); assert_eq!(args[0], "worker.elf");
     if args.len() == 1 { return; }
     match args[1].as_str() {
+        "--lightcone-ingress-audit" => { crate::lightcone_probe::ingress_audit(); rt::exit(0) }
+        "--lightcone-soak-audit" => { crate::lightcone_probe::soak_audit(); rt::exit(0) }
         "--lightcone-test" => { crate::lightcone_probe::run(); rt::exit(0) }
         "--network-lightcone" => { crate::lightcone_probe::show(); rt::exit(0) }
         "--ipc-test" => { crate::ipc_probe::run(); rt::exit(0) }

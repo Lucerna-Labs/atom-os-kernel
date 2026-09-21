@@ -11,9 +11,10 @@ ssh -o BatchMode=yes -o ConnectTimeout=5 atom-os-dev "mkdir -p '$remote/source' 
 rsync -a --exclude=.git --exclude=target --exclude=test-results --exclude=__pycache__ --exclude=.zcode --exclude=.zcode-memory --exclude='*.log' "$root/" "atom-os-dev:$remote/source/"
 printf '%s\n' "$remote" > "$results/vm-path.txt"
 set +e
-ssh -o BatchMode=yes atom-os-dev "bash -s -- '$remote'" <<'REMOTE'
+ssh -o BatchMode=yes atom-os-dev "bash -s -- '$remote' '${ATOM_PRE_TPU:-0}'" <<'REMOTE'
 set -euo pipefail
 run=$1
+pre_tpu=$2
 cd "$run/source"
 export PATH="$HOME/.cargo/bin:$PATH"
 python3 - "$run/results/source-sha256.json" <<'HASHES'
@@ -31,6 +32,13 @@ tail -n 22 "$run/results/native.log"
 cp target/x86_64-os/release/bootimage-x86_64-kernel.bin "$run/results/bootimage.bin"
 python3 scripts/test-network-lightcone.py --accel kvm --output "$run/results/kvm"
 python3 scripts/test-network-lightcone.py --accel tcg --output "$run/results/tcg"
+if [ "$pre_tpu" = 1 ]; then
+  failed=0
+  for acceleration in kvm tcg; do
+    python3 scripts/test-network-lightcone-pre-tpu.py --accel "$acceleration" --output "$run/results/pre-tpu-$acceleration" || failed=1
+  done
+  exit "$failed"
+fi
 REMOTE
 status=$?
 set -e
