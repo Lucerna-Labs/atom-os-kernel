@@ -71,13 +71,19 @@ pub struct EthHeader {
 }
 
 pub fn parse_eth(frame: &[u8]) -> Option<(EthHeader, &[u8])> {
-    if frame.len() < 14 { return None; }
+    if frame.len() < 14 {
+        return None;
+    }
     let mut dst = [0u8; 6];
     let mut src = [0u8; 6];
     dst.copy_from_slice(&frame[0..6]);
     src.copy_from_slice(&frame[6..12]);
     Some((
-        EthHeader { dst, src, ethertype: u16::from_be_bytes([frame[12], frame[13]]) },
+        EthHeader {
+            dst,
+            src,
+            ethertype: u16::from_be_bytes([frame[12], frame[13]]),
+        },
         &frame[14..],
     ))
 }
@@ -86,15 +92,21 @@ pub fn parse_eth(frame: &[u8]) -> Option<(EthHeader, &[u8])> {
 /// None when the payload is not an IPv4-Ethernet ARP request for us.
 pub fn arp_reply(packet: &[u8], our_mac: [u8; 6]) -> Option<[u8; 42]> {
     // ARP frame = eth header (14) + 28 bytes of ARP.
-    if packet.len() < 14 + 28 { return None; }
+    if packet.len() < 14 + 28 {
+        return None;
+    }
     let arp = &packet[14..];
     let htype = u16::from_be_bytes([arp[0], arp[1]]);
     let ptype = u16::from_be_bytes([arp[2], arp[3]]);
     let oper = u16::from_be_bytes([arp[6], arp[7]]);
-    if htype != 1 || ptype != ETHERTYPE_IPV4 || oper != 1 { return None; }
+    if htype != 1 || ptype != ETHERTYPE_IPV4 || oper != 1 {
+        return None;
+    }
     let mut target_ip = [0u8; 4];
     target_ip.copy_from_slice(&arp[24..28]);
-    if target_ip != OUR_IP { return None; }
+    if target_ip != OUR_IP {
+        return None;
+    }
     let (_, _) = parse_eth(packet)?;
     let (header, _) = parse_eth(packet)?;
     let mut out = [0u8; 42];
@@ -117,25 +129,43 @@ pub fn arp_reply(packet: &[u8], our_mac: [u8; 6]) -> Option<[u8; 42]> {
 pub fn icmp_echo_reply(packet: &[u8], our_mac: [u8; 6]) -> Option<Vec2> {
     let _ = our_mac;
     let (header, payload) = parse_eth(packet)?;
-    if header.ethertype != ETHERTYPE_IPV4 { return None; }
-    if payload.len() < 20 + 8 { return None; }
-    if payload[0] >> 4 != 4 { return None; }
+    if header.ethertype != ETHERTYPE_IPV4 {
+        return None;
+    }
+    if payload.len() < 20 + 8 {
+        return None;
+    }
+    if payload[0] >> 4 != 4 {
+        return None;
+    }
     let ihl = (payload[0] & 0xF) as usize * 4;
-    if ihl < 20 || payload.len() < ihl + 8 { return None; }
+    if ihl < 20 || payload.len() < ihl + 8 {
+        return None;
+    }
     let protocol = payload[9];
-    if protocol != 1 { return None; }
+    if protocol != 1 {
+        return None;
+    }
     let mut dst_ip = [0u8; 4];
     dst_ip.copy_from_slice(&payload[16..20]);
-    if dst_ip != OUR_IP { return None; }
+    if dst_ip != OUR_IP {
+        return None;
+    }
     let icmp = &payload[ihl..];
-    if icmp[0] != 8 { return None; } // echo REQUEST only
+    if icmp[0] != 8 {
+        return None;
+    } // echo REQUEST only
     let total_len = u16::from_be_bytes([payload[2], payload[3]]) as usize;
     let icmp_len = total_len.saturating_sub(ihl).min(icmp.len());
-    if icmp_len < 8 { return None; }
+    if icmp_len < 8 {
+        return None;
+    }
 
     // Reply = swap MACs, swap IPs, type 0, recompute ICMP checksum.
     let mut out_len = 14 + total_len;
-    if out_len > PACKET_BYTES { out_len = PACKET_BYTES; }
+    if out_len > PACKET_BYTES {
+        out_len = PACKET_BYTES;
+    }
     let mut out = [0u8; PACKET_BYTES];
     out[0..6].copy_from_slice(&header.src);
     out[6..12].copy_from_slice(&our_mac);
@@ -160,7 +190,10 @@ pub fn icmp_echo_reply(packet: &[u8], our_mac: [u8; 6]) -> Option<Vec2> {
     }
     let ick = checksum(&out[14 + ihl..14 + ihl + icmp_out_len]);
     out[14 + ihl + 2..14 + ihl + 4].copy_from_slice(&ick.to_be_bytes());
-    Some(Vec2 { bytes: out, len: out_len })
+    Some(Vec2 {
+        bytes: out,
+        len: out_len,
+    })
 }
 
 /// Source IP of the IPv4 payload becomes the reply's destination.
@@ -181,7 +214,13 @@ pub struct Vec2 {
 /// Build an IPv4 ICMP echo REQUEST to the gateway carrying `data`
 /// (the cone has ALREADY approved the bytes — this function is the
 /// post-cone path and never sees refused material).
-pub fn icmp_echo_request(our_mac: [u8; 6], gateway_mac: [u8; 6], id: u16, seq: u16, data: &[u8]) -> Vec2 {
+pub fn icmp_echo_request(
+    our_mac: [u8; 6],
+    gateway_mac: [u8; 6],
+    id: u16,
+    seq: u16,
+    data: &[u8],
+) -> Vec2 {
     let icmp_len = 8 + data.len();
     let total = 20 + icmp_len;
     let mut out = [0u8; PACKET_BYTES];
@@ -191,13 +230,13 @@ pub fn icmp_echo_request(our_mac: [u8; 6], gateway_mac: [u8; 6], id: u16, seq: u
     {
         let ip = &mut out[14..14 + 20];
         ip[0] = 0x45;
-    ip[1] = 0;
-    ip[2..4].copy_from_slice(&((total as u16).to_be_bytes()));
-    ip[4..6].copy_from_slice(&[0x37, 0x13]); // demutable id
-    ip[6..8].copy_from_slice(&[0, 0]); // no flags, no frag
-    ip[8] = 64;
-    ip[9] = 1; // ICMP
-    ip[10..12].copy_from_slice(&[0, 0]);
+        ip[1] = 0;
+        ip[2..4].copy_from_slice(&((total as u16).to_be_bytes()));
+        ip[4..6].copy_from_slice(&[0x37, 0x13]); // demutable id
+        ip[6..8].copy_from_slice(&[0, 0]); // no flags, no frag
+        ip[8] = 64;
+        ip[9] = 1; // ICMP
+        ip[10..12].copy_from_slice(&[0, 0]);
         ip[12..16].copy_from_slice(&OUR_IP);
         ip[16..20].copy_from_slice(&GATEWAY_IP);
     }
@@ -214,7 +253,10 @@ pub fn icmp_echo_request(our_mac: [u8; 6], gateway_mac: [u8; 6], id: u16, seq: u
     }
     let ick = checksum(&out[14 + 20..14 + total]);
     out[14 + 20 + 2..14 + 20 + 4].copy_from_slice(&ick.to_be_bytes());
-    Vec2 { bytes: out, len: 14 + total }
+    Vec2 {
+        bytes: out,
+        len: 14 + total,
+    }
 }
 
 /// ---------------------------------------------------------------------------
@@ -238,26 +280,47 @@ pub struct UdpIn<'a> {
 
 pub fn parse_udp(frame: &[u8]) -> Option<UdpIn<'_>> {
     let (header, payload) = parse_eth(frame)?;
-    let _ = header;
-    if payload.len() < 20 { return None; }
-    if payload[0] >> 4 != 4 { return None; }
+    if header.ethertype != ETHERTYPE_IPV4 || payload.len() < 20 {
+        return None;
+    }
+    if payload[0] >> 4 != 4 {
+        return None;
+    }
     let ihl = (payload[0] & 0xF) as usize * 4;
-    if ihl < 20 || payload.len() < ihl + 8 { return None; }
-    if payload[9] != PROTO_UDP { return None; }
+    if ihl < 20 || payload.len() < ihl + 8 {
+        return None;
+    }
     let total = u16::from_be_bytes([payload[2], payload[3]]) as usize;
-    if total < ihl + 8 { return None; }
-    let udp = &payload[ihl..total.min(payload.len())];
-    if udp.len() < 8 { return None; }
+    if total < ihl + 8 || total > payload.len() {
+        return None;
+    }
+    if checksum(&payload[..ihl]) != 0 {
+        return None;
+    }
+    if u16::from_be_bytes([payload[6], payload[7]]) & 0x3FFF != 0 {
+        return None;
+    }
+    if payload[9] != PROTO_UDP || payload[16..20] != OUR_IP {
+        return None;
+    }
+    let udp = &payload[ihl..total];
     let udp_len = u16::from_be_bytes([udp[4], udp[5]]) as usize;
-    if udp_len < 8 { return None; }
-    let data_len = udp_len.saturating_sub(8).min(udp.len().saturating_sub(8));
+    if udp_len < 8 || udp_len != udp.len() || udp_len > DG_BYTES + 8 {
+        return None;
+    }
     let mut src_ip = [0u8; 4];
     src_ip.copy_from_slice(&payload[12..16]);
+    let mut dst_ip = [0u8; 4];
+    dst_ip.copy_from_slice(&payload[16..20]);
+    let transmitted_checksum = u16::from_be_bytes([udp[6], udp[7]]);
+    if transmitted_checksum != 0 && udp_checksum(src_ip, dst_ip, udp) != 0 {
+        return None;
+    }
     Some(UdpIn {
         src_ip,
         src_port: u16::from_be_bytes([udp[0], udp[1]]),
         dst_port: u16::from_be_bytes([udp[2], udp[3]]),
-        data: &udp[8..8 + data_len],
+        data: &udp[8..],
     })
 }
 
@@ -312,13 +375,15 @@ pub fn build_udp(
     out[14 + 28..14 + 28 + data.len()].copy_from_slice(data);
     let ick = udp_checksum(OUR_IP, dst_ip, &out[14 + 20..14 + 20 + udp_len]);
     out[14 + 26..14 + 28].copy_from_slice(&ick.to_be_bytes());
-    Vec2 { bytes: out, len: 14 + total }
+    Vec2 {
+        bytes: out,
+        len: 14 + total,
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Kernel-side state (behind the house lock).
 // ---------------------------------------------------------------------------
-
 
 /// Minimal spin lock (same envelope as kernel-sense's).
 pub struct Lock<T> {
@@ -326,23 +391,38 @@ pub struct Lock<T> {
     value: UnsafeCell<T>,
 }
 unsafe impl<T: Send> Sync for Lock<T> {}
-pub struct Guard<'a, T> { lock: &'a Lock<T> }
+pub struct Guard<'a, T> {
+    lock: &'a Lock<T>,
+}
 impl<T> Drop for Guard<'_, T> {
-    fn drop(&mut self) { self.lock.locked.store(false, Ordering::Release); }
+    fn drop(&mut self) {
+        self.lock.locked.store(false, Ordering::Release);
+    }
 }
 impl<T> Deref for Guard<'_, T> {
     type Target = T;
-    fn deref(&self) -> &T { unsafe { &*self.lock.value.get() } }
+    fn deref(&self) -> &T {
+        unsafe { &*self.lock.value.get() }
+    }
 }
 impl<T> DerefMut for Guard<'_, T> {
-    fn deref_mut(&mut self) -> &mut T { unsafe { &mut *self.lock.value.get() } }
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.lock.value.get() }
+    }
 }
 impl<T> Lock<T> {
     pub const fn new(value: T) -> Self {
-        Self { locked: AtomicBool::new(false), value: UnsafeCell::new(value) }
+        Self {
+            locked: AtomicBool::new(false),
+            value: UnsafeCell::new(value),
+        }
     }
     pub fn lock(&self) -> Guard<'_, T> {
-        while self.locked.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
+        while self
+            .locked
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
             spin_loop();
         }
         Guard { lock: self }
@@ -417,7 +497,9 @@ pub fn bring_up(device: &mut kernel_kit::virtio_net::VirtioNet) {
     state.up = true;
 }
 
-pub fn is_up() -> bool { STATE.lock().up }
+pub fn is_up() -> bool {
+    STATE.lock().up
+}
 
 /// The kernel's own handling of one received frame. ARP requests for
 /// us and ICMP echoes to us are answered IN KERNEL; everything else
@@ -477,7 +559,11 @@ pub fn handle_frame(packet: &[u8], transmit: &mut dyn FnMut(&[u8])) {
     // UDP: demux by destination port to the listener that earned it.
     if header.ethertype == ETHERTYPE_IPV4 {
         if let Some(dg) = parse_udp(packet) {
-            if let Some(listener) = state.listeners.iter_mut().find(|l| l.port == dg.dst_port && l.port != 0) {
+            if let Some(listener) = state
+                .listeners
+                .iter_mut()
+                .find(|l| l.port == dg.dst_port && l.port != 0)
+            {
                 if listener.count < DG_SLOTS && dg.data.len() <= DG_BYTES {
                     let slot = (listener.head + listener.count) % DG_SLOTS;
                     listener.ring[slot][..dg.data.len()].copy_from_slice(dg.data);
@@ -507,7 +593,9 @@ pub fn handle_frame(packet: &[u8], transmit: &mut dyn FnMut(&[u8])) {
 pub fn recv_into(out: &mut [u8]) -> Option<usize> {
     let (len, src) = {
         let mut state = STATE.lock();
-        if state.count == 0 { return None; }
+        if state.count == 0 {
+            return None;
+        }
         let slot = state.head;
         let len = state.lens[slot].min(out.len());
         let src = state.ring[slot];
@@ -522,7 +610,11 @@ pub fn recv_into(out: &mut [u8]) -> Option<usize> {
 /// SYS_NET_SEND: the egress cone first (prose passes; key-shaped data
 /// never reaches the wire), then out as an ICMP echo request to the
 /// gateway. Returns Ok(()) or Err(cause) for the receipt.
-pub enum SendCause { Cone, NoRoute, Driver }
+pub enum SendCause {
+    Cone,
+    NoRoute,
+    Driver,
+}
 pub fn send_probed(data: &[u8], transmit: &mut dyn FnMut(&[u8]) -> bool) -> Result<(), SendCause> {
     if !kernel_egress::gate(data) {
         STATE.lock().cone_blocked += 1;
@@ -632,10 +724,16 @@ pub fn heartbeat() {
 
 /// Raw transmit through the registry. Returns success.
 pub fn send_raw(bytes: &[u8]) -> bool {
-    let sent = { let mut device = DEVICE.lock();
-        match device.as_mut() { Some(net) => net.transmit(bytes).is_ok(), None => false }
+    let sent = {
+        let mut device = DEVICE.lock();
+        match device.as_mut() {
+            Some(net) => net.transmit(bytes).is_ok(),
+            None => false,
+        }
     };
-    if sent { lightcone::observe(1, bytes); }
+    if sent {
+        lightcone::observe(1, bytes);
+    }
     sent
 }
 
@@ -643,19 +741,32 @@ pub fn send_raw(bytes: &[u8]) -> bool {
 /// gateway). Receipt: 1 sent, 0 when the device is absent.
 pub fn arp_probe() -> u64 {
     let mac = STATE.lock().mac;
-    if mac == [0; 6] { return 0; }
+    if mac == [0; 6] {
+        return 0;
+    }
     let request = arp_request(mac);
-    if send_raw(&request) { 1 } else { 0 }
+    if send_raw(&request) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Bind a listener port (the ceremony: a port is a place you chose
 /// to receive foreign material). Returns success.
 pub fn bind(port: u16) -> bool {
-    if port == 0 { return false; }
+    if port == 0 {
+        return false;
+    }
     let mut state = STATE.lock();
-    if state.listeners.iter().any(|l| l.port == port) { return true; }
+    if state.listeners.iter().any(|l| l.port == port) {
+        return true;
+    }
     match state.listeners.iter_mut().find(|l| l.port == 0) {
-        Some(listener) => { listener.port = port; true }
+        Some(listener) => {
+            listener.port = port;
+            true
+        }
         None => false,
     }
 }
@@ -665,7 +776,9 @@ pub fn bind(port: u16) -> bool {
 pub fn udp_recv_into(port: u16, out: &mut [u8]) -> Option<usize> {
     let mut state = STATE.lock();
     let listener = state.listeners.iter_mut().find(|l| l.port == port)?;
-    if listener.count == 0 { return None; }
+    if listener.count == 0 {
+        return None;
+    }
     let slot = listener.head;
     let len = listener.lens[slot].min(out.len());
     out[..len].copy_from_slice(&listener.ring[slot][..len]);
@@ -678,14 +791,26 @@ pub fn udp_recv_into(port: u16, out: &mut [u8]) -> Option<usize> {
 pub fn udp_last_sender(port: u16) -> Option<([u8; 4], u16)> {
     let state = STATE.lock();
     let listener = state.listeners.iter().find(|l| l.port == port)?;
-    if listener.last_sender_port == 0 { return None; }
+    if listener.last_sender_port == 0 {
+        return None;
+    }
     Some((listener.last_sender_ip, listener.last_sender_port))
 }
 
 /// The socket-layer send: the egress cone first (the DATA — never
 /// the addressing header), then out via the gateway next-hop.
-pub enum UdpCause { Cone, NoRoute, Driver }
-pub fn udp_send(dst_ip: [u8; 4], dst_port: u16, src_port: u16, data: &[u8], transmit: &mut dyn FnMut(&[u8]) -> bool) -> Result<(), UdpCause> {
+pub enum UdpCause {
+    Cone,
+    NoRoute,
+    Driver,
+}
+pub fn udp_send(
+    dst_ip: [u8; 4],
+    dst_port: u16,
+    src_port: u16,
+    data: &[u8],
+    transmit: &mut dyn FnMut(&[u8]) -> bool,
+) -> Result<(), UdpCause> {
     if !kernel_egress::gate(data) {
         STATE.lock().cone_blocked += 1;
         return Err(UdpCause::Cone);
@@ -741,5 +866,55 @@ mod tests {
         // RFC 1071 example data.
         let data = [0x00u8, 0x01, 0xf2, 0x03, 0xf4, 0xf5, 0xf6, 0xf7];
         assert_eq!(checksum(&data), 0x220D);
+    }
+
+    fn inbound_udp(data: &[u8]) -> Vec2 {
+        build_udp(
+            [0x52, 0x54, 0, 0x12, 0x34, 0x02],
+            [0x52, 0x54, 0, 0x12, 0x34, 0x56],
+            OUR_IP,
+            9100,
+            9000,
+            data,
+        )
+    }
+
+    fn repair_ipv4_checksum(frame: &mut [u8]) {
+        frame[24..26].copy_from_slice(&[0, 0]);
+        let value = checksum(&frame[14..34]);
+        frame[24..26].copy_from_slice(&value.to_be_bytes());
+    }
+
+    #[test]
+    fn udp_delivery_rejects_invalid_ip_and_transport_boundaries() {
+        let valid = inbound_udp(b"valid");
+        assert_eq!(parse_udp(&valid.bytes[..valid.len]).unwrap().data, b"valid");
+
+        let mut bad = valid.bytes;
+        bad[24] ^= 1;
+        assert!(parse_udp(&bad[..valid.len]).is_none());
+
+        let mut bad = valid.bytes;
+        bad[40..42].copy_from_slice(&0x1234u16.to_be_bytes());
+        assert!(parse_udp(&bad[..valid.len]).is_none());
+
+        let mut bad = valid.bytes;
+        bad[16..18].copy_from_slice(&((valid.len + 100) as u16).to_be_bytes());
+        repair_ipv4_checksum(&mut bad);
+        assert!(parse_udp(&bad[..valid.len]).is_none());
+
+        let mut bad = valid.bytes;
+        bad[38..40].copy_from_slice(&400u16.to_be_bytes());
+        assert!(parse_udp(&bad[..valid.len]).is_none());
+
+        let mut bad = valid.bytes;
+        bad[20..22].copy_from_slice(&16u16.to_be_bytes());
+        repair_ipv4_checksum(&mut bad);
+        assert!(parse_udp(&bad[..valid.len]).is_none());
+
+        let mut bad = valid.bytes;
+        bad[30..34].copy_from_slice(&[10, 0, 2, 99]);
+        repair_ipv4_checksum(&mut bad);
+        assert!(parse_udp(&bad[..valid.len]).is_none());
     }
 }

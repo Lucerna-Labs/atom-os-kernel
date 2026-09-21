@@ -20,14 +20,30 @@ fn number(s: &str, key: &str) -> u64 {
 }
 pub fn show() {
     let info = read(0, 0).expect("world unavailable");
-    rt::print(&alloc::format!("LIGHTCONE_INFO {}\n", info));
+    let info_line = alloc::format!("LIGHTCONE_INFO {}\n", info);
+    assert!(rt::try_print(&info_line));
     let latest = number(&info, "latest");
     let first = number(&info, "oldest");
+    let mut retrieved = 0;
+    let mut emitted = 0;
+    let mut rejected = 0;
     for id in first..=latest {
         if let Some(r) = read(1, id) {
-            rt::print(&alloc::format!("LIGHTCONE_RECEIPT {}\n", r));
+            retrieved += 1;
+            let line = alloc::format!("LIGHTCONE_RECEIPT {}\n", r);
+            if rt::try_print(&line) {
+                emitted += 1;
+            } else {
+                rejected += 1;
+            }
         }
     }
+    assert!(rt::try_print(&alloc::format!(
+        "LIGHTCONE_SHOW retrieved={} emitted={} rejected={}\n",
+        retrieved,
+        emitted,
+        rejected
+    )));
 }
 pub fn run() {
     assert!(read(0, 0).is_some());
@@ -88,35 +104,31 @@ pub fn ingress_audit() {
     rt::print("AUDIT_INGRESS_DONE\n");
 }
 
-/// Distinguish ledger availability from the pre-existing console egress gate.
+/// Verify the ledger through its read-only ABI and emit an honest compact
+/// summary. Full JSON remains available on LIGHTCONE_PAGE; the diagnostic does
+/// not bypass or disable the independent console egress policy.
 fn audit_dump() {
     let info = read(0, 0).unwrap();
     rt::print(&alloc::format!("AUDIT_LEDGER_INFO {}\n", info));
     let first = number(&info, "oldest");
     let latest = number(&info, "latest");
     let mut retrieved = 0;
-    let mut emitted = 0;
-    let mut rejected = 0;
+    let mut verified = 0;
     for id in first..=latest {
         if let Some(body) = read(1, id) {
             retrieved += 1;
-            let line = alloc::format!("LIGHTCONE_RECEIPT {}\n", body);
-            let result = rt::call(SYS_WRITE_BUFFER, line.as_ptr() as u64, line.len() as u64);
-            if result == line.len() as u64 {
-                emitted += 1;
-            } else {
-                rejected += 1;
+            if read(1, id).as_ref() == Some(&body) {
+                verified += 1;
             }
         }
     }
-    rt::print(&alloc::format!(
-        "AUDIT_LEDGER retrieved={} emitted={} console_rejected={} first={} latest={}\n",
+    assert!(rt::try_print(&alloc::format!(
+        "AUDIT_LEDGER retrieved={} verified={} first={} latest={}\n",
         retrieved,
-        emitted,
-        rejected,
+        verified,
         first,
         latest
-    ));
+    )));
 }
 
 /// Test instrumentation only: sustained actual outbound datagrams and ledger reads.

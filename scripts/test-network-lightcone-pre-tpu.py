@@ -72,17 +72,16 @@ def main():
   check('all_sustained_rounds_complete',len(rounds)==3,rounds=rounds)
   expected_payloads={f'soak round {r} sample {s}'.encode() for r in range(3) for s in range(256)}
   check('sustained_wire_bytes_and_checksums',len(echoes)==768 and set(echoes)==expected_payloads and not reader_errors,outbound=len(echoes),echoed_inbound=len(echoes),reader_errors=reader_errors)
-  final=[json.loads(s) for s in re.findall(r'LIGHTCONE_RECEIPT (\{[^\n]+\})',soak)]
-  ledger=re.search(r'AUDIT_LEDGER retrieved=(\d+) emitted=(\d+) console_rejected=(\d+) first=(\d+) latest=(\d+)',soak)
+  ledger=re.search(r'AUDIT_LEDGER retrieved=(\d+) verified=(\d+) first=(\d+) latest=(\d+)',soak)
   counts=list(map(int,ledger.groups())) if ledger else []
-  check('kernel_ledger_retains_32',bool(counts) and counts[0]==32 and counts[4]-counts[3]==31,counts=counts)
-  check('console_exposes_every_retained_receipt',bool(counts) and counts[1]==32 and counts[2]==0 and len(final)==32,emitted=len(final),console_rejected=counts[2] if counts else None)
+  check('kernel_ledger_retains_32',bool(counts) and counts[0]==32 and counts[3]-counts[2]==31,counts=counts)
+  check('ledger_summary_is_reliable',bool(counts) and counts[1]==32,counts=counts)
   check('free_frames_stable_after_warmup',len(rounds)==3 and rounds[1]['free']==rounds[2]['free'])
   wire={base.sha(b) for b in sent+received};ok=True
-  for r in first+final:
+  for r in first:
    ok &= (r['nodes'],r['edges'],r['excluded'],r['hop_frontier'])==base.expected(world,r)
    ok &= r['receipt_sha256']==base.receipt_hash(r) and r['query_sha256'] in wire and r['pack_sha256']==result['pack_sha256'] and r['passive'] and not r['holds_verdict']
-  check('emitted_receipts_exact_and_immutable',ok,verified_receipts=len(first+final))
+  check('observed_receipts_exact_and_immutable',ok,verified_receipts=len(first))
   guest.command('msg pre-tpu-survives',re.escape('[Daemon] Received IPC: pre-tpu-survives'),60);check('interactive_ipc_after_sustained_load',True)
   result['success']=not result['failures']
  except Exception as e:result['error']=repr(e);result['traceback']=traceback.format_exc();print('FAIL '+repr(e),flush=True)

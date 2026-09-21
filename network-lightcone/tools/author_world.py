@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Author source-bound protocol records; never ingest packet payloads as truth."""
 from pathlib import Path
-import hashlib,json,urllib.request,subprocess
+import hashlib,json,os,urllib.request,subprocess
 ROOT=Path(__file__).resolve().parents[1]
 def canonical(v): return json.dumps(v,sort_keys=True,separators=(',',':')).encode()
 # Statements are original summaries, not reproduced standards text.
@@ -63,11 +63,19 @@ ip_options|rfc791|IPv4 options|Options extend the IPv4 header within its IHL ext
 udp_source_zero|rfc768|Unspecified UDP source port|Zero source port means that no source port was supplied.
 fragmented_udp|rfc791|UDP carried in IPv4 fragments|Interpreting a complete fragmented UDP transport message requires IP reassembly.
 fragmented_icmp|rfc791|ICMP carried in IPv4 fragments|Interpreting a complete fragmented ICMP transport message requires IP reassembly.
+icmp_redirect|rfc792|ICMP redirect|An ICMP redirect supplies routing advice for a destination.
+route_advice|rfc792|Routing advice|Routing advice describes a proposed first-hop change rather than authenticated authority.
+icmp_parameter_problem|rfc792|ICMP parameter problem|An ICMP parameter-problem message identifies a problem in an IP header.
+header_problem|rfc792|Header problem context|Quoted header context associates an ICMP parameter problem with the triggering datagram.
+tcp_window|rfc9293|TCP receive window|The TCP window field communicates receive-flow capacity in sequence space.
+flow_control|rfc9293|TCP flow control|TCP flow control limits how much unacknowledged data a sender may transmit.
+pseudo_header|rfc768|Transport pseudo-header|UDP checksum coverage includes selected IP addressing and protocol fields.
+endpoint_addresses|rfc791|IP endpoint addresses|IPv4 source and destination fields identify the datagram endpoints claimed in the header.
 '''
 nodes=[]
 for line in [line for line in rows.splitlines() if line.strip()]:
  ident,source,title,statement=line.split('|')
- nodes.append(dict(id=ident,title=title,statement=statement,source_ids=[source],epistemic_class='source_grounded_mechanism' if source!='kernel' else 'implementation_observation',scope='protocol knowledge; conditional context, not a claim that this packet is trustworthy',limitations='No authorization or identity inference; exact scope and exceptions retained on edges.',lanes=['causal','geometry'],aliases=[ident,title.lower()]))
+ nodes.append(dict(id=ident,title=title,statement=statement,source_ids=[source],epistemic_class='source_grounded_mechanism' if source!='kernel' else 'implementation_observation',scope='protocol knowledge; conditional context, not a claim that this packet is trustworthy',limitations='No authorization or identity inference; exact scope and exceptions retained on edges.',lanes=['causal','geometry'],aliases=[ident,title.lower()],record_kind='mechanism',as_of='2026-09-21',version_boundary='Network world revision 3',coverage_axes=['mechanism','causality','scope','limitations','adversarial_misuse']))
 # relation, polarity, mechanism group, split, condition, exceptions.
 relations={'requires':0,'enables':1,'describes':2,'does_not_establish':3,'depends_on':4}
 edge_rows='''
@@ -138,23 +146,30 @@ icmp_unreachable|icmp_quote|describes|icmp_unreachable_context|validation
 icmp_expired|icmp_quote|describes|icmp_expiration_context|sealed_test
 fragmented_udp|reassembly|requires|fragmented_udp_composition|cross_composition
 fragmented_icmp|reassembly|requires|fragmented_icmp_composition|cross_composition
+icmp_redirect|route_advice|describes|icmp_redirect_advice|validation
+icmp_parameter_problem|header_problem|describes|icmp_parameter_context|validation
+tcp_window|flow_control|enables|tcp_window_flow|sealed_test
+tcp_window|tcp_state|depends_on|tcp_window_state|sealed_test
+udp_checksum|pseudo_header|depends_on|udp_pseudo_header|cross_composition
+pseudo_header|endpoint_addresses|depends_on|pseudo_header_addresses|cross_composition
 '''
 byid={n['id']:n for n in nodes};edges=[]
 for i,line in enumerate([line for line in edge_rows.splitlines() if line.strip()]):
  a,b,rel,group,split=line.split('|')
- if i<46 and split!='train': split='regression'
+ if i<60 and split!='train': split='regression'
  sources=sorted(set(byid[a]['source_ids']+byid[b]['source_ids']))
  # Every edge is a conditional knowledge relation, not a packet execution claim.
- edges.append(dict(id=f'e{i:03d}',source=a,target=b,relation=rel,polarity=-1 if rel=='does_not_establish' else 1,mechanism_group=group,split=split,source_ids=sources,conditions='Within the named protocol and its standard; IPv4 encapsulation for this world.',exceptions='Unsupported extensions, incomplete captures and unvalidated checksums remain unknown. No cryptographic authentication inferred.',scope='network protocol mechanism',epistemic_class='source_grounded_mechanism',evidence=byid[a]['statement']+' '+byid[b]['statement']))
+ edges.append(dict(id=f'e{i:03d}',source=a,target=b,relation=rel,polarity=-1 if rel=='does_not_establish' else 1,mechanism_group=group,split=split,source_ids=sources,conditions='Within the named protocol and its standard; IPv4 encapsulation for this world.',exceptions='Unsupported extensions, incomplete captures and unvalidated checksums remain unknown. No cryptographic authentication inferred.',scope='network protocol mechanism',epistemic_class='source_grounded_mechanism',evidence=byid[a]['statement']+' '+byid[b]['statement'],direction='forward'))
 sources=[]
 for num,title,sections in [(768,'UDP','Fields; IP Interface'),(791,'IPv4','3.1; 3.2'),(792,'ICMP','Echo; Destination Unreachable'),(826,'ARP','Packet format; Packet Reception'),(9293,'TCP','3.1; 3.4; 3.5; 3.6')]:
  url=f'https://www.rfc-editor.org/rfc/rfc{num}.txt'
  data=urllib.request.urlopen(url,timeout=30).read()
- sources.append(dict(id=f'rfc{num}',title=title,author='IETF / RFC Editor; authors identified in linked RFC',url=url,version=f'RFC {num}',sections=sections,sha256=hashlib.sha256(data).hexdigest(),rights_lane='citation_only',use='Original concise factual summaries only; full RFC text is neither redistributed nor model training text.',retrieved='2026-09-21'))
+ sources.append(dict(id=f'rfc{num}',title=title,author='IETF / RFC Editor; authors identified in linked RFC',url=url,version=f'RFC {num}',sections=sections,sha256=hashlib.sha256(data).hexdigest(),rights_lane='citation_only',use='Original concise factual summaries only; full RFC text is neither redistributed nor model training text.',retrieved='2026-09-21',trust_role='authoritative_protocol_standard',attribution=f'RFC {num}, authors and IETF Trust terms at the source URL'))
 kp=ROOT.parent/'kernel-net/src/lib.rs'
-sources.append(dict(id='kernel',title='Atom OS network ownership and user-defined passive boundary',url='https://github.com/Rekonquest/atom-os-kernel',version='e75ee87',sha256=hashlib.sha256(subprocess.check_output(['git','show','e75ee87:kernel-net/src/lib.rs'],cwd=ROOT.parent)).hexdigest(),rights_lane='user_authorized',use='Implementation facts and explicit scope limitations; not a security proof.'))
-world=dict(schema=2,id='atom-network-causal-v2',version=2,dimensions=48,relations=relations,nodes=nodes,edges=edges,sources=sources,policy=dict(id='network-context-v1',max_hops=3,max_nodes=32,direction='both',relation_mask=31,polarity='both'),geometry_seed_policy='Only exact packet observation symbols admit runtime seeds. Full geometry is retained and independently inspectable; similarity never invents a protocol fact.',split_rule='Entire mechanism groups; paired directions share the same split; no augmented paraphrases cross splits.')
+revision=os.environ.get('NETWORK_SOURCE_REVISION') or subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT.parent,text=True).strip()
+sources.append(dict(id='kernel',title='Atom OS network ownership and user-defined passive boundary',author='Jesse Alicea / Rekonquest',url='https://github.com/Rekonquest/atom-os-kernel',version=revision,sha256=hashlib.sha256(subprocess.check_output(['git','show',f'{revision}:kernel-net/src/lib.rs'],cwd=ROOT.parent)).hexdigest(),rights_lane='user_authorized',use='Implementation facts and explicit scope limitations; not a security proof.',trust_role='implementation_source',attribution=f'Atom OS kernel source revision {revision}'))
+world=dict(schema=2,id='atom-network-causal-v3',version=3,dimensions=48,relations=relations,nodes=nodes,edges=edges,sources=sources,policy=dict(id='network-context-v1',max_hops=3,max_nodes=32,direction='both',relation_mask=31,polarity='both'),geometry_seed_policy='Only exact packet observation symbols admit runtime seeds. Full geometry is retained and independently inspectable; similarity never invents a protocol fact.',split_rule='Entire mechanism groups and exact typed relations are confined to one split; no augmented paraphrases cross splits.')
 (ROOT/'sources/world.json').write_bytes(canonical(world)+b'\n')
 (ROOT/'sources/splits.json').write_bytes(canonical({s:sorted({e['mechanism_group'] for e in edges if e['split']==s}) for s in ['train','validation','sealed_test','cross_composition','regression']})+b'\n')
-(ROOT/'coverage.json').write_text(json.dumps(dict(open_world=True,revision=2,status='sourced',covered=['Ethernet observations','ARP context','IPv4 context','UDP context','ICMP context','TCP header context','ingress and egress admission'],gaps=['IPv6','TCP transport implementation','IP reassembly','TLS/application semantics','authenticated session ancestry','copy provenance enforcement','long-term traffic reliability'],lanes={'causal':'passive graph only','geometry':'48D plus observer shadow','reasoning':'separate consumer, not inside Lightcone'}),indent=2)+'\n')
+(ROOT/'coverage.json').write_text(json.dumps(dict(open_world=True,revision=3,status='sourced',covered=['Ethernet observations','ARP context','IPv4 context','UDP context','ICMP context','TCP header context','ingress and egress admission'],gaps=['IPv6','TCP transport implementation','IP reassembly','TLS/application semantics','authenticated session ancestry','copy provenance enforcement','long-term traffic reliability'],lanes={'causal':'passive graph only','geometry':'48D plus observer shadow','reasoning':'separate consumer, not inside Lightcone'}),indent=2)+'\n')
 print(f'Authored {len(nodes)} nodes and {len(edges)} edges; source and mechanism splits pinned')

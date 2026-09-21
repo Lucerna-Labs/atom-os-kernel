@@ -5,13 +5,18 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);a=p.parse_args();out=a.output.resolve();out.mkdir(parents=True,exist_ok=False)
 spec=importlib.util.spec_from_file_location('train_under_test',ROOT/'network-lightcone/tools/train.py');trainer=importlib.util.module_from_spec(spec);spec.loader.exec_module(trainer)
-w=json.loads((ROOT/'network-lightcone/sources/world.json').read_bytes());pack=ROOT/'network-lightcone/worlds/v2-local-diagnostic';checks=[]
+w=json.loads((ROOT/'network-lightcone/sources/world.json').read_bytes());pack=ROOT/'network-lightcone/worlds/v3-local-diagnostic';checks=[]
 def record(name,passed,**details):checks.append(dict(name=name,passed=bool(passed),**details));print(name+(' PASS' if passed else ' FAIL'),flush=True)
 def validate_case(name,mutate,required=True):
  v=copy.deepcopy(w);mutate(v)
  try:trainer.validate(v);rejected=False;error=None
  except Exception as e:rejected=True;error=repr(e)
  record(name,rejected,owner='world_compiler',error=error,required=required)
+try:
+ trainer.validate(w);base_valid=True;base_error=None
+except Exception as e:
+ base_valid=False;base_error=repr(e)
+record('current_world_validates',base_valid,owner='world_compiler',error=base_error)
 validate_case('dangling_endpoint',lambda v:v['edges'][0].update(target='missing-node'))
 validate_case('unknown_source',lambda v:v['nodes'][0].update(source_ids=['unknown-source']))
 validate_case('duplicate_id',lambda v:v['nodes'].append(copy.deepcopy(v['nodes'][0])))
@@ -46,9 +51,9 @@ for e in w['edges']:
  rank=1+sum(ds[j]<=ds[dst] for j in range(len(ds)) if j not in excluded);ranks.setdefault(e['split'],[]).append(dict(edge=e['id'],rank=rank))
 rank_metrics={s:dict(count=len(v),top1=sum(k['rank']==1 for k in v)/len(v),mrr=sum(1/k['rank'] for k in v)/len(v),ranks=v) for s,v in ranks.items()}
 train_nodes={e[k] for e in w['edges'] if e['split']=='train' for k in ['source','target']};heldout=sorted({e[k] for e in w['edges'] if e['split']in ['validation','sealed_test','cross_composition'] for k in ['source','target']}-train_nodes)
-# Read the concrete loss shape: corrupt-tail candidates include every node.
-code=(ROOT/'network-lightcone/tools/train.py').read_text();all_nodes_negative='q[:,None,:]-z[None,:,:]' in code
-record('evaluation_only_nodes_excluded_from_training_negatives',not heldout or not all_nodes_negative,owner='training_isolation',evaluation_only_nodes=heldout,qualification='Transductive negatives do not use held-out edge labels, but they do use held-out node descriptions; strict mechanism isolation is not established.')
+training_receipt=json.loads((pack/'training.json').read_bytes())
+candidates=set(training_receipt.get('negative_candidate_ids',[]))
+record('evaluation_only_nodes_excluded_from_training_negatives',candidates==train_nodes and candidates.isdisjoint(heldout),owner='training_isolation',evaluation_only_nodes=heldout,negative_candidate_ids=sorted(candidates))
 result=dict(baseline_revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),passed=all(x['passed'] for x in checks),checks=checks,ranking_diagnostics=rank_metrics,production_pack_sha256=hashlib.sha256((ROOT/'kernel-lightcone/src/world.bin').read_bytes()).hexdigest(),accelerator_submitted=False,sealed=False)
 (out/'result.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps({'passed':result['passed'],'failures':[v['name'] for v in checks if not v['passed']],'ranking':{s:{k:v for k,v in v.items() if k!='ranks'} for s,v in rank_metrics.items()}},indent=2))
 raise SystemExit(0 if result['passed'] else 1)
