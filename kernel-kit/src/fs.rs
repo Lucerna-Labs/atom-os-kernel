@@ -6,7 +6,7 @@ use crate::memory::Spinlock;
 
 /// Read-only programs embedded in the boot image. They are never removed,
 /// renamed or written to disk snapshots.
-pub const BUILTINS: [&str; 5] = ["shell.elf", "daemon.elf", "worker.elf", "fault.elf", "sleeper.elf"];
+pub const BUILTINS: [&str; 6] = ["shell.elf", "daemon.elf", "worker.elf", "fault.elf", "sleeper.elf", "desktop.elf"];
 pub fn builtin(name: &str) -> bool { BUILTINS.contains(&name) }
 pub fn valid_name(name: &str) -> bool {
     !name.is_empty() && name.len() <= 63 && !name.bytes().any(|b| b < 32 || b == b'/')

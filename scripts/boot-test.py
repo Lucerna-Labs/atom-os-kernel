@@ -22,7 +22,7 @@ class Guest:
                    "-drive", f"if=none,format=raw,file={disk},id=atomdata,cache=writeback",
                    "-device", "virtio-blk-pci,drive=atomdata,disable-modern=on",
                    "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
-                   "-display", "none", "-nic", "none", "-serial", f"file:{output / 'serial.log'}",
+                   "-display", "none", "-vga", "none", "-nic", "none", "-serial", f"file:{output / 'serial.log'}",
                    "-qmp", f"unix:{output / 'qmp.sock'},server=on,wait=off",
                    "-no-shutdown", "-d", "guest_errors", "-D", str(output / "guest-errors.log")]
         if accel == "kvm" and not os.access("/dev/kvm", os.R_OK | os.W_OK):
