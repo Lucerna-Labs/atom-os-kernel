@@ -21,3 +21,6 @@ Thumbs.db
 
 # Reproducible VM results and isolated test disks (retained locally).
 /test-results/
+
+# Python bytecode
+__pycache__/

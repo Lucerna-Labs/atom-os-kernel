@@ -24,7 +24,75 @@ pub fn user_string(context: &Context, address: u64, limit: usize) -> Result<Stri
     Err(())
 }
 
-pub fn builtin(name: &str) -> bool { matches!(name, "shell.elf" | "daemon.elf" | "worker.elf" | "fault.elf") }
+pub use kernel_kit::fs::builtin;
+
+/// Copies kernel bytes into the current process through its own page tables,
+/// after checking the whole destination is mapped, user-accessible and writable.
+fn copy_to_user(context: &Context, address: u64, bytes: &[u8]) -> bool {
+    let Some(space) = context.space.as_ref() else { return false; };
+    if !space.valid_user_range(address, bytes.len(), true) { return false; }
+    let mut done = 0;
+    while done < bytes.len() {
+        let virt = address + done as u64;
+        let count = (4096 - (virt & 4095) as usize).min(bytes.len() - done);
+        let Some(phys) = space.translate_user(virt, true) else { return false; };
+        unsafe { core::ptr::copy_nonoverlapping(bytes[done..].as_ptr(), phys_to_virt(phys) as *mut u8, count); }
+        done += count;
+    }
+    true
+}
+
+/// Copies `len` bytes out of the current process, checking every page.
+fn copy_from_user(context: &Context, address: u64, len: usize) -> Option<Vec<u8>> {
+    let space = context.space.as_ref()?;
+    if !space.valid_user_range(address, len, false) { return None; }
+    let mut bytes = alloc::vec![0u8; len];
+    let mut done = 0;
+    while done < len {
+        let virt = address + done as u64;
+        let count = (4096 - (virt & 4095) as usize).min(len - done);
+        let phys = space.translate_user(virt, false)?;
+        unsafe { core::ptr::copy_nonoverlapping(phys_to_virt(phys) as *const u8, bytes[done..].as_mut_ptr(), count); }
+        done += count;
+    }
+    Some(bytes)
+}
+
+/// Writes to the process's standard output: the console, or its pipe.
+fn stdout_write(context: &Context, bytes: &[u8]) -> u64 {
+    match &context.stdout {
+        None => {
+            let mut writer = kernel_kit::vga::VgaWriter::new();
+            for &byte in bytes { writer.write_byte(byte); }
+            bytes.len() as u64
+        }
+        Some(end) => match end.write(bytes) {
+            kernel_kit::pipe::Write::Wrote(count) => count as u64,
+            kernel_kit::pipe::Write::WouldBlock => WOULD_BLOCK,
+            kernel_kit::pipe::Write::Broken => ERROR,
+        },
+    }
+}
+
+fn pipe_read(end: &kernel_kit::pipe::PipeEnd, context: &Context, address: u64, len: usize) -> u64 {
+    if !context.space.as_ref().unwrap().valid_user_range(address, len, true) { return ERROR; }
+    let mut buffer = alloc::vec![0u8; len];
+    match end.read(&mut buffer) {
+        kernel_kit::pipe::Read::Data(count) => if copy_to_user(context, address, &buffer[..count]) { count as u64 } else { ERROR },
+        kernel_kit::pipe::Read::WouldBlock => WOULD_BLOCK,
+        kernel_kit::pipe::Read::End => 0,
+    }
+}
+
+fn nul_string(bytes: &[u8]) -> Option<String> {
+    let len = bytes.iter().position(|&b| b == 0)?;
+    String::from_utf8(bytes[..len].to_vec()).ok()
+}
+
+/// True when any live descriptor in any process references this file object.
+fn file_open(system: &System, address: u64) -> bool {
+    system.scheduler.tasks.iter().flatten().any(|task| task.open_files.iter().any(|entry| entry.0 == address))
+}
 
 /// Called with interrupts disabled and the actual interrupted frame registered
 /// in the current context. Never dispatch through an earlier saved frame.
@@ -49,23 +117,42 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
     } else if is(number, SYS_EXIT) {
         system.exit_current(arg); switch = true;
     } else if is(number, SYS_READ) {
-        loop {
-            let (buffer, flags) = kernel_kit::io::KEYBOARD_BUFFER.lock();
-            let code = buffer.pop();
-            kernel_kit::io::KEYBOARD_BUFFER.unlock(flags);
-            match code {
-                Some(code) => if let Some(byte) = kernel_kit::keyboard::scancode_to_ascii(code) { frame.rax = byte as u64; break; },
-                None => { frame.rax = 0; break; }
+        frame.rax = if let Some(end) = &context.stdin {
+            let mut byte = [0u8];
+            match end.read(&mut byte) { kernel_kit::pipe::Read::Data(1) => byte[0] as u64, _ => 0 }
+        } else if system.display_owner.is_some() {
+            0 // While a desktop owns the display, keystrokes belong to it alone.
+        } else { kernel_kit::input::console_byte().unwrap_or(0) as u64 };
+    } else if is(number, SYS_STDIN_READ) {
+        let len = (arg1 as usize).min(4096);
+        frame.rax = if let Some(end) = &context.stdin { pipe_read(end, context, arg, len) }
+        else if system.display_owner.is_some() { WOULD_BLOCK }
+        else {
+            let mut bytes = Vec::new();
+            let mut ended = false;
+            while bytes.len() < len {
+                match kernel_kit::input::console_byte() {
+                    Some(27) => { ended = true; break; }
+                    Some(byte) => bytes.push(byte),
+                    None => break,
+                }
+            }
+            if bytes.is_empty() { if ended { 0 } else { WOULD_BLOCK } }
+            else if copy_to_user(context, arg, &bytes) { bytes.len() as u64 } else { ERROR }
+        };
+    } else if is(number, SYS_CONSOLE_WRITE) {
+        if arg1 <= 4096 && context.space.as_ref().unwrap().valid_user_range(arg, arg1 as usize, false) {
+            if let Some(bytes) = copy_from_user(context, arg, arg1 as usize) {
+                let mut writer = kernel_kit::vga::VgaWriter::new();
+                for &byte in &bytes { writer.write_byte(byte); }
+                frame.rax = arg1;
             }
         }
     } else if is(number, SYS_WRITE) || is(number, 14) {
-        kernel_kit::vga::VgaWriter::new().write_byte(arg as u8); frame.rax = 1;
+        frame.rax = stdout_write(context, &[arg as u8]);
     } else if is(number, SYS_WRITE_BUFFER) {
         if arg1 <= 4096 && context.space.as_ref().unwrap().valid_user_range(arg, arg1 as usize, false) {
-            let bytes = unsafe { core::slice::from_raw_parts(arg as *const u8, arg1 as usize) };
-            let mut writer = kernel_kit::vga::VgaWriter::new();
-            for &byte in bytes { writer.write_byte(byte); }
-            frame.rax = arg1;
+            if let Some(bytes) = copy_from_user(context, arg, arg1 as usize) { frame.rax = stdout_write(context, &bytes); }
         }
     } else if is(number, SYS_OPEN) {
         if let Ok(name) = user_string(context, arg, 64) {
@@ -94,15 +181,71 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         if arg < 16 { context.open_files[arg as usize] = (0, 0); context.readonly_files &= !(1 << arg); frame.rax = 0; }
     } else if is(number, SYS_LIST_DIR) {
         let fs = kernel_kit::fs::ROOT_FS.lock();
-        let mut writer = kernel_kit::vga::VgaWriter::new();
+        let mut listing = String::new();
         if let kernel_kit::fs::AtomNode::Directory(children) = fs {
-            for (name, _) in children { writer.write_string(name); writer.write_string("  "); }
+            for (name, _) in children { listing.push_str(name); listing.push_str("  "); }
         }
-        writer.write_string("\n"); kernel_kit::fs::ROOT_FS.unlock(); frame.rax = 0;
+        listing.push('\n');
+        kernel_kit::fs::ROOT_FS.unlock();
+        stdout_write(context, listing.as_bytes()); frame.rax = 0;
     } else if is(number, SYS_CLEAR) {
-        kernel_kit::vga::VgaWriter::new().clear_screen(); frame.rax = 0;
+        // A terminal on the other end of a pipe clears on form feed.
+        if context.stdout.is_some() { stdout_write(context, b"\x0c"); }
+        else { kernel_kit::vga::VgaWriter::new().clear_screen(); }
+        frame.rax = 0;
+    } else if is(number, SYS_ARGS) {
+        let args = context.args.clone();
+        let count = args.len().min(arg1 as usize);
+        if copy_to_user(context, arg, &args.as_bytes()[..count]) { frame.rax = args.len() as u64; }
+    } else if is(number, SYS_PIPE) {
+        if let Some(slot) = context.pipes.iter().position(|p| p.0.is_none() && p.1.is_none()) {
+            let (read, write) = kernel_kit::pipe::PipeEnd::pair();
+            context.pipes[slot] = (Some(read), Some(write));
+            frame.rax = slot as u64;
+        }
+    } else if is(number, SYS_PIPE_CLOSE) {
+        if let Some(pipe) = context.pipes.get_mut(arg as usize) {
+            if arg1 == PIPE_BOTH || arg1 == PIPE_READ_END { pipe.0 = None; }
+            if arg1 == PIPE_BOTH || arg1 == PIPE_WRITE_END { pipe.1 = None; }
+            frame.rax = 0;
+        }
+    } else if is(number, SYS_PIPE_READ) {
+        let len = (frame.rdx as usize).min(4096);
+        if let Some((Some(end), _)) = context.pipes.get(arg as usize) { frame.rax = pipe_read(end, context, arg1, len); }
+    } else if is(number, SYS_PIPE_WRITE) {
+        let len = (frame.rdx as usize).min(4096);
+        if let Some((_, Some(end))) = context.pipes.get(arg as usize) {
+            if let Some(bytes) = copy_from_user(context, arg1, len) {
+                frame.rax = match end.write(&bytes) {
+                    kernel_kit::pipe::Write::Wrote(count) => count as u64,
+                    kernel_kit::pipe::Write::WouldBlock => WOULD_BLOCK,
+                    kernel_kit::pipe::Write::Broken => ERROR,
+                };
+            }
+        }
+    } else if is(number, SYS_SPAWN_WITH) {
+        let size = core::mem::size_of::<SpawnRequest>();
+        if let Some(bytes) = copy_from_user(context, arg, size) {
+            let request = unsafe { core::ptr::read_unaligned(bytes.as_ptr() as *const SpawnRequest) };
+            let stdio = |selector: u64, current: &Option<kernel_kit::pipe::PipeEnd>, read: bool| -> Result<Option<kernel_kit::pipe::PipeEnd>, ()> {
+                match selector {
+                    STDIO_INHERIT => Ok(current.clone()),
+                    STDIO_CONSOLE => Ok(None),
+                    handle => match context.pipes.get(handle as usize) {
+                        Some((Some(end), _)) if read => Ok(Some(end.clone())),
+                        Some((_, Some(end))) if !read => Ok(Some(end.clone())),
+                        _ => Err(()),
+                    },
+                }
+            };
+            if let (Some(name), Some(args), Ok(stdin), Ok(stdout)) = (nul_string(&request.path), nul_string(&request.args),
+                stdio(request.stdin, &context.stdin, true), stdio(request.stdout, &context.stdout, false)) {
+                frame.rax = system.spawn_with(pid, &name, &args, stdin, stdout).map(|n| n as u64).unwrap_or(ERROR);
+            }
+        }
     } else if is(number, SYS_EXEC) {
-        if let Ok(name) = user_string(context, arg, 64) {
+        let args = if arg1 == 0 { Ok(String::new()) } else { user_string(context, arg1, ARGS_MAX + 1) };
+        if let (Ok(name), Ok(args)) = (user_string(context, arg, 64), args) {
             if let Ok((space, entry)) = crate::process::load_image(&name, system.kernel_root) {
                 let context = system.scheduler.current_task_mut().unwrap();
                 // The new root keeps the same kernel mappings and stack. Switch
@@ -110,6 +253,8 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                 unsafe { Cr3::load(space.root); }
                 context.page_table_root = space.root;
                 context.space = Some(space);
+                context.name = name;
+                context.args = args;
                 context.open_files = [(0, 0); 16]; context.readonly_files = 0;
                 *frame = TrapFrame::new_user(entry, STACK_TOP);
                 unsafe { crate::process::reset_fpu(rsp); }
@@ -150,6 +295,112 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             }
             frame.rax = RECV_BASE;
         }
+    } else if is(number, SYS_REMOVE) {
+        if let Ok(name) = user_string(context, arg, 64) {
+            let fs = kernel_kit::fs::ROOT_FS.lock();
+            if !builtin(&name) {
+                if let Some(address) = fs.file_address(&name) {
+                    if !file_open(system, address) && fs.remove(&name) { frame.rax = 0; }
+                }
+            }
+            kernel_kit::fs::ROOT_FS.unlock();
+        }
+    } else if is(number, SYS_RENAME) {
+        if let (Ok(from), Ok(to)) = (user_string(context, arg, 64), user_string(context, arg1, 64)) {
+            if !builtin(&from) && !builtin(&to) {
+                let fs = kernel_kit::fs::ROOT_FS.lock();
+                if fs.rename(&from, &to) { frame.rax = 0; }
+                kernel_kit::fs::ROOT_FS.unlock();
+            }
+        }
+    } else if is(number, SYS_PROCESSES) {
+        let capacity = (arg1 as usize).min(crate::scheduler::MAX_TASKS);
+        let mut records = Vec::new();
+        for task in system.scheduler.tasks.iter().flatten().take(capacity) {
+            let mut record = [0u8; PROCESS_RECORD_BYTES];
+            record[0..4].copy_from_slice(&(task.id as u32).to_le_bytes());
+            record[4..8].copy_from_slice(&(task.parent as u32).to_le_bytes());
+            record[8] = match task.state {
+                TaskState::Ready => STATE_READY,
+                TaskState::Running => STATE_RUNNING,
+                TaskState::Blocked | TaskState::Trapped => STATE_BLOCKED,
+                TaskState::Terminated => STATE_EXITED,
+            };
+            let name = &task.name.as_bytes()[..task.name.len().min(PROCESS_NAME_BYTES)];
+            record[9] = name.len() as u8;
+            record[16..16 + name.len()].copy_from_slice(name);
+            records.extend_from_slice(&record);
+        }
+        let context = system.scheduler.current_task().unwrap();
+        if copy_to_user(context, arg, &records) { frame.rax = (records.len() / PROCESS_RECORD_BYTES) as u64; }
+    } else if is(number, SYS_KILL) {
+        if system.kill(arg as usize).is_ok() {
+            frame.rax = 0;
+            if arg as usize == pid { switch = true; }
+        }
+    } else if is(number, SYS_DISPLAY_PRESENT) {
+        frame.rax = kernel_kit::display::find().is_some() as u64;
+    } else if is(number, SYS_DISPLAY_OPEN) {
+        if system.display_owner.is_none_or(|owner| owner == pid) {
+            let context = system.scheduler.current_task_mut().unwrap();
+            let info_ok = context.space.as_ref().unwrap().valid_user_range(arg, core::mem::size_of::<DisplayInfo>(), true);
+            if info_ok {
+                if let Some(fb) = kernel_kit::display::enable() {
+                    let space = context.space.as_mut().unwrap();
+                    space.unmap_device(kernel_kit::address_space::FRAMEBUFFER_BASE);
+                    if space.map_device(kernel_kit::address_space::FRAMEBUFFER_BASE, fb.phys, kernel_kit::display::bytes(&fb)).is_ok() {
+                        let info = DisplayInfo { width: fb.width, height: fb.height, pitch: fb.pitch, bpp: 32 };
+                        let bytes = unsafe { core::slice::from_raw_parts(&info as *const DisplayInfo as *const u8, core::mem::size_of::<DisplayInfo>()) };
+                        if copy_to_user(context, arg, bytes) {
+                            system.display_owner = Some(pid);
+                            kernel_kit::input::clear();
+                            frame.rax = kernel_kit::address_space::FRAMEBUFFER_BASE;
+                        }
+                    } else { kernel_kit::display::disable(); }
+                }
+            }
+        }
+    } else if is(number, SYS_DISPLAY_CLOSE) {
+        if system.display_owner == Some(pid) {
+            system.scheduler.current_task_mut().unwrap().space.as_mut().unwrap()
+                .unmap_device(kernel_kit::address_space::FRAMEBUFFER_BASE);
+            system.release_display();
+            frame.rax = 0;
+        }
+    } else if is(number, SYS_INPUT_POLL) {
+        if system.display_owner == Some(pid) {
+            let size = core::mem::size_of::<InputEvent>();
+            let capacity = (arg1 as usize).min(256);
+            let context = system.scheduler.current_task().unwrap();
+            if context.space.as_ref().unwrap().valid_user_range(arg, capacity * size, true) {
+                let events = kernel_kit::input::poll(capacity);
+                let bytes = unsafe { core::slice::from_raw_parts(events.as_ptr() as *const u8, events.len() * size) };
+                if copy_to_user(context, arg, bytes) { frame.rax = events.len() as u64; }
+            }
+        }
+    } else if is(number, SYS_LIST_FILES) {
+        let capacity = (arg1 as usize).min(256);
+        let mut records = Vec::new();
+        let fs = kernel_kit::fs::ROOT_FS.lock();
+        if let kernel_kit::fs::AtomNode::Directory(children) = fs {
+            for (name, node) in children.iter().take(capacity) {
+                let kernel_kit::fs::AtomNode::File(data) = node else { continue };
+                let mut record = [0u8; FILE_RECORD_BYTES];
+                record[..name.len().min(63)].copy_from_slice(&name.as_bytes()[..name.len().min(63)]);
+                record[64..68].copy_from_slice(&(data.len() as u32).to_le_bytes());
+                record[68..72].copy_from_slice(&(if builtin(name) { FILE_BUILTIN } else { 0 }).to_le_bytes());
+                records.extend_from_slice(&record);
+            }
+        }
+        kernel_kit::fs::ROOT_FS.unlock();
+        let context = system.scheduler.current_task().unwrap();
+        if copy_to_user(context, arg, &records) { frame.rax = (records.len() / FILE_RECORD_BYTES) as u64; }
+    } else if is(number, SYS_MEMORY_TOTAL) {
+        let (pool, flags) = kernel_kit::memory::FRAME_ALLOCATOR.lock();
+        frame.rax = pool.total_count() as u64;
+        kernel_kit::memory::FRAME_ALLOCATOR.unlock(flags);
+    } else if is(number, SYS_TIME) {
+        frame.rax = kernel_kit::rtc::now();
     } else if is(number, SYS_SYNC) {
         if kernel_kit::storage::sync().is_ok() { frame.rax = 0; }
     } else if is(number, SYS_FREE_FRAMES) {

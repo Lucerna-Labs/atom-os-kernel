@@ -1,5 +1,5 @@
 [workspace]
-members = ["daemon", "user-rt", "worker",
+members = ["daemon", "user-rt", "worker", "desktop",
     "kernel-kit",
     "kernel-orchestrator", "payload",
     "x86_64-kernel",

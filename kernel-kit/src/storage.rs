@@ -14,7 +14,7 @@ fn checksum(bytes: &[u8]) -> u64 {
 }
 fn u32_at(bytes: &[u8], at: usize) -> u32 { u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) }
 fn u64_at(bytes: &[u8], at: usize) -> u64 { u64::from_le_bytes(bytes[at..at + 8].try_into().unwrap()) }
-pub fn builtin(name: &str) -> bool { matches!(name, "shell.elf" | "daemon.elf" | "worker.elf" | "fault.elf") }
+pub use crate::fs::builtin;
 
 pub fn encode(files: &Files) -> Result<Vec<u8>, DiskError> {
     if files.len() > 128 { return Err(DiskError::Full); }

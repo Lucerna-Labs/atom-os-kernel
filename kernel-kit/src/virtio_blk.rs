@@ -25,11 +25,11 @@ pub struct VirtioBlock {
     available: u16, consumed: u16, capacity: u64, online: bool,
 }
 
-fn pci_read(bus: u32, slot: u32, function: u32, offset: u32) -> u32 {
+pub fn pci_read(bus: u32, slot: u32, function: u32, offset: u32) -> u32 {
     Port::new(0xcf8).write32(0x80000000 | bus << 16 | slot << 11 | function << 8 | (offset & 0xfc));
     Port::new(0xcfc).read32()
 }
-fn pci_write(bus: u32, slot: u32, function: u32, offset: u32, value: u32) {
+pub fn pci_write(bus: u32, slot: u32, function: u32, offset: u32, value: u32) {
     Port::new(0xcf8).write32(0x80000000 | bus << 16 | slot << 11 | function << 8 | (offset & 0xfc));
     Port::new(0xcfc).write32(value);
 }

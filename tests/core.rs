@@ -316,3 +316,159 @@ fn scheduler_uses_idle_when_all_tasks_are_blocked() {
     assert_eq!(s.timer_tick(0x9100), 0x9100);
     assert_eq!(s.timer_tick(0x9200), 0x1100);
 }
+
+#[test]
+fn frame_allocator_spans_multiple_regions_up_to_8_gib() {
+    let mut frames = Box::new(memory::FrameAllocator::new());
+    // QEMU with 8 GiB: about 3 GiB below the PCI hole, 5 GiB above 4 GiB.
+    let low = frames.add_region(0x100000, (3 << 30) / 4096 - 256);
+    let high = frames.add_region(4 << 30, (5 << 30) / 4096);
+    assert_eq!(frames.region_count(), 2);
+    assert_eq!(frames.total_count(), low + high);
+    assert!(frames.total_count() * 4096 >= (8u64 << 30) as usize - (1 << 20));
+    assert_eq!(frames.add_region(0x200000, 4), 0, "overlapping region accepted");
+    // Never hand out frames from the hole between the regions.
+    frames.free_frame(3 << 30);
+    assert_eq!(frames.free_count(), low + high);
+    // Drain the low region and confirm allocation continues above 4 GiB.
+    let run = frames.alloc_contiguous(low).unwrap();
+    assert_eq!(run, 0x100000);
+    let above = frames.alloc_frame().unwrap();
+    assert_eq!(above, 4 << 30);
+    let big = frames.alloc_contiguous(512).unwrap();
+    assert!(big > 4 << 30);
+    assert_eq!(frames.free_count(), high - 513);
+    frames.free_frame(above);
+    frames.free_frame(above);
+    assert_eq!(frames.free_count(), high - 512, "double free counted twice");
+    for page in 0..512 { frames.free_frame(big + page * 4096); }
+    for page in 0..low as u64 { frames.free_frame(run + page * 4096); }
+    assert_eq!(frames.free_count(), low + high);
+    // A region past the 16 GiB tracking limit is clipped, not misindexed.
+    assert_eq!(frames.add_region((16 << 30) - 4096, 8), 1);
+}
+
+#[test]
+fn ramfs_remove_and_rename_keep_other_handles_stable() {
+    let mut root = fs::AtomNode::Directory(Vec::new());
+    let kept = root.get_or_create_file("kept.txt").unwrap();
+    unsafe { (*kept).extend_from_slice(b"kept"); }
+    let moved = root.get_or_create_file("old.txt").unwrap();
+    unsafe { (*moved).extend_from_slice(b"moved"); }
+    root.get_or_create_file("gone.txt").unwrap();
+
+    assert!(root.remove("gone.txt"));
+    assert!(!root.remove("gone.txt"));
+    assert!(root.file("gone.txt").is_none());
+    assert_eq!(root.file_address("kept.txt"), Some(kept as u64));
+
+    assert!(!root.rename("old.txt", "kept.txt"), "rename must not replace an existing file");
+    assert!(!root.rename("old.txt", ""));
+    assert!(!root.rename("old.txt", "a/b"));
+    assert!(!root.rename("missing.txt", "new.txt"));
+    assert!(root.rename("old.txt", "new.txt"));
+    assert!(root.file("old.txt").is_none());
+    assert_eq!(root.file_address("new.txt"), Some(moved as u64), "rename relocated the data object");
+    assert_eq!(root.file("new.txt").unwrap().as_slice(), b"moved");
+    assert_eq!(unsafe { (*kept).as_slice() }, b"kept");
+}
+
+#[test]
+fn builtin_programs_are_excluded_from_snapshots() {
+    for name in fs::BUILTINS {
+        assert!(kernel_kit::storage::builtin(name));
+        assert!(kernel_kit::storage::encode(&vec![(name.to_string(), Vec::new())]).is_err());
+    }
+    assert!(!fs::builtin("notes.txt"));
+}
+
+#[test]
+fn pipe_reports_end_of_input_and_broken_pipe_by_counted_ends() {
+    use kernel_kit::pipe::{PipeEnd, Read, Write, PIPE_CAPACITY};
+    let (reader, writer) = PipeEnd::pair();
+    let mut out = [0u8; 8];
+    assert_eq!(reader.read(&mut out), Read::WouldBlock, "empty pipe with a writer must block");
+    assert_eq!(writer.write(b"hello"), Write::Wrote(5));
+    assert_eq!(reader.read(&mut out[..3]), Read::Data(3));
+    assert_eq!(&out[..3], b"hel");
+    // A full pipe accepts a partial write, then blocks.
+    let big = vec![b'x'; PIPE_CAPACITY];
+    assert_eq!(writer.write(&big), Write::Wrote(PIPE_CAPACITY - 2));
+    assert_eq!(writer.write(b"y"), Write::WouldBlock);
+    // A cloned writer keeps the pipe open after the original is dropped.
+    let second = writer.clone();
+    drop(writer);
+    let mut drain = vec![0u8; PIPE_CAPACITY];
+    assert_eq!(reader.read(&mut drain), Read::Data(PIPE_CAPACITY));
+    assert_eq!(&drain[..2], b"lo");
+    assert_eq!(reader.read(&mut out), Read::WouldBlock);
+    drop(second);
+    assert_eq!(reader.read(&mut out), Read::End, "no writers and no data is end of input");
+    // Writing with no reader left is a broken pipe.
+    let (reader, writer) = PipeEnd::pair();
+    drop(reader);
+    assert_eq!(writer.write(b"z"), Write::Broken);
+}
+
+#[test]
+fn keyboard_decoder_tracks_shift_caps_ctrl_and_extended_keys() {
+    use kernel_kit::abi::*;
+    use kernel_kit::input::KeyboardDecoder;
+    let mut k = KeyboardDecoder::new();
+    let mut typed = |k: &mut KeyboardDecoder, codes: &[u8]| -> String {
+        codes.iter().filter_map(|&c| k.feed(c)).filter_map(|e| KeyboardDecoder::console_byte(&e)).map(|b| b as char).collect()
+    };
+    // a, Shift+a, Shift+1, Shift+., Shift+\ then release Shift, '.'
+    assert_eq!(typed(&mut k, &[0x1e, 0x9e, 0x2a, 0x1e, 0x02, 0x34, 0x2b, 0xaa, 0x34]), "aA!>|.");
+    // Caps Lock affects letters only; Shift inverts it.
+    assert_eq!(typed(&mut k, &[0x3a, 0xba, 0x1e, 0x02, 0x36, 0x1e, 0xb6]), "A1a");
+    assert_eq!(typed(&mut k, &[0x3a, 0xba]), "");
+    // Ctrl+C produces a key event with MOD_CTRL but no console byte.
+    let events: Vec<_> = [0x1d, 0x2e, 0x9d].iter().filter_map(|&c| k.feed(c)).collect();
+    assert_eq!(events[1].key, b'c' as u16);
+    assert_eq!(events[1].modifiers & MOD_CTRL, MOD_CTRL);
+    assert_eq!(KeyboardDecoder::console_byte(&events[1]), None);
+    // Extended arrows and release events.
+    let up = k.feed(0xe0).or(k.feed(0x48)).unwrap();
+    assert_eq!((up.key, up.pressed), (KEY_UP, 1));
+    let release = { k.feed(0xe0); k.feed(0xc8).unwrap() };
+    assert_eq!((release.key, release.pressed), (KEY_UP, 0));
+    // The legacy numpad '+' still types '>'.
+    assert_eq!(typed(&mut k, &[0x4e]), ">");
+    assert_eq!(k.feed(0x3c).unwrap().key, KEY_F1 + 1);
+}
+
+#[test]
+fn mouse_decoder_assembles_packets_with_signs_and_wheel() {
+    use kernel_kit::abi::*;
+    use kernel_kit::input::MouseDecoder;
+    let mut m = MouseDecoder::new();
+    // Out-of-sync byte (bit 3 clear) is skipped.
+    assert!(m.feed(0x00).is_none());
+    // Left button, dx = +5, dy = -3 in PS/2 terms (up), so screen dy = +3.
+    assert!(m.feed(0x08 | 0x01 | 0x20).is_none());
+    assert!(m.feed(5).is_none());
+    let e = m.feed((-3i8) as u8).unwrap();
+    assert_eq!((e.kind, e.buttons, e.dx, e.dy), (INPUT_MOUSE, MOUSE_LEFT, 5, 3));
+    // dx = -2 with the sign bit; overflowed packets are dropped.
+    m.feed(0x18); m.feed((-2i8) as u8);
+    assert_eq!(m.feed(0).unwrap().dx, -2);
+    m.feed(0x48); m.feed(1);
+    assert!(m.feed(1).is_none());
+    // IntelliMouse 4-byte packets: z = -1 means the wheel moved up.
+    let mut w = MouseDecoder::new();
+    w.wheel = true;
+    w.feed(0x08); w.feed(0); w.feed(0);
+    assert_eq!(w.feed(0x0f).unwrap().wheel, 1);
+}
+
+#[test]
+fn rtc_fields_convert_to_unix_time() {
+    use kernel_kit::rtc::{days_from_civil, to_unix};
+    assert_eq!(days_from_civil(1970, 1, 1), 0);
+    assert_eq!(days_from_civil(2000, 3, 1), 11017);
+    // 2026-10-03 19:45:30 in BCD, 24-hour mode (status B = 0x02).
+    assert_eq!(to_unix([0x30, 0x45, 0x19, 0x03, 0x10, 0x26], 0x02), 1_791_056_730);
+    // The same time in binary, 12-hour mode with the PM bit.
+    assert_eq!(to_unix([30, 45, 0x80 | 7, 3, 10, 26], 0x04), 1_791_056_730);
+}

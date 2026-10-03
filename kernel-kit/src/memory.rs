@@ -267,51 +267,92 @@ impl MemoryPool {
 // a triple-fault on CR3 switch.
 // ---------------------------------------------------------------------------
 
-/// Maximum number of frames the allocator will track. 16384 frames = 64 MiB,
-/// which comfortably covers QEMU's default 128 MiB minus kernel/bootloader
-/// overhead, and keeps the bitmap small (16 KiB).
-pub const FRAMES_MAX: usize = 16384;
+/// Highest physical address the allocator can track: 16 GiB. Frames are
+/// indexed by physical frame number, so the bitmap also spans the holes
+/// between regions (e.g. QEMU's PCI hole below 4 GiB); those bits stay clear.
+pub const MAX_PHYS_BYTES: u64 = 16 << 30;
+/// Number of 4 KiB frames covered by the bitmap (4 Mi frames = 512 KiB of bits).
+pub const FRAMES_MAX: usize = (MAX_PHYS_BYTES / 4096) as usize;
+const WORDS: usize = FRAMES_MAX / 64;
+/// Usable regions remembered so `free_frame` can reject foreign addresses.
+pub const REGIONS_MAX: usize = 32;
 
 pub struct FrameAllocator {
-    base: usize,            // physical address of the first frame in the pool
-    count: usize,           // number of frames actually available (<= FRAMES_MAX)
-    frames: [bool; FRAMES_MAX], // true = free, false = in use
+    /// One bit per physical frame: 1 = free. Zero-initialised, so the
+    /// bitmap lives in .bss and every frame starts out unavailable.
+    bits: [u64; WORDS],
+    /// (first frame, end frame) of each region handed to `add_region`.
+    regions: [(usize, usize); REGIONS_MAX],
+    region_count: usize,
+    /// Number of bitmap words that can contain a free bit.
+    words: usize,
+    /// No free bit exists in a word below this index.
+    hint: usize,
+    free: usize,
+    total: usize,
 }
 
 impl FrameAllocator {
     pub const fn new() -> Self {
-        Self {
-            base: 0,
-            count: 0,
-            frames: [true; FRAMES_MAX],
-        }
+        Self { bits: [0; WORDS], regions: [(0, 0); REGIONS_MAX], region_count: 0,
+            words: 0, hint: 0, free: 0, total: 0 }
     }
 
-    /// Reserve a frame pool at physical address `base`, covering `num_frames`
-    /// 4 KiB frames. Both `base` and the frames MUST be in a region the
-    /// bootloader marked Usable (so phys_to_virt can access them) and MUST NOT
-    /// overlap the kernel image, heap, stack, or bootloader structures.
-    /// Called once from _start before any paging operation.
+    /// Reset the allocator to a single pool of `num_frames` frames at `base_phys`.
     pub fn init(&mut self, base_phys: usize, num_frames: usize) {
-        self.base = base_phys;
-        self.count = if num_frames < FRAMES_MAX { num_frames } else { FRAMES_MAX };
-        // Mark only the first `count` frames free; the rest are out of pool.
-        for i in 0..FRAMES_MAX {
-            self.frames[i] = i < self.count;
-        }
+        self.bits[..self.words].fill(0);
+        self.region_count = 0; self.words = 0; self.hint = 0; self.free = 0; self.total = 0;
+        self.add_region(base_phys, num_frames);
     }
 
-    pub fn free_count(&self) -> usize { self.frames[..self.count].iter().filter(|&&free| free).count() }
+    /// Add `num_frames` frames starting at `base_phys` to the pool. The range
+    /// MUST be RAM the bootloader marked Usable (so phys_to_virt reaches it)
+    /// and MUST NOT overlap the kernel image, heap, stack or bootloader data.
+    /// Returns how many frames were added; ranges are clipped to
+    /// MAX_PHYS_BYTES, and overlapping or excess regions are ignored.
+    pub fn add_region(&mut self, base_phys: usize, num_frames: usize) -> usize {
+        let first = base_phys.div_ceil(4096);
+        let end = (base_phys / 4096).saturating_add(num_frames).min(FRAMES_MAX);
+        if first >= end || self.region_count == REGIONS_MAX
+            || self.regions[..self.region_count].iter().any(|&(s, e)| first < e && s < end) {
+            return 0;
+        }
+        self.regions[self.region_count] = (first, end);
+        self.region_count += 1;
+        for frame in first..end { self.bits[frame / 64] |= 1 << (frame % 64); }
+        self.words = self.words.max(end.div_ceil(64));
+        self.hint = self.hint.min(first / 64);
+        self.free += end - first;
+        self.total += end - first;
+        end - first
+    }
+
+    pub fn free_count(&self) -> usize { self.free }
+    pub fn total_count(&self) -> usize { self.total }
+    pub fn region_count(&self) -> usize { self.region_count }
+    /// Physical (start, end) byte ranges of the regions in the pool.
+    pub fn regions(&self) -> impl Iterator<Item = (u64, u64)> + '_ {
+        self.regions[..self.region_count].iter().map(|&(s, e)| (s as u64 * 4096, e as u64 * 4096))
+    }
+
+    fn owns(&self, frame: usize) -> bool {
+        self.regions[..self.region_count].iter().any(|&(s, e)| s <= frame && frame < e)
+    }
 
     /// Allocate one 4 KiB frame. Returns its PHYSICAL address (apply
     /// paging::phys_to_virt to access its contents).
     pub fn alloc_frame(&mut self) -> Option<u64> {
-        for i in 0..self.count {
-            if self.frames[i] {
-                self.frames[i] = false;
-                return Some((self.base + i * 4096) as u64);
+        for word in self.hint..self.words {
+            let bits = self.bits[word];
+            if bits != 0 {
+                let frame = word * 64 + bits.trailing_zeros() as usize;
+                self.bits[word] &= !(1 << (frame % 64));
+                self.free -= 1;
+                self.hint = word;
+                return Some(frame as u64 * 4096);
             }
         }
+        self.hint = self.words;
         None
     }
 
@@ -322,45 +363,43 @@ impl FrameAllocator {
     /// segment where map_segment walks vaddr in 4K steps and expects
     /// each successive page to be phys_base + i*4K).
     pub fn alloc_contiguous(&mut self, n: usize) -> Option<u64> {
-        if n == 0 {
-            return None;
-        }
-        // Linear scan for a run of `n` free frames.
-        let mut run_start: usize = 0;
-        let mut run_len: usize = 0;
-        for i in 0..self.count {
-            if self.frames[i] {
-                if run_len == 0 {
-                    run_start = i;
-                }
+        if n == 0 || n > self.free { return None; }
+        let mut run_start = 0;
+        let mut run_len = 0;
+        let mut word = self.hint;
+        while word < self.words {
+            let bits = self.bits[word];
+            if bits == 0 { run_len = 0; word += 1; continue; }
+            if bits == u64::MAX && run_len + 64 < n {
+                if run_len == 0 { run_start = word * 64; }
+                run_len += 64; word += 1; continue;
+            }
+            for bit in 0..64 {
+                if bits & (1 << bit) == 0 { run_len = 0; continue; }
+                if run_len == 0 { run_start = word * 64 + bit; }
                 run_len += 1;
                 if run_len == n {
-                    // Found — mark them all allocated.
-                    for j in run_start..(run_start + n) {
-                        self.frames[j] = false;
-                    }
-                    return Some((self.base + run_start * 4096) as u64);
+                    for frame in run_start..run_start + n { self.bits[frame / 64] &= !(1 << (frame % 64)); }
+                    self.free -= n;
+                    return Some(run_start as u64 * 4096);
                 }
-            } else {
-                run_len = 0;
             }
+            word += 1;
         }
         None
     }
 
-    /// Free a frame previously returned by `alloc_frame`.
+    /// Free a frame previously returned by `alloc_frame`/`alloc_contiguous`.
+    /// Unaligned, foreign and already-free addresses are ignored.
     pub fn free_frame(&mut self, phys: u64) {
-        if self.count == 0 {
-            return;
-        }
-        let off = phys as usize;
-        if off < self.base {
-            return;
-        }
-        let i = (off - self.base) / 4096;
-        if i < self.count && (self.base + i * 4096) == off {
-            self.frames[i] = true;
-        }
+        if phys % 4096 != 0 { return; }
+        let frame = (phys / 4096) as usize;
+        if frame >= FRAMES_MAX || !self.owns(frame) { return; }
+        let mask = 1 << (frame % 64);
+        if self.bits[frame / 64] & mask != 0 { return; }
+        self.bits[frame / 64] |= mask;
+        self.free += 1;
+        self.hint = self.hint.min(frame / 64);
     }
 }
 

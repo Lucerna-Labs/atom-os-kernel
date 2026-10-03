@@ -1,0 +1,29 @@
+ENTRY(_start)
+
+SECTIONS {
+    . = 0xFFFFFFFF80100000;
+
+    .text : {
+        *(.text .text.*)
+    }
+
+    . = ALIGN(4096);
+    .rodata : {
+        *(.rodata .rodata.*)
+    }
+
+    . = ALIGN(4096);
+    .data : {
+        *(.data .data.*)
+    }
+
+    . = ALIGN(4096);
+    .bss : {
+        *(.bss .bss.*)
+    }
+
+    /DISCARD/ : {
+        *(.eh_frame)
+        *(.note.gnu.property)
+    }
+}

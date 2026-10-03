@@ -5,7 +5,7 @@ on: [push, pull_request, workflow_dispatch]
 jobs:
   build_and_test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3
       - name: Install verified Rust toolchain
@@ -24,6 +24,8 @@ jobs:
         run: bash scripts/test-native.sh
       - name: Boot, process, IPC and persistent-storage acceptance
         run: python3 scripts/boot-test.py --accel tcg --output test-results/ci
+      - name: Graphical desktop acceptance (mouse, keyboard, screenshots)
+        run: python3 scripts/desktop-test.py --accel tcg --output test-results/ci-desktop
       - name: Retain diagnostics even when acceptance fails
         if: always()
         uses: actions/upload-artifact@v4
@@ -31,5 +33,6 @@ jobs:
           name: atom-os-test-results
           path: |
             test-results/ci/
+            test-results/ci-desktop/
             target/native-tests/compile.log
           retention-days: 7

@@ -86,7 +86,7 @@ fn execute(command: &str) {
     let argument = argument.trim();
     match verb {
         "" => {}
-        "help" => rt::print("commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run selftest pairtest churn faulttest sync reboot\n"),
+        "help" => rt::print("commands: help ls clear cat edit echo rm mv msg desktop bench heaptest stats spawn wait ps kill run selftest pairtest churn faulttest sync reboot\n"),
         "ls" => { rt::call(SYS_LIST_DIR, 0, 0); }
         "clear" => { rt::call(SYS_CLEAR, 0, 0); }
         "bench" => bench(),
@@ -101,6 +101,22 @@ fn execute(command: &str) {
             if fd == ERROR || !rt::write(fd, text.as_bytes()) || !rt::write(fd, b"\n") { rt::print("write failed\n"); }
             rt::close(fd);
         } else { rt::print("usage: echo text > file\n"); },
+        "rm" => rt::print(if rt::remove(argument) { "removed (sync to save)\n" } else { "rm failed (missing, built-in or open)\n" }),
+        "mv" => match argument.split_once(' ') {
+            Some((from, to)) => rt::print(if rt::rename(from.trim(), to.trim()) { "renamed (sync to save)\n" }
+                else { "mv failed (missing, built-in or target exists)\n" }),
+            None => rt::print("usage: mv old new\n"),
+        },
+        "ps" => {
+            rt::print("PID PARENT STATE    NAME\n");
+            for process in rt::processes() {
+                rt::print(&format!("{:<3} {:<6} {:<8} {}\n", process.pid, process.parent, process.state_name(), process.name()));
+            }
+        }
+        "kill" => match argument.parse::<u64>() {
+            Ok(pid) => rt::print(&if rt::kill(pid) { format!("killed pid {}\n", pid) } else { String::from("kill failed\n") }),
+            Err(_) => rt::print("usage: kill pid\n"),
+        },
         "msg" => rt::print(if rt::send(2, argument) { "Message sent to Daemon\n" } else { "message rejected or mailbox full\n" }),
         "spawn" => { let pid = rt::spawn(argument); if pid == ERROR { rt::print("spawn failed\n"); }
             else { rt::print(&format!("spawned pid {}\n", pid)); } }
@@ -125,13 +141,28 @@ fn execute(command: &str) {
         }
         "stats" => { let free = rt::call(SYS_FREE_FRAMES, 0, 0); let tasks = rt::call(SYS_TASK_COUNT, 0, 0);
             rt::print(&format!("FREE_FRAMES {} TASKS {}\n", free, tasks)); }
+        "desktop" => run_desktop(),
         "sync" => rt::print(if rt::call(SYS_SYNC, 0, 0) == 0 { "SYNC_OK\n" } else { "SYNC_FAILED\n" }),
         "reboot" => { rt::call(SYS_REBOOT, 0, 0); rt::print("reboot failed (sync required)\n"); }
         _ => rt::print("Unknown command\n"),
     }
 }
+fn run_desktop() {
+    if rt::call(SYS_DISPLAY_PRESENT, 0, 0) != 1 { rt::print("desktop: no display device\n"); return; }
+    let pid = rt::spawn("desktop.elf");
+    if pid == ERROR { rt::print("desktop: could not start\n"); return; }
+    let status = rt::wait(pid);
+    rt::call(SYS_CLEAR, 0, 0);
+    rt::print(&format!("Desktop closed (status {}). Type 'desktop' to return.\n", status));
+}
 fn main() {
     rt::print("ATOM OS kernel shell\n");
     heap_test(); bench();
+    // Boot into the desktop when this is the console shell on a machine with
+    // a display. A shell inside a desktop terminal has a piped stdin and
+    // never gets here with a free display.
+    if rt::args().is_empty() && rt::call(SYS_GETPID, 0, 0) == 1 && rt::call(SYS_DISPLAY_PRESENT, 0, 0) == 1 {
+        run_desktop();
+    }
     loop { rt::print("> "); let command = line(); execute(command.trim()); }
 }

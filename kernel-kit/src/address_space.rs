@@ -7,7 +7,11 @@ use crate::memory::FRAME_ALLOCATOR;
 pub const STACK_TOP: u64 = crate::elf::IMAGE_BASE;
 pub const STACK_BYTES: usize = 32 * 1024;
 pub const HEAP_BASE: u64 = 0x0000_7f10_0000_0000;
-pub const HEAP_BYTES: usize = 16 * 1024 * 1024;
+pub const HEAP_BYTES: usize = 1024 * 1024 * 1024;
+/// Largest single heap allocation (physically contiguous frames).
+pub const ALLOC_MAX: usize = 64 * 1024 * 1024;
+/// Where SYS_DISPLAY_OPEN maps the framebuffer in the display owner.
+pub const FRAMEBUFFER_BASE: u64 = 0x0000_7f20_0000_0000;
 pub const RECV_BASE: u64 = 0x0000_7f00_0000_0000;
 const ADDR_MASK: u64 = 0x000f_ffff_ffff_f000;
 const NX: u64 = 1 << 63;
@@ -31,7 +35,7 @@ pub fn frames_free(phys: u64, count: usize) {
 }
 
 #[derive(Debug)]
-struct Region { virt: u64, phys: u64, pages: usize, heap: bool }
+struct Region { virt: u64, phys: u64, pages: usize, heap: bool, device: bool }
 
 #[derive(Debug)]
 pub struct AddressSpace {
@@ -81,14 +85,14 @@ impl AddressSpace {
     }
 
     pub fn allocate_region(&mut self, virt: u64, pages: usize, heap: bool) -> Result<u64, MapError> {
-        if pages == 0 || pages > 512 { return Err(MapError::Memory); }
+        if pages == 0 || pages > ALLOC_MAX / 4096 { return Err(MapError::Memory); }
         let end = virt.checked_add(pages as u64 * 4096).ok_or(MapError::Address)?;
         if self.regions.iter().any(|r| virt < r.virt + r.pages as u64 * 4096 && r.virt < end) {
             return Err(MapError::Address);
         }
         let phys = frames_allocate(pages)?;
         // Record ownership before mapping so any partial failure is reclaimed.
-        self.regions.push(Region { virt, phys, pages, heap });
+        self.regions.push(Region { virt, phys, pages, heap, device: false });
         for p in 0..pages {
             if let Err(error) = self.map_page(virt + p as u64 * 4096, phys + p as u64 * 4096, true, false) {
                 self.remove_region(virt);
@@ -104,7 +108,7 @@ impl AddressSpace {
     pub fn user_alloc_aligned(&mut self, bytes: usize, alignment: usize) -> Result<u64, MapError> {
         if !alignment.is_power_of_two() || alignment > 1024 * 1024 { return Err(MapError::Address); }
         let alignment = alignment.max(4096) as u64;
-        if bytes == 0 || bytes > 1024 * 1024 { return Err(MapError::Memory); }
+        if bytes == 0 || bytes > ALLOC_MAX { return Err(MapError::Memory); }
         let pages = (bytes + 4095) / 4096;
         let mut virt = HEAP_BASE;
         loop {
@@ -117,6 +121,30 @@ impl AddressSpace {
         }
         self.allocate_region(virt, pages, true)?;
         Ok(virt)
+    }
+
+    /// Maps device memory (not owned, never freed) at `virt`, writable and
+    /// non-executable. Unmapped again by `unmap_device` or when the space drops.
+    pub fn map_device(&mut self, virt: u64, phys: u64, bytes: usize) -> Result<(), MapError> {
+        let pages = bytes.div_ceil(4096);
+        let end = virt.checked_add(pages as u64 * 4096).ok_or(MapError::Address)?;
+        if pages == 0 || phys & 4095 != 0 || self.regions.iter().any(|r| virt < r.virt + r.pages as u64 * 4096 && r.virt < end) {
+            return Err(MapError::Address);
+        }
+        self.regions.push(Region { virt, phys, pages, heap: false, device: true });
+        for page in 0..pages {
+            if let Err(error) = self.map_page(virt + page as u64 * 4096, phys + page as u64 * 4096, true, false) {
+                self.remove_region(virt);
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn unmap_device(&mut self, virt: u64) -> bool {
+        if !self.regions.iter().any(|r| r.virt == virt && r.device) { return false; }
+        self.remove_region(virt);
+        true
     }
 
     pub fn user_free(&mut self, virt: u64) -> bool {
@@ -142,7 +170,7 @@ impl AddressSpace {
                 }
             }
             if Cr3::read() == self.root { unsafe { Cr3::load(self.root); } }
-            frames_free(r.phys, r.pages);
+            if !r.device { frames_free(r.phys, r.pages); }
         }
     }
 
@@ -171,13 +199,13 @@ impl AddressSpace {
         }
     }
 
-    pub fn frame_count(&self) -> usize { self.tables.len() + self.regions.iter().map(|r| r.pages).sum::<usize>() }
+    pub fn frame_count(&self) -> usize { self.tables.len() + self.regions.iter().filter(|r| !r.device).map(|r| r.pages).sum::<usize>() }
 }
 
 impl Drop for AddressSpace {
     fn drop(&mut self) {
         assert_ne!(Cr3::read(), self.root, "cannot reclaim the active address space");
-        for r in &self.regions { frames_free(r.phys, r.pages); }
+        for r in self.regions.iter().filter(|r| !r.device) { frames_free(r.phys, r.pages); }
         for &table in &self.tables { frames_free(table, 1); }
     }
 }

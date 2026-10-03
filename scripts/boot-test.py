@@ -13,16 +13,16 @@ import uuid
 
 
 class Guest:
-    def __init__(self, source, output, disk, accel):
+    def __init__(self, source, output, disk, accel, memory):
         self.output = output
         output.mkdir()
         image = source / "target/x86_64-os/release/bootimage-x86_64-kernel.bin"
-        command = ["qemu-system-x86_64", "-accel", accel, "-m", "128M", "-smp", "1",
+        command = ["qemu-system-x86_64", "-accel", accel, "-m", memory, "-smp", "1",
                    "-drive", f"format=raw,file={image},snapshot=on",
                    "-drive", f"if=none,format=raw,file={disk},id=atomdata,cache=writeback",
                    "-device", "virtio-blk-pci,drive=atomdata,disable-modern=on",
                    "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
-                   "-display", "none", "-nic", "none", "-serial", f"file:{output / 'serial.log'}",
+                   "-display", "none", "-vga", "none", "-nic", "none", "-serial", f"file:{output / 'serial.log'}",
                    "-qmp", f"unix:{output / 'qmp.sock'},server=on,wait=off",
                    "-no-shutdown", "-d", "guest_errors", "-D", str(output / "guest-errors.log")]
         if accel == "kvm" and not os.access("/dev/kvm", os.R_OK | os.W_OK):
@@ -119,6 +119,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--accel", choices=["kvm", "tcg"], default="tcg")
     parser.add_argument("--rounds", type=int, default=48)
+    parser.add_argument("--memory", default="8G", help="guest RAM, in QEMU -m syntax (default 8G)")
     args = parser.parse_args()
     output = args.output.resolve(); output.mkdir(parents=True, exist_ok=False)
     source = args.source.resolve()
@@ -126,7 +127,7 @@ def main():
     with disk.open("xb") as stream: stream.truncate(8 * 1024 * 1024)
     image = source / "target/x86_64-os/release/bootimage-x86_64-kernel.bin"
     token = "persist-" + uuid.uuid4().hex[:16]
-    result = {"acceleration": args.accel, "image_sha256": hashlib.sha256(image.read_bytes()).hexdigest(),
+    result = {"acceleration": args.accel, "memory": args.memory, "image_sha256": hashlib.sha256(image.read_bytes()).hexdigest(),
               "nonce": token, "checks": {}, "disk": str(disk)}
     started = time.monotonic()
     guest = None
@@ -136,9 +137,15 @@ def main():
         print(name + " PASS", flush=True)
 
     try:
-        guest = Guest(source, output / "first", disk, args.accel)
+        guest = Guest(source, output / "first", disk, args.accel, args.memory)
         result["qmp_kvm"] = guest.kvm
         guest.ready(); passed("BOOT_HEAP_BENCH")
+        match = guest.wait(r"MEMORY_READY frames=(\d+) mib=(\d+) regions=(\d+) top=(0x[0-9a-f]+) probe=ok")
+        guest_mib = guest.qmp("query-memory-size-summary")["base-memory"] >> 20
+        result["memory_ready"] = {"frames": int(match[1]), "mib": int(match[2]), "regions": int(match[3]), "top": match[4], "guest_mib": guest_mib}
+        # All but firmware, the first 1 MiB and the boot image's own frames.
+        assert int(match[2]) >= guest_mib - 64, match[0]
+        passed("PHYSICAL_MEMORY_DISCOVERED")
         guest.command("help", "commands:"); passed("KEYBOARD")
         guest.command("ls", r"shell\.elf.*daemon\.elf"); passed("RAMFS_LIST")
         guest.command(f"echo {token} > durable.txt", "> ")
@@ -157,18 +164,45 @@ def main():
         assert int(match[1]) == args.rounds and match[2] == match[3] and match[4] == "2"
         result["process_churn"] = {"rounds": int(match[1]), "free_before": int(match[2]), "free_after": int(match[3]), "tasks": int(match[4])}
         passed("PROCESS_REAP_NO_FRAME_LEAK")
+        match = guest.command("spawn sleeper.elf", r"spawned pid (\d+)")
+        sleeper = int(match[1])
+        guest.command("ps", rf"\n{sleeper} +1 +\w+ +sleeper\.elf\n")
+        guest.command(f"kill {sleeper}", rf"killed pid {sleeper}")
+        guest.command(f"wait {sleeper}", rf"wait pid={sleeper} status=137")
+        guest.command(f"kill {sleeper}", "kill failed")
+        guest.command("kill 9999", "kill failed")
+        match = guest.command("stats", r"FREE_FRAMES (\d+) TASKS (\d+)")
+        assert int(match[1]) == result["process_churn"]["free_after"] and match[2] == "2", match[0]
+        listing = guest.command("ps", r"PID PARENT STATE +NAME\n[\s\S]*?\n> ")
+        assert "sleeper" not in listing[0], listing[0]
+        passed("PS_KILL_REAP")
+        guest.command("echo doomed > doomed.txt", "> ")
+        guest.command("mv doomed.txt kept.txt", "renamed")
+        listing = guest.command("ls", r"shell\.elf[^\n]*\n")
+        assert "kept.txt" in listing[0] and "doomed.txt" not in listing[0], listing[0]
+        guest.command("cat kept.txt", r"doomed\n")
+        guest.command("echo spare > spare.txt", "> ")
+        guest.command("mv kept.txt spare.txt", "mv failed")
+        guest.command("rm spare.txt", "removed")
+        guest.command("rm worker.elf", "rm failed")
+        guest.command("mv shell.elf x.elf", "mv failed")
+        passed("FILE_REMOVE_RENAME")
         guest.command("faulttest", "FAULT_ISOLATION_OK status=142"); passed("USER_FAULT_CONTAINED")
         guest.command("sync", "SYNC_OK"); passed("VIRTIO_FLUSH_COMMIT")
         offset = len(guest.serial())
         guest.keys("reboot\n")
         guest.ready(offset)
         guest.command("cat durable.txt", re.escape(token) + r"\n"); passed("OS_REBOOT_PERSISTENCE")
+        guest.command("cat kept.txt", r"doomed\n")
+        listing = guest.command("ls", r"shell\.elf[^\n]*\n")
+        assert "spare.txt" not in listing[0] and "doomed.txt" not in listing[0], listing[0]
+        passed("REMOVE_RENAME_PERSISTENCE")
         second = "second-" + token
         guest.command(f"echo {second} > durable.txt", "> ")
         guest.command("sync", "SYNC_OK")
         guest.close(); guest = None
         result["disk_sha256_after_save"] = hashlib.sha256(disk.read_bytes()).hexdigest()
-        guest = Guest(source, output / "cold", disk, args.accel)
+        guest = Guest(source, output / "cold", disk, args.accel, args.memory)
         guest.ready()
         guest.command("cat durable.txt", re.escape(token + "\n" + second + "\n")); passed("COLD_BOOT_EXACT_CONTENT")
         offset = len(guest.serial())
