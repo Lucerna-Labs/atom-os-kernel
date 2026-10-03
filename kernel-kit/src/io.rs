@@ -49,11 +49,17 @@ impl Port {
 
 use crate::memory::IrqSpinlock;
 
-const BUFFER_SIZE: usize = 256;
+/// Raw input bytes held between polls. Generous, because the desktop drains input only
+/// between frames: a burst of mouse packets during a slow frame must not overflow.
+const BUFFER_SIZE: usize = 8192;
 
-/// A simple, mathematically bounded Ring Buffer for storing keystrokes or bytes.
+/// Timer ticks (10 ms) as seen by interrupt handlers, for timestamping input.
+pub static INPUT_CLOCK: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+pub fn input_clock() -> u32 { INPUT_CLOCK.load(core::sync::atomic::Ordering::Relaxed) }
+
+/// A bounded ring of input bytes, each stamped with the tick it arrived on.
 pub struct RingBuffer {
-    buffer: [u8; BUFFER_SIZE],
+    buffer: [(u8, u32); BUFFER_SIZE],
     head: usize,
     tail: usize,
 }
@@ -61,15 +67,15 @@ pub struct RingBuffer {
 impl RingBuffer {
     pub const fn new() -> Self {
         Self {
-            buffer: [0; BUFFER_SIZE],
+            buffer: [(0, 0); BUFFER_SIZE],
             head: 0,
             tail: 0,
         }
     }
 
-    /// Pushes a byte into the buffer. If full, the oldest byte is overwritten.
-    pub fn push(&mut self, data: u8) {
-        self.buffer[self.head] = data;
+    /// Pushes a byte and its arrival tick. If full, the oldest byte is overwritten.
+    pub fn push(&mut self, data: u8, time: u32) {
+        self.buffer[self.head] = (data, time);
         self.head = (self.head + 1) % BUFFER_SIZE;
         if self.head == self.tail {
             // Buffer overflow, drop the oldest data
@@ -77,8 +83,8 @@ impl RingBuffer {
         }
     }
 
-    /// Pops a byte from the buffer. Returns None if empty.
-    pub fn pop(&mut self) -> Option<u8> {
+    /// Pops the oldest byte and its arrival tick. Returns None if empty.
+    pub fn pop(&mut self) -> Option<(u8, u32)> {
         if self.head == self.tail {
             None
         } else {

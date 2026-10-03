@@ -4,7 +4,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use user_rt::{self as rt, abi::*};
 use super::{dialog::Dialog, picker::{Mode, Picker}, Action, App, DialogResult};
-use crate::font_data::{MONO, UI};
+use crate::font::{MONO, UI};
 use crate::gfx::{Canvas, Rect};
 use crate::icons::Icon;
 use crate::theme::*;
@@ -95,7 +95,9 @@ impl Editor {
         }
         self.modified = true;
     }
-    fn char_width() -> i32 { MONO.glyph('M').advance as i32 }
+    /// Pixel offset of column `col`: the kit places monospace glyphs at fractional
+    /// advances, so carets and selections use the same arithmetic.
+    fn col_x(col: usize) -> i32 { (col as f32 * MONO.char_width('M') + 0.5) as i32 }
     fn line_height() -> i32 { MONO.line_height() + 3 }
     fn text_rect(area: Rect) -> Rect { Rect::new(area.x + 48, area.y + 42, area.w - 48, area.h - 42 - 26) }
     fn visible_lines(area: Rect) -> usize { (Self::text_rect(area).h / Self::line_height()).max(1) as usize }
@@ -103,7 +105,7 @@ impl Editor {
         let v = Self::visible_lines(area);
         if self.cursor.line < self.scroll { self.scroll = self.cursor.line; }
         if self.cursor.line >= self.scroll + v { self.scroll = self.cursor.line + 1 - v; }
-        let x = self.cursor.col as i32 * Self::char_width();
+        let x = Self::col_x(self.cursor.col);
         let w = Self::text_rect(area).w - 16;
         if x < self.hscroll { self.hscroll = (x - 40).max(0); }
         if x > self.hscroll + w { self.hscroll = x - w + 40; }
@@ -112,7 +114,7 @@ impl Editor {
         let rect = Self::text_rect(area);
         let line = (self.scroll as i32 + (y - rect.y - 4).max(0) / Self::line_height()) as usize;
         let line = line.min(self.lines.len() - 1);
-        let col = ((x - rect.x - 6 + self.hscroll + Self::char_width() / 2).max(0) / Self::char_width()) as usize;
+        let col = (((x - rect.x - 6 + self.hscroll).max(0) as f32) / MONO.char_width('M') + 0.5) as usize;
         Pos { line, col: col.min(self.lines[line].len()) }
     }
     fn open_flow(&mut self) -> Action {
@@ -147,7 +149,7 @@ impl App for Editor {
         let rect = Self::text_rect(area);
         c.fill(Rect::new(area.x, rect.y, area.w, rect.h), WINDOW);
         c.fill(Rect::new(area.x, rect.y, 48, rect.h), SURFACE);
-        let (lh, cw) = (Self::line_height(), Self::char_width());
+        let lh = Self::line_height();
         let selection = self.selection();
         let saved = c.clip();
         for (slot, index) in (self.scroll..self.lines.len()).take(Self::visible_lines(area) + 1).enumerate() {
@@ -161,12 +163,13 @@ impl App for Editor {
                 if index >= a.line && index <= b.line {
                     let from = if index == a.line { a.col } else { 0 } as i32;
                     let to = if index == b.line { b.col as i32 } else { self.lines[index].len() as i32 + 1 };
-                    c.fill(Rect::new(x0 + from * cw, y - 1, (to - from) * cw, lh), if focused { SELECTION } else { DIVIDER });
+                    let (a, b) = (Self::col_x(from as usize), Self::col_x(to as usize));
+                    c.fill(Rect::new(x0 + a, y - 1, b - a, lh), if focused { SELECTION } else { DIVIDER });
                 }
             }
             c.text(&MONO, x0, y, &self.lines[index], TEXT);
             if focused && index == self.cursor.line {
-                c.fill(Rect::new(x0 + self.cursor.col as i32 * cw, y - 1, 2, lh), ACCENT);
+                c.fill(Rect::new(x0 + Self::col_x(self.cursor.col), y - 1, 2, lh), ACCENT);
             }
         }
         c.set_clip(saved);

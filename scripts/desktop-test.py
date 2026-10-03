@@ -109,6 +109,16 @@ class Desktop:
         ppm.unlink()
         return Shot(width, height, rgb)
 
+    def shot_until(self, name, check, seconds=30):
+        """Screenshots until `check(shot)` holds: frames are rendered in software, so
+        the screen can lag the input that is already processed."""
+        deadline = time.monotonic() + seconds
+        while True:
+            s = self.shot(name)
+            if check(s) or time.monotonic() > deadline:
+                return s
+            time.sleep(1)
+
     def move(self, dx, dy):
         while dx or dy:
             sx, sy = max(-100, min(100, dx)), max(-100, min(100, dy))
@@ -190,14 +200,14 @@ def main():
         vm = Desktop(args.source, output / "session", disk, args.accel, args.memory)
         vm.wait(r"DESKTOP_READY 1024x768", seconds=240)
         time.sleep(2)
-        s = vm.shot("desktop")
+        s = vm.shot_until("desktop", lambda s: max(s.pixel(600, 760)) < 70)
         assert (s.width, s.height) == (1024, 768), (s.width, s.height)
         assert max(s.pixel(600, 760)) < 70, s.pixel(600, 760)          # Taskbar.
         assert s.pixel(600, 300)[2] > s.pixel(600, 300)[0], s.pixel(600, 300)  # Blue wallpaper.
         passed("DESKTOP_BOOT_1024x768")
 
         vm.click(*START)
-        s = vm.shot("start-menu")
+        s = vm.shot_until("start-menu", lambda s: s.near(150, 420, (28, 32, 46), 6))
         assert s.near(150, 420, (28, 32, 46), 6), s.pixel(150, 420)
         vm.combo("esc")
         passed("START_MENU")
@@ -263,11 +273,14 @@ def main():
         # Window management on the monitor (fourth top-level window, cascade slot 3).
         x, y = 140 + 3 * 32, 40 + 3 * 28
         vm.click(x + 150, y + 16, double=True)
-        s = vm.shot("maximized")
+        vm.wait(r"WINDOW_MAXIMIZE System Monitor")
+        s = vm.shot_until("maximized", lambda s: s.near(300, 12, TITLE_ACTIVE, 4))
         assert s.near(300, 12, TITLE_ACTIVE, 4), s.pixel(300, 12)
         vm.click(300, 16, double=True)
+        vm.wait(r"WINDOW_RESTORE System Monitor")
+        time.sleep(2)
         vm.drag(x + 150, y + 16, x + 350, y + 216)
-        s = vm.shot("dragged")
+        s = vm.shot_until("dragged", lambda s: s.near(x + 450, y + 216, TITLE_ACTIVE, 4))
         assert s.near(x + 450, y + 216, TITLE_ACTIVE, 4), s.pixel(x + 450, y + 216)
         passed("WINDOW_MAXIMIZE_RESTORE_DRAG")
 

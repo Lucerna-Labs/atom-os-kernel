@@ -103,7 +103,7 @@ pub static MOUSE: IrqSpinlock<MouseDecoder> = IrqSpinlock::new(MouseDecoder::new
 static PENDING: IrqSpinlock<VecDeque<InputEvent>> = IrqSpinlock::new(VecDeque::new());
 const PENDING_MAX: usize = 1024;
 
-fn drain(buffer: &IrqSpinlock<crate::io::RingBuffer>) -> Option<u8> {
+fn drain(buffer: &IrqSpinlock<crate::io::RingBuffer>) -> Option<(u8, u32)> {
     let (ring, flags) = buffer.lock();
     let byte = ring.pop();
     buffer.unlock(flags);
@@ -112,7 +112,7 @@ fn drain(buffer: &IrqSpinlock<crate::io::RingBuffer>) -> Option<u8> {
 
 /// Next console character from the keyboard, decoding modifiers.
 pub fn console_byte() -> Option<u8> {
-    while let Some(code) = drain(&crate::io::KEYBOARD_BUFFER) {
+    while let Some((code, _)) = drain(&crate::io::KEYBOARD_BUFFER) {
         let (decoder, flags) = KEYBOARD.lock();
         let event = decoder.feed(code);
         KEYBOARD.unlock(flags);
@@ -122,28 +122,21 @@ pub fn console_byte() -> Option<u8> {
 }
 
 /// Decodes everything queued so far and returns up to `max` events in order.
-/// Consecutive mouse motion with unchanged buttons is merged into one event.
 pub fn poll(max: usize) -> alloc::vec::Vec<InputEvent> {
     let (pending, flags) = PENDING.lock();
-    while let Some(code) = drain(&crate::io::KEYBOARD_BUFFER) {
+    while let Some((code, time)) = drain(&crate::io::KEYBOARD_BUFFER) {
         let (decoder, kf) = KEYBOARD.lock();
         let event = decoder.feed(code);
         KEYBOARD.unlock(kf);
-        if let Some(event) = event { pending.push_back(event); }
+        if let Some(event) = event { pending.push_back(InputEvent { time, ..event }); }
     }
-    while let Some(byte) = drain(&crate::io::MOUSE_BUFFER) {
+    while let Some((byte, time)) = drain(&crate::io::MOUSE_BUFFER) {
         let (decoder, mf) = MOUSE.lock();
-        let event = decoder.feed(byte);
+        let event = decoder.feed(byte).map(|e| InputEvent { time, ..e });
         MOUSE.unlock(mf);
-        let Some(event) = event else { continue };
-        if let Some(last) = pending.back_mut() {
-            if last.kind == INPUT_MOUSE && last.buttons == event.buttons && last.wheel == 0 && event.wheel == 0 {
-                last.dx = last.dx.saturating_add(event.dx);
-                last.dy = last.dy.saturating_add(event.dy);
-                continue;
-            }
-        }
-        pending.push_back(event);
+        // Motion is not merged: the pointer clamps at screen edges, so summing packets
+        // before clamping would change where it ends up.
+        if let Some(event) = event { pending.push_back(event); }
     }
     while pending.len() > PENDING_MAX { pending.pop_front(); }
     let count = max.min(pending.len());

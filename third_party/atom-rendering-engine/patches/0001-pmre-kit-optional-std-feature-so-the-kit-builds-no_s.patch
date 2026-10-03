@@ -1,0 +1,942 @@
+From 27149d3989b61aea0cab2aa0676b2756d858584f Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 3 Oct 2026 21:03:02 +0000
+Subject: [PATCH] pmre-kit: optional std feature so the kit builds no_std +
+ alloc
+
+The kit's mechanism needs nothing from std, so make std an opt-out
+feature (on by default, existing users unaffected):
+
+- no_std + alloc when `std` is off; a crate prelude supplies the alloc
+  types, and `fmath::F32Ext` the float methods core lacks (floor, ceil,
+  round, trunc, sqrt, sin, cos, rem_euclid), tested against std.
+- `sync`: std's Arc/Mutex/OnceLock/HashMap with std; a spin Mutex,
+  once-cell and BTreeMap without it. The layout measure memo uses a
+  thread-local with std and a locked map without.
+- font: `font::install(regular, bold)` installs faces from bytes (the
+  only font source without std); system discovery is std-only.
+- text: `draw_face` / `advance_face` render with an explicit face (e.g.
+  a monospace font) through the same coverage path.
+- path: fill/stroke are generic over `Surface`, like scan_convert and
+  text, so they can target any pixel sink.
+- post, bloom_sweep and fair_queue (threads) are std-only.
+- CI also clippy-checks the kit without std on x86_64-unknown-none.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .github/workflows/ci.yml    |   4 ++
+ ENGINE-INTEGRATION.md       |  16 +++++
+ pmre-kit/Cargo.toml         |   6 ++
+ pmre-kit/src/fmath.rs       | 132 +++++++++++++++++++++++++++++++++++
+ pmre-kit/src/font.rs        |  51 ++++++++++----
+ pmre-kit/src/framebuffer.rs |   2 +
+ pmre-kit/src/geom.rs        |   6 +-
+ pmre-kit/src/html.rs        |   4 +-
+ pmre-kit/src/layout.rs      |  43 ++++++++++--
+ pmre-kit/src/lib.rs         |  30 +++++++-
+ pmre-kit/src/paint.rs       |   2 +
+ pmre-kit/src/path.rs        |  27 ++++----
+ pmre-kit/src/raster.rs      |   2 +
+ pmre-kit/src/sync.rs        | 134 ++++++++++++++++++++++++++++++++++++
+ pmre-kit/src/text.rs        |  61 ++++++++++------
+ pmre-kit/src/ux.rs          |   2 +
+ 16 files changed, 467 insertions(+), 55 deletions(-)
+ create mode 100644 pmre-kit/src/fmath.rs
+ create mode 100644 pmre-kit/src/sync.rs
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index c465ae8..ff44370 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -19,6 +19,10 @@ jobs:
+         run: cargo clippy --workspace --lib --tests -- -D warnings
+       - name: Tests
+         run: cargo test --workspace --lib
++      - name: pmre-kit without std (no_std + alloc, bare-metal target)
++        run: |
++          rustup target add x86_64-unknown-none
++          cargo clippy -p pmre-kit --no-default-features --target x86_64-unknown-none -- -D warnings
+ # The window example (raw Win32 FFI) and the other render examples are built and run
+ # locally during development; CI focuses on the dependency-free library crates so it stays
+ # fast and green without OS windowing libraries.
+diff --git a/ENGINE-INTEGRATION.md b/ENGINE-INTEGRATION.md
+index 288447a..707b2c0 100644
+--- a/ENGINE-INTEGRATION.md
++++ b/ENGINE-INTEGRATION.md
+@@ -58,6 +58,22 @@ Both entries must point to the same revision. Cargo records the selected revisio
+ To enable GPU bloom, add `features = ["gpu"]` to the `pmre-orchestrator` entry. Do not enable it
+ just to display ordinary 2D frames.
+ 
++### Without `std` (operating systems, firmware)
++
++`pmre-kit` has a default `std` feature. Disable it to build the kit as `no_std` + `alloc`
++(any target with a global allocator):
++
++```toml
++pmre-kit = { git = "https://github.com/Lucerna-Labs/atom-rendering-engine.git", rev = "FULL_COMMIT_SHA", default-features = false }
++```
++
++Without `std` there is no system-font discovery: parse embedded TrueType bytes and install
++them before drawing text, e.g. `font::install(Font::parse(REGULAR_TTF.to_vec())?, bold)`.
++`text::draw_face` draws with any other parsed face (such as a monospace one). The threaded
++modules (`post`, `bloom_sweep`, `fair_queue`) are `std`-only; shapes, paths, gradients,
++text, layout and HTML all work unchanged, rendering into any `Surface` you implement.
++Atom OS uses this mode for its desktop.
++
+ ## 3. Render a first frame
+ 
+ The UXI path is the shortest route to a laid-out 2D interface:
+diff --git a/pmre-kit/Cargo.toml b/pmre-kit/Cargo.toml
+index d97a3e6..53e85d3 100644
+--- a/pmre-kit/Cargo.toml
++++ b/pmre-kit/Cargo.toml
+@@ -6,3 +6,9 @@ license = "MIT"
+ description = "The single primitive kit: all dumb rendering mechanism, wired from the 8 root atoms."
+ 
+ [dependencies]
++
++[features]
++default = ["std"]
++# System font discovery and the threaded post-processing modules. Disable for no_std
++# targets (with alloc); fonts are then installed from bytes via `font::install`.
++std = []
+diff --git a/pmre-kit/src/fmath.rs b/pmre-kit/src/fmath.rs
+new file mode 100644
+index 0000000..90dbb73
+--- /dev/null
++++ b/pmre-kit/src/fmath.rs
+@@ -0,0 +1,132 @@
++//! `f32` methods that live in `std` rather than `core`, for `no_std` builds. Brought into
++//! scope through the prelude only without `std`, where the inherent methods are absent, so
++//! call sites read the same either way. Accuracy is ample for rasterization.
++
++pub trait F32Ext {
++    fn floor(self) -> f32;
++    fn ceil(self) -> f32;
++    fn round(self) -> f32;
++    fn trunc(self) -> f32;
++    fn sqrt(self) -> f32;
++    fn sin(self) -> f32;
++    fn cos(self) -> f32;
++    fn rem_euclid(self, rhs: f32) -> f32;
++}
++
++/// Above 2^23 every `f32` is already an integer.
++const INTEGRAL: f32 = 8_388_608.0;
++
++impl F32Ext for f32 {
++    fn trunc(self) -> f32 {
++        if self.is_nan() || self.abs() >= INTEGRAL {
++            self
++        } else {
++            self as i32 as f32
++        }
++    }
++    fn floor(self) -> f32 {
++        let t = F32Ext::trunc(self);
++        if t > self {
++            t - 1.0
++        } else {
++            t
++        }
++    }
++    fn ceil(self) -> f32 {
++        let t = F32Ext::trunc(self);
++        if t < self {
++            t + 1.0
++        } else {
++            t
++        }
++    }
++    /// Half away from zero, like `std`.
++    fn round(self) -> f32 {
++        if self >= 0.0 {
++            F32Ext::floor(self + 0.5)
++        } else {
++            -F32Ext::floor(-self + 0.5)
++        }
++    }
++    fn sqrt(self) -> f32 {
++        #[cfg(target_arch = "x86_64")]
++        {
++            use core::arch::x86_64::{_mm_cvtss_f32, _mm_set_ss, _mm_sqrt_ss};
++            unsafe { _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(self))) }
++        }
++        #[cfg(not(target_arch = "x86_64"))]
++        {
++            if self <= 0.0 || self.is_nan() || self.is_infinite() {
++                return if self == 0.0 || self.is_infinite() {
++                    self
++                } else {
++                    f32::NAN
++                };
++            }
++            // Bit-level initial guess, then Newton iterations.
++            let mut y = f32::from_bits((self.to_bits() >> 1) + 0x1fbd_1df5);
++            for _ in 0..4 {
++                y = 0.5 * (y + self / y);
++            }
++            y
++        }
++    }
++    fn sin(self) -> f32 {
++        use core::f32::consts::{PI, TAU};
++        let mut x = self - F32Ext::floor(self / TAU) * TAU; // [0, 2π)
++        if x > PI {
++            x -= TAU; // (-π, π]
++        }
++        // Fold into [-π/2, π/2] where the series converges quickly.
++        if x > PI / 2.0 {
++            x = PI - x;
++        } else if x < -PI / 2.0 {
++            x = -PI - x;
++        }
++        let x2 = x * x;
++        x * (1.0
++            - x2 / 6.0
++                * (1.0 - x2 / 20.0 * (1.0 - x2 / 42.0 * (1.0 - x2 / 72.0 * (1.0 - x2 / 110.0)))))
++    }
++    fn cos(self) -> f32 {
++        F32Ext::sin(self + core::f32::consts::FRAC_PI_2)
++    }
++    fn rem_euclid(self, rhs: f32) -> f32 {
++        let r = self - F32Ext::trunc(self / rhs) * rhs;
++        if r < 0.0 {
++            r + rhs.abs()
++        } else {
++            r
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::F32Ext;
++
++    #[test]
++    fn matches_std_on_representative_values() {
++        for &v in &[
++            -3.7f32, -2.5, -1.0, -0.4, 0.0, 0.4, 0.5, 1.5, 2.49, 7.0, 1e9, -1e9,
++        ] {
++            assert_eq!(F32Ext::floor(v), v.floor(), "floor {v}");
++            assert_eq!(F32Ext::ceil(v), v.ceil(), "ceil {v}");
++            assert_eq!(F32Ext::round(v), v.round(), "round {v}");
++            assert_eq!(F32Ext::trunc(v), v.trunc(), "trunc {v}");
++        }
++        for &v in &[0.0f32, 1e-6, 0.25, 2.0, 3.0, 1e6] {
++            assert!(
++                (F32Ext::sqrt(v) - v.sqrt()).abs() <= v.sqrt() * 1e-6 + 1e-9,
++                "sqrt {v}"
++            );
++        }
++        for i in -40..=40 {
++            let a = i as f32 * 0.37;
++            assert!((F32Ext::sin(a) - a.sin()).abs() < 2e-4, "sin {a}");
++            assert!((F32Ext::cos(a) - a.cos()).abs() < 2e-4, "cos {a}");
++        }
++        assert_eq!(F32Ext::rem_euclid(-30.0, 360.0), 330.0);
++        assert_eq!(F32Ext::rem_euclid(725.0, 360.0), 5.0);
++    }
++}
+diff --git a/pmre-kit/src/font.rs b/pmre-kit/src/font.rs
+index fa1a0fa..e03e623 100644
+--- a/pmre-kit/src/font.rs
++++ b/pmre-kit/src/font.rs
+@@ -11,9 +11,10 @@
+ //!
+ //! Mechanism only: this module turns `(char, size)` into coverage bitmaps and metrics.
+ //! It never decides colors, positions, or layout.
++#[allow(unused_imports)]
++use crate::prelude::*;
+ 
+-use std::collections::HashMap;
+-use std::sync::{Arc, Mutex, OnceLock};
++use crate::sync::{Arc, Map, Mutex, OnceLock};
+ 
+ // ─────────────────────────────────────────────────────────────────────────────
+ // Vector tier: TrueType parsing
+@@ -46,8 +47,8 @@ pub struct Font {
+     ascent_units: f32,
+     descent_units: f32, // positive magnitude below the baseline
+     line_gap_units: f32,
+-    gids: Mutex<HashMap<char, u16>>,
+-    rasters: Mutex<HashMap<(u16, u16), Arc<RasterGlyph>>>,
++    gids: Mutex<Map<char, u16>>,
++    rasters: Mutex<Map<(u16, u16), Arc<RasterGlyph>>>,
+ }
+ 
+ // -- bounds-checked big-endian reads --------------------------------------------------
+@@ -129,12 +130,13 @@ impl Font {
+             ascent_units,
+             descent_units,
+             line_gap_units,
+-            gids: Mutex::new(HashMap::new()),
+-            rasters: Mutex::new(HashMap::new()),
++            gids: Mutex::new(Map::new()),
++            rasters: Mutex::new(Map::new()),
+         })
+     }
+ 
+     /// Load and parse a font file.
++    #[cfg(feature = "std")]
+     pub fn load(path: &std::path::Path) -> Option<Font> {
+         Font::parse(std::fs::read(path).ok()?)
+     }
+@@ -722,6 +724,7 @@ fn pick_cmap(d: &[u8], cmap: usize) -> Option<(usize, u16)> {
+ // System font discovery (std::fs only — still zero crates)
+ // ─────────────────────────────────────────────────────────────────────────────
+ 
++#[cfg(feature = "std")]
+ fn font_dirs() -> Vec<std::path::PathBuf> {
+     let mut dirs = Vec::new();
+     if let Ok(windir) = std::env::var("WINDIR") {
+@@ -736,6 +739,7 @@ fn font_dirs() -> Vec<std::path::PathBuf> {
+     dirs
+ }
+ 
++#[cfg(feature = "std")]
+ const REGULAR_CANDIDATES: &[&str] = &[
+     "segoeui.ttf",
+     "arial.ttf",
+@@ -748,6 +752,7 @@ const REGULAR_CANDIDATES: &[&str] = &[
+     "Arial Unicode.ttf",
+ ];
+ 
++#[cfg(feature = "std")]
+ const BOLD_CANDIDATES: &[&str] = &[
+     "segoeuib.ttf",
+     "arialbd.ttf",
+@@ -759,6 +764,7 @@ const BOLD_CANDIDATES: &[&str] = &[
+     "Arial Bold.ttf",
+ ];
+ 
++#[cfg(feature = "std")]
+ fn load_first(env_override: &str, names: &[&str]) -> Option<Arc<Font>> {
+     if let Ok(p) = std::env::var(env_override) {
+         if let Some(f) = Font::load(std::path::Path::new(&p)) {
+@@ -781,19 +787,34 @@ fn load_first(env_override: &str, names: &[&str]) -> Option<Arc<Font>> {
+ static REGULAR: OnceLock<Option<Arc<Font>>> = OnceLock::new();
+ static BOLD: OnceLock<Option<Arc<Font>>> = OnceLock::new();
+ 
+-/// The system regular font, loaded once. `None` when no font file exists — callers
+-/// fall back to the 5×7 bitmap tier.
++/// Install the regular (and optionally bold) face explicitly — for embedded fonts, and
++/// the only font source without `std`. Call before the first text operation; returns
++/// `false` when a face was already chosen (installed or discovered).
++pub fn install(regular: Font, bold: Option<Font>) -> bool {
++    let installed = REGULAR.set(Some(Arc::new(regular))).is_ok();
++    if installed {
++        let _ = BOLD.set(bold.map(Arc::new));
++    }
++    installed
++}
++
++/// The regular font: the installed face, else (with `std`) the system font, loaded once.
++/// `None` when there is none — callers fall back to the 5×7 bitmap tier.
+ pub fn regular() -> Option<&'static Arc<Font>> {
+-    REGULAR
+-        .get_or_init(|| load_first("PMRE_FONT", REGULAR_CANDIDATES))
+-        .as_ref()
++    #[cfg(feature = "std")]
++    let face = REGULAR.get_or_init(|| load_first("PMRE_FONT", REGULAR_CANDIDATES));
++    #[cfg(not(feature = "std"))]
++    let face = REGULAR.get_or_init(|| None);
++    face.as_ref()
+ }
+ 
+-/// The system bold font; falls back to the regular face when no bold file exists.
++/// The bold font; falls back to the regular face when no bold face exists.
+ pub fn bold() -> Option<&'static Arc<Font>> {
+-    BOLD.get_or_init(|| load_first("PMRE_FONT_BOLD", BOLD_CANDIDATES))
+-        .as_ref()
+-        .or_else(regular)
++    #[cfg(feature = "std")]
++    let face = BOLD.get_or_init(|| load_first("PMRE_FONT_BOLD", BOLD_CANDIDATES));
++    #[cfg(not(feature = "std"))]
++    let face = BOLD.get_or_init(|| None);
++    face.as_ref().or_else(regular)
+ }
+ 
+ /// True when the vector tier is active (a system font file was found and parsed).
+diff --git a/pmre-kit/src/framebuffer.rs b/pmre-kit/src/framebuffer.rs
+index ecc9b9b..f781538 100644
+--- a/pmre-kit/src/framebuffer.rs
++++ b/pmre-kit/src/framebuffer.rs
+@@ -2,6 +2,8 @@
+ //! + a dependency-free 24-bit BMP encoder so output is viewable without any external crate.
+ 
+ use crate::paint::Rgba;
++#[allow(unused_imports)]
++use crate::prelude::*;
+ 
+ pub struct Framebuffer {
+     pub width: u32,
+diff --git a/pmre-kit/src/geom.rs b/pmre-kit/src/geom.rs
+index 24dd1b2..bf178cc 100644
+--- a/pmre-kit/src/geom.rs
++++ b/pmre-kit/src/geom.rs
+@@ -1,6 +1,8 @@
+ //! Geometry mechanism: 2-D points/vectors and affine transforms.
+ //! `Affine::apply` is the `project` root atom specialized to a 2-D point × matrix.
+ 
++#[allow(unused_imports)]
++use crate::prelude::*;
+ #[derive(Clone, Copy, Debug, PartialEq)]
+ pub struct Vec2 {
+     pub x: f32,
+@@ -29,14 +31,14 @@ impl Vec2 {
+     }
+ }
+ 
+-impl std::ops::Add for Vec2 {
++impl core::ops::Add for Vec2 {
+     type Output = Vec2;
+     fn add(self, o: Vec2) -> Vec2 {
+         Vec2::new(self.x + o.x, self.y + o.y)
+     }
+ }
+ 
+-impl std::ops::Sub for Vec2 {
++impl core::ops::Sub for Vec2 {
+     type Output = Vec2;
+     fn sub(self, o: Vec2) -> Vec2 {
+         Vec2::new(self.x - o.x, self.y - o.y)
+diff --git a/pmre-kit/src/html.rs b/pmre-kit/src/html.rs
+index 7204861..a7fc340 100644
+--- a/pmre-kit/src/html.rs
++++ b/pmre-kit/src/html.rs
+@@ -14,6 +14,8 @@
+ //! gap, background(-color), border, border-radius, box-shadow, color, font-size,
+ //! font-weight, text-align, text-decoration, align-items, justify-content, opacity.
+ //! Colors: #rgb/#rrggbb/#rrggbbaa, rgb()/rgba(), hsl(), ~40 named colors.
++#[allow(unused_imports)]
++use crate::prelude::*;
+ 
+ use crate::paint::Rgba;
+ use crate::ux::{Align, Dim, Dir, Edges, Justify, Shadow, Span, Style, UxNode};
+@@ -421,7 +423,7 @@ fn children_to_ux(
+     let flush = |run: &mut Vec<Span>, out: &mut Vec<UxNode>, first: &mut bool| {
+         let has_content = run.iter().any(|s| !s.text.trim().is_empty());
+         if has_content {
+-            let mut spans = std::mem::take(run);
++            let mut spans = core::mem::take(run);
+             if *first {
+                 if let Some(prefix) = li_prefix {
+                     let mut bullet = Span::new(prefix, inh.font_size, inh.color);
+diff --git a/pmre-kit/src/layout.rs b/pmre-kit/src/layout.rs
+index fb6fe6e..0732877 100644
+--- a/pmre-kit/src/layout.rs
++++ b/pmre-kit/src/layout.rs
+@@ -2,6 +2,8 @@
+ //! plus interaction support (ids carried through to laid boxes, clip rects for scroll
+ //! regions, and hit-testing). Pure mechanism: deterministic, decision-free.
+ //! `solve` returns a flat pre-order list (parents before children = paint order).
++#[allow(unused_imports)]
++use crate::prelude::*;
+ 
+ use crate::geom::{Affine, Vec2};
+ use crate::paint::{Bounds, DrawCmd, Paint, Rgba, Shape};
+@@ -45,18 +47,51 @@ pub type ScrollFn<'a> = dyn Fn(u32) -> f32 + 'a;
+ pub fn solve(root: &UxNode, viewport: Bounds, scroll: &ScrollFn) -> Vec<LaidBox> {
+     // the memo is keyed by node address — valid only while this tree is alive, so it
+     // must be reset at every entry
+-    MEASURE_MEMO.with(|m| m.borrow_mut().clear());
++    memo_clear();
+     let mut out = Vec::new();
+     layout_node(root, viewport, None, scroll, &mut out);
+     out
+ }
+ 
++#[cfg(feature = "std")]
+ thread_local! {
+     /// Per-solve memo for `measure`: without it, the flex-row second pass measures
+     /// children twice per level, which goes exponential on deeply nested rows.
+     static MEASURE_MEMO: std::cell::RefCell<std::collections::HashMap<(usize, u32), (f32, f32)>> =
+         std::cell::RefCell::new(std::collections::HashMap::new());
+ }
++#[cfg(feature = "std")]
++fn memo_clear() {
++    MEASURE_MEMO.with(|m| m.borrow_mut().clear());
++}
++#[cfg(feature = "std")]
++fn memo_get(key: &(usize, u32)) -> Option<(f32, f32)> {
++    MEASURE_MEMO.with(|m| m.borrow().get(key).copied())
++}
++#[cfg(feature = "std")]
++fn memo_insert(key: (usize, u32), v: (f32, f32)) {
++    MEASURE_MEMO.with(|m| {
++        m.borrow_mut().insert(key, v);
++    });
++}
++
++// Without `std` there are no thread locals; the target is single-threaded, so one
++// locked map serves the same purpose.
++#[cfg(not(feature = "std"))]
++static MEASURE_MEMO: crate::sync::Mutex<crate::sync::Map<(usize, u32), (f32, f32)>> =
++    crate::sync::Mutex::new(crate::sync::Map::new());
++#[cfg(not(feature = "std"))]
++fn memo_clear() {
++    MEASURE_MEMO.lock().unwrap().clear();
++}
++#[cfg(not(feature = "std"))]
++fn memo_get(key: &(usize, u32)) -> Option<(f32, f32)> {
++    MEASURE_MEMO.lock().unwrap().get(key).copied()
++}
++#[cfg(not(feature = "std"))]
++fn memo_insert(key: (usize, u32), v: (f32, f32)) {
++    MEASURE_MEMO.lock().unwrap().insert(key, v);
++}
+ 
+ /// Topmost interactive box containing the point (respecting clip), as `(id, role)`.
+ pub fn hit_test(boxes: &[LaidBox], x: f32, y: f32) -> Option<(u32, Role)> {
+@@ -141,7 +176,7 @@ pub fn rich_lines(spans: &[Span], max_width: Option<f32>) -> (Vec<RichLine>, f32
+                 0.0
+             };
+             if !cur.pieces.is_empty() && cur.width + space_w + word_w > max_w {
+-                lines.push(std::mem::replace(
++                lines.push(core::mem::replace(
+                     &mut cur,
+                     RichLine {
+                         pieces: Vec::new(),
+@@ -245,11 +280,11 @@ fn measure(node: &UxNode, avail_w: Option<f32>) -> (f32, f32) {
+         node as *const UxNode as usize,
+         avail_w.map(f32::to_bits).unwrap_or(u32::MAX),
+     );
+-    if let Some(v) = MEASURE_MEMO.with(|m| m.borrow().get(&key).copied()) {
++    if let Some(v) = memo_get(&key) {
+         return v;
+     }
+     let v = measure_inner(node, avail_w);
+-    MEASURE_MEMO.with(|m| m.borrow_mut().insert(key, v));
++    memo_insert(key, v);
+     v
+ }
+ 
+diff --git a/pmre-kit/src/lib.rs b/pmre-kit/src/lib.rs
+index f915064..2a56d57 100644
+--- a/pmre-kit/src/lib.rs
++++ b/pmre-kit/src/lib.rs
+@@ -6,9 +6,33 @@
+ //! from them. Every decision — draw order, clipping, which coverage generator fires —
+ //! lives in `pmre-orchestrator`, never here. If a primitive in this crate grows an `if`
+ //! that makes a value judgement, that `if` belongs in the orchestrator.
++//!
++//! The `std` feature (on by default) adds system-font discovery and the threaded
++//! post-processing modules. Without it the kit is `no_std` + `alloc`: install fonts from
++//! bytes with `font::install`, and every rasterization path works the same.
++
++#![cfg_attr(not(feature = "std"), no_std)]
++#![cfg_attr(not(feature = "std"), allow(unstable_name_collisions))]
++
++extern crate alloc;
+ 
++/// Allocation types and, without `std`, the float methods `core` lacks.
++#[allow(unused_imports)]
++pub(crate) mod prelude {
++    #[cfg(not(feature = "std"))]
++    pub use crate::fmath::F32Ext;
++    pub use alloc::borrow::ToOwned;
++    pub use alloc::boxed::Box;
++    pub use alloc::string::{String, ToString};
++    pub use alloc::vec::Vec;
++    pub use alloc::{format, vec};
++}
++
++#[cfg(feature = "std")]
+ pub mod bloom_sweep;
++#[cfg(feature = "std")]
+ pub mod fair_queue;
++pub mod fmath;
+ pub mod font;
+ pub mod framebuffer;
+ pub mod geom;
+@@ -16,8 +40,10 @@ pub mod html;
+ pub mod layout;
+ pub mod paint;
+ pub mod path;
++#[cfg(feature = "std")]
+ pub mod post;
+ pub mod raster;
++pub mod sync;
+ pub mod text;
+ pub mod ux;
+ 
+@@ -30,6 +56,8 @@ pub use ux::{Align, Dim, Dir, Edges, Justify, Shadow, Span, Style, UxNode};
+ /// The eight root atoms — the canonical vocabulary the whole kit specializes from.
+ /// Each does exactly one thing and makes no decisions.
+ pub mod atoms {
++    use crate::prelude::*;
++
+     /// `scan` — stream a region into discrete units (here: a pixel grid into coordinates).
+     pub fn scan(width: u32, height: u32) -> impl Iterator<Item = (u32, u32)> {
+         (0..height).flat_map(move |y| (0..width).map(move |x| (x, y)))
+@@ -84,7 +112,7 @@ pub mod atoms {
+         idx.sort_by(|&i, &j| {
+             key(&items[j])
+                 .partial_cmp(&key(&items[i]))
+-                .unwrap_or(std::cmp::Ordering::Equal)
++                .unwrap_or(core::cmp::Ordering::Equal)
+         });
+         idx
+     }
+diff --git a/pmre-kit/src/paint.rs b/pmre-kit/src/paint.rs
+index b102864..138199c 100644
+--- a/pmre-kit/src/paint.rs
++++ b/pmre-kit/src/paint.rs
+@@ -1,6 +1,8 @@
+ //! Drawing vocabulary (renderer-neutral) and color. Pure data; makes no rendering decisions.
+ 
+ use crate::geom::{Affine, Vec2};
++#[allow(unused_imports)]
++use crate::prelude::*;
+ 
+ /// Straight-alpha RGBA in [0, 1]. `scale` keeps channels normalized.
+ #[derive(Clone, Copy, Debug)]
+diff --git a/pmre-kit/src/path.rs b/pmre-kit/src/path.rs
+index e5539a0..1353fae 100644
+--- a/pmre-kit/src/path.rs
++++ b/pmre-kit/src/path.rs
+@@ -5,10 +5,12 @@
+ //! across X and supersampled across Y, with nonzero-winding fill so opposite-wound subpaths
+ //! cut holes. Mechanism only: it fills the points it is given; the orchestrator decides what
+ //! and where.
++#[allow(unused_imports)]
++use crate::prelude::*;
+ 
+-use std::f32::consts::TAU;
++use core::f32::consts::TAU;
+ 
+-use crate::framebuffer::Framebuffer;
++use crate::framebuffer::Surface;
+ use crate::geom::Vec2;
+ use crate::paint::{Bounds, Paint};
+ 
+@@ -35,7 +37,7 @@ pub fn flatten(cmds: &[PathCmd]) -> Vec<Vec<Vec2>> {
+         match cmd {
+             PathCmd::MoveTo(p) => {
+                 if cur.len() > 1 {
+-                    out.push(std::mem::take(&mut cur));
++                    out.push(core::mem::take(&mut cur));
+                 } else {
+                     cur.clear();
+                 }
+@@ -83,12 +85,12 @@ pub fn flatten(cmds: &[PathCmd]) -> Vec<Vec<Vec2>> {
+ }
+ 
+ /// Flatten and fill a command list in one call.
+-pub fn fill_cmds(fb: &mut Framebuffer, cmds: &[PathCmd], paint: Paint, clip: Option<Bounds>) {
++pub fn fill_cmds<S: Surface>(fb: &mut S, cmds: &[PathCmd], paint: Paint, clip: Option<Bounds>) {
+     fill(fb, &flatten(cmds), paint, clip);
+ }
+ 
+ /// Fill closed subpaths (device-space points) with `paint`, clipped to `clip`.
+-pub fn fill(fb: &mut Framebuffer, subpaths: &[Vec<Vec2>], paint: Paint, clip: Option<Bounds>) {
++pub fn fill<S: Surface>(fb: &mut S, subpaths: &[Vec<Vec2>], paint: Paint, clip: Option<Bounds>) {
+     let mut minx = f32::INFINITY;
+     let mut miny = f32::INFINITY;
+     let mut maxx = f32::NEG_INFINITY;
+@@ -105,7 +107,8 @@ pub fn fill(fb: &mut Framebuffer, subpaths: &[Vec<Vec2>], paint: Paint, clip: Op
+         return;
+     }
+ 
+-    let (mut cx0, mut cy0, mut cx1, mut cy1) = (0.0f32, 0.0f32, fb.width as f32, fb.height as f32);
++    let (mut cx0, mut cy0, mut cx1, mut cy1) =
++        (0.0f32, 0.0f32, fb.width() as f32, fb.height() as f32);
+     if let Some(c) = clip {
+         cx0 = cx0.max(c.min.x);
+         cy0 = cy0.max(c.min.y);
+@@ -114,8 +117,8 @@ pub fn fill(fb: &mut Framebuffer, subpaths: &[Vec<Vec2>], paint: Paint, clip: Op
+     }
+     let x0 = minx.floor().max(cx0).max(0.0) as i32;
+     let y0 = miny.floor().max(cy0).max(0.0) as i32;
+-    let x1 = maxx.ceil().min(cx1).min(fb.width as f32) as i32;
+-    let y1 = maxy.ceil().min(cy1).min(fb.height as f32) as i32;
++    let x1 = maxx.ceil().min(cx1).min(fb.width() as f32) as i32;
++    let y1 = maxy.ceil().min(cy1).min(fb.height() as f32) as i32;
+     if x1 <= x0 || y1 <= y0 {
+         return;
+     }
+@@ -187,8 +190,8 @@ fn add_span(cov: &mut [f32], x0: i32, x1: i32, xa: f32, xb: f32, weight: f32) {
+ 
+ /// Stroke polylines `width` thick with round joins and caps. Built as a union of segment
+ /// quads and vertex discs, all wound the same way so nonzero winding merges them cleanly.
+-pub fn stroke(
+-    fb: &mut Framebuffer,
++pub fn stroke<S: Surface>(
++    fb: &mut S,
+     subpaths: &[Vec<Vec2>],
+     width: f32,
+     paint: Paint,
+@@ -225,8 +228,8 @@ pub fn stroke(
+ }
+ 
+ /// Flatten and stroke a command list. `closed` joins the last point back to the first.
+-pub fn stroke_cmds(
+-    fb: &mut Framebuffer,
++pub fn stroke_cmds<S: Surface>(
++    fb: &mut S,
+     cmds: &[PathCmd],
+     width: f32,
+     paint: Paint,
+diff --git a/pmre-kit/src/raster.rs b/pmre-kit/src/raster.rs
+index 6861b95..3e142e0 100644
+--- a/pmre-kit/src/raster.rs
++++ b/pmre-kit/src/raster.rs
+@@ -5,6 +5,8 @@
+ //! `scan` (pixel grid) · `project` (inverse transform) · `compare` (SDF) · `scale` (AA band)
+ //! · `combine` (alpha-over) into one shape → pixels operation. Mechanism only: it never
+ //! decides draw order, clipping, or which generator to use — that is the orchestrator's job.
++#[allow(unused_imports)]
++use crate::prelude::*;
+ 
+ use crate::framebuffer::Surface;
+ use crate::geom::Vec2;
+diff --git a/pmre-kit/src/sync.rs b/pmre-kit/src/sync.rs
+new file mode 100644
+index 0000000..d0bb971
+--- /dev/null
++++ b/pmre-kit/src/sync.rs
+@@ -0,0 +1,134 @@
++//! Shared-state shims. With `std` these are the standard types; without it (an OS kernel's
++//! userspace, firmware) they are a minimal spin lock, a once-cell and an ordered map, so
++//! the font caches work unchanged on a single-threaded, allocator-only target.
++
++#[cfg(feature = "std")]
++pub use std::sync::{Arc, Mutex, OnceLock};
++/// Cache map: hashed with `std`, ordered without it (keys are all `Ord`).
++#[cfg(feature = "std")]
++pub type Map<K, V> = std::collections::HashMap<K, V>;
++
++#[cfg(not(feature = "std"))]
++pub use alloc::sync::Arc;
++#[cfg(not(feature = "std"))]
++pub type Map<K, V> = alloc::collections::BTreeMap<K, V>;
++#[cfg(not(feature = "std"))]
++pub use spin::{Mutex, OnceLock};
++
++#[cfg(not(feature = "std"))]
++mod spin {
++    use core::cell::UnsafeCell;
++    use core::convert::Infallible;
++    use core::ops::{Deref, DerefMut};
++    use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
++
++    /// Spin lock with the `std::sync::Mutex` call shape (`lock()` returns a `Result`).
++    pub struct Mutex<T> {
++        locked: AtomicBool,
++        value: UnsafeCell<T>,
++    }
++    unsafe impl<T: Send> Sync for Mutex<T> {}
++    unsafe impl<T: Send> Send for Mutex<T> {}
++
++    pub struct MutexGuard<'a, T> {
++        lock: &'a Mutex<T>,
++    }
++
++    impl<T> Mutex<T> {
++        pub const fn new(value: T) -> Self {
++            Self {
++                locked: AtomicBool::new(false),
++                value: UnsafeCell::new(value),
++            }
++        }
++        pub fn lock(&self) -> Result<MutexGuard<'_, T>, Infallible> {
++            while self
++                .locked
++                .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed)
++                .is_err()
++            {
++                core::hint::spin_loop();
++            }
++            Ok(MutexGuard { lock: self })
++        }
++    }
++    impl<T> Deref for MutexGuard<'_, T> {
++        type Target = T;
++        fn deref(&self) -> &T {
++            unsafe { &*self.lock.value.get() }
++        }
++    }
++    impl<T> DerefMut for MutexGuard<'_, T> {
++        fn deref_mut(&mut self) -> &mut T {
++            unsafe { &mut *self.lock.value.get() }
++        }
++    }
++    impl<T> Drop for MutexGuard<'_, T> {
++        fn drop(&mut self) {
++            self.lock.locked.store(false, Ordering::Release);
++        }
++    }
++
++    const EMPTY: u8 = 0;
++    const BUSY: u8 = 1;
++    const READY: u8 = 2;
++
++    /// Write-once cell with the `std::sync::OnceLock` call shape.
++    pub struct OnceLock<T> {
++        state: AtomicU8,
++        value: UnsafeCell<Option<T>>,
++    }
++    unsafe impl<T: Send + Sync> Sync for OnceLock<T> {}
++    unsafe impl<T: Send> Send for OnceLock<T> {}
++
++    impl<T> Default for OnceLock<T> {
++        fn default() -> Self {
++            Self::new()
++        }
++    }
++
++    impl<T> OnceLock<T> {
++        pub const fn new() -> Self {
++            Self {
++                state: AtomicU8::new(EMPTY),
++                value: UnsafeCell::new(None),
++            }
++        }
++        pub fn get(&self) -> Option<&T> {
++            if self.state.load(Ordering::Acquire) == READY {
++                unsafe { (*self.value.get()).as_ref() }
++            } else {
++                None
++            }
++        }
++        pub fn set(&self, value: T) -> Result<(), T> {
++            if self
++                .state
++                .compare_exchange(EMPTY, BUSY, Ordering::Acquire, Ordering::Acquire)
++                .is_err()
++            {
++                return Err(value);
++            }
++            unsafe { *self.value.get() = Some(value) };
++            self.state.store(READY, Ordering::Release);
++            Ok(())
++        }
++        pub fn get_or_init(&self, f: impl FnOnce() -> T) -> &T {
++            if let Some(v) = self.get() {
++                return v;
++            }
++            if self
++                .state
++                .compare_exchange(EMPTY, BUSY, Ordering::Acquire, Ordering::Acquire)
++                .is_ok()
++            {
++                unsafe { *self.value.get() = Some(f()) };
++                self.state.store(READY, Ordering::Release);
++            }
++            while self.state.load(Ordering::Acquire) != READY {
++                core::hint::spin_loop();
++            }
++            self.get().unwrap()
++        }
++    }
++}
+diff --git a/pmre-kit/src/text.rs b/pmre-kit/src/text.rs
+index 40ea706..b20a792 100644
+--- a/pmre-kit/src/text.rs
++++ b/pmre-kit/src/text.rs
+@@ -7,6 +7,8 @@
+ //!
+ //! A text run is `scan` (over glyph coverage cells) + `combine` (alpha-over) — its own
+ //! coverage generator, distinct from the SDF generator used for shapes. Mechanism only.
++#[allow(unused_imports)]
++use crate::prelude::*;
+ 
+ use crate::font;
+ use crate::framebuffer::Surface;
+@@ -69,7 +71,7 @@ pub fn wrap(content: &str, size: f32, max_width: f32) -> Vec<String> {
+             cur.push_str(word);
+             cur_w = need;
+         } else {
+-            lines.push(std::mem::take(&mut cur));
++            lines.push(core::mem::take(&mut cur));
+             cur.push_str(word);
+             cur_w = word_w;
+         }
+@@ -110,25 +112,7 @@ pub fn draw_styled<S: Surface>(
+ ) {
+     let face = if bold { font::bold() } else { font::regular() };
+     match face {
+-        Some(f) => {
+-            let ascent = f.ascent(size);
+-            let baseline = origin.y + ascent;
+-            let mut pen = origin.x;
+-            for ch in content.chars() {
+-                let g = f.raster(ch, size);
+-                if g.w > 0 && g.h > 0 {
+-                    let gx = (pen + 0.5).floor() as i32 + g.left;
+-                    let gy = (baseline + 0.5).floor() as i32 + g.top;
+-                    blit(fb, &g, gx, gy, color, clip);
+-                }
+-                pen += f.advance(ch, size);
+-            }
+-            if underline && pen > origin.x {
+-                let y = (baseline + size * 0.09).round();
+-                let th = (size * 0.07).round().max(1.0);
+-                rule(fb, origin.x, pen, y, th, color, clip);
+-            }
+-        }
++        Some(f) => draw_face(fb, f, content, origin, size, color, clip, underline),
+         None => {
+             let cs = (size / 7.0).max(1.0);
+             let mut pen_x = origin.x;
+@@ -165,6 +149,43 @@ pub fn draw_styled<S: Surface>(
+     }
+ }
+ 
++/// Render `content` in an explicit `face` (e.g. a monospace font the caller parsed), with
++/// the top of its ascent box at `origin`. Same coverage path as `draw_styled`.
++#[allow(clippy::too_many_arguments)]
++pub fn draw_face<S: Surface>(
++    fb: &mut S,
++    face: &font::Font,
++    content: &str,
++    origin: Vec2,
++    size: f32,
++    color: Rgba,
++    clip: Option<Bounds>,
++    underline: bool,
++) {
++    let ascent = face.ascent(size);
++    let baseline = origin.y + ascent;
++    let mut pen = origin.x;
++    for ch in content.chars() {
++        let g = face.raster(ch, size);
++        if g.w > 0 && g.h > 0 {
++            let gx = (pen + 0.5).floor() as i32 + g.left;
++            let gy = (baseline + 0.5).floor() as i32 + g.top;
++            blit(fb, &g, gx, gy, color, clip);
++        }
++        pen += face.advance(ch, size);
++    }
++    if underline && pen > origin.x {
++        let y = (baseline + size * 0.09).round();
++        let th = (size * 0.07).round().max(1.0);
++        rule(fb, origin.x, pen, y, th, color, clip);
++    }
++}
++
++/// Width in device pixels that `draw_face` advances for `content` in `face`.
++pub fn advance_face(face: &font::Font, content: &str, size: f32) -> f32 {
++    content.chars().map(|c| face.advance(c, size)).sum()
++}
++
+ /// Composite one glyph coverage bitmap at `(gx, gy)` in `color`, honoring the clip
+ /// rectangle and the surface's accepted row band.
+ fn blit<S: Surface>(
+diff --git a/pmre-kit/src/ux.rs b/pmre-kit/src/ux.rs
+index 1bce9c8..7c00746 100644
+--- a/pmre-kit/src/ux.rs
++++ b/pmre-kit/src/ux.rs
+@@ -6,6 +6,8 @@
+ //! (Button / Toggle / Scroll). The kit provides hit-testing and scroll/clip mechanism;
+ //! all widget *policy* (hover/press visuals, toggle flips, scroll offsets) lives in the
+ //! orchestrator and the app's state-driven `build` function.
++#[allow(unused_imports)]
++use crate::prelude::*;
+ 
+ use crate::paint::Rgba;
+ 
+-- 
+2.43.0
+

@@ -214,9 +214,31 @@ menu returns to the text shell, and the `desktop` command re-enters it.
 | System Monitor | Memory use, uptime and the process table, with **End process**. |
 
 Keyboard shortcuts: Alt+F4 closes the focused window, Alt+Tab switches windows
-and Esc cancels dialogs. Text is anti-aliased DejaVu, pre-rendered into glyph
-bitmaps by [`gen-font.py`](scripts/gen-font.py). Everything is drawn in
-software into a back buffer and copied to the linear framebuffer.
+and Esc cancels dialogs.
+
+### How the desktop is rendered
+
+The desktop renders through **pmre-kit**, the primitive kit of the Atom Rendering
+Engine, copied into [`third_party/atom-rendering-engine`](third_party/atom-rendering-engine)
+so the build is self-contained (no git pins, no symlinks, no paths outside this
+repository). The kit does all rasterization on the CPU:
+
+- shapes (rectangles, rounded rectangles, circles, lines) are signed-distance fields
+  with analytic anti-aliasing, and soft shadows and glows use its widened AA band;
+- outlines, icon curves and the pointer are filled and stroked by its scanline path
+  rasterizer;
+- text is rasterized from TrueType outlines by its built-in parser, using the DejaVu
+  subsets in [`desktop/fonts`](desktop/fonts).
+
+The desktop is the orchestrator: it decides draw order, clipping and what changed,
+and draws into a back buffer that implements the kit's `Surface`. Only the changed
+region is re-rendered, and each window is clipped to the parts not covered by
+windows above it. The finished region is copied to the linear framebuffer.
+
+The kit builds without the standard library through a small `std` feature added by
+the patch in `third_party/atom-rendering-engine/patches`.
+[`update-engine.sh`](scripts/update-engine.sh) refreshes the copy from the engine
+repository when you want its latest improvements.
 
 ## Shell commands
 
@@ -279,7 +301,8 @@ terminates a process by PID.
 | [`kernel-orchestrator/`](kernel-orchestrator) | Scheduling, process loading/lifecycle and syscall dispatch |
 | [`user-rt/`](user-rt) | Userspace entry, syscall wrappers, console helpers and allocator |
 | [`payload/`](payload) | Command shell |
-| [`desktop/`](desktop) | Graphical desktop: window manager, widgets, fonts and apps |
+| [`desktop/`](desktop) | Graphical desktop: window manager, widgets, apps and embedded fonts |
+| [`third_party/atom-rendering-engine/`](third_party/atom-rendering-engine) | Copy of the Atom Rendering Engine's `pmre-kit`, the desktop's renderer |
 | [`daemon/`](daemon) | IPC receiver and heartbeat process |
 | [`worker/`](worker) | Diagnostic worker, fault-probe and sleeper executables |
 | [`tests/`](tests) and [`scripts/`](scripts) | Native regression tests, builds and VM acceptance |

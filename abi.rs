@@ -121,12 +121,14 @@ pub const KEY_CAPS_LOCK: u16 = 0x123;
 pub const KEY_SUPER: u16 = 0x124;
 
 /// One keyboard or mouse event. Mouse deltas use screen orientation
-/// (positive dy is downward); wheel is positive when scrolled up.
+/// (positive dy is downward); wheel is positive when scrolled up. `time` is the
+/// timer tick (10 ms) on which the hardware delivered the event.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct InputEvent {
     pub kind: u8, pub modifiers: u8, pub pressed: u8, pub buttons: u8,
     pub key: u16, pub dx: i16, pub dy: i16, pub wheel: i16,
+    pub time: u32,
 }
 
 /// rdi = buffer, rsi = record capacity; copies FILE_RECORD_BYTES records

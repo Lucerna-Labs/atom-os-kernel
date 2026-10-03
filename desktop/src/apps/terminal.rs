@@ -4,7 +4,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use user_rt::{self as rt, abi::*};
 use super::{Action, App};
-use crate::font_data::MONO;
+use crate::font::MONO;
 use crate::gfx::{Canvas, Rect};
 use crate::icons::Icon;
 use crate::theme::*;
@@ -44,7 +44,7 @@ impl Terminal {
         }
         if self.lines.len() > SCROLLBACK { self.lines.drain(..self.lines.len() - SCROLLBACK); }
     }
-    fn cols(area: Rect) -> usize { ((area.w - 20) / MONO.glyph('M').advance as i32).max(10) as usize }
+    fn cols(area: Rect) -> usize { (((area.w - 20) as f32 / MONO.char_width('M')) as usize).max(10) }
     fn rows(area: Rect) -> usize { ((area.h - 16) / Self::lh()).max(1) as usize }
     fn lh() -> i32 { MONO.line_height() + 2 }
     /// Lines wrapped to the window width.
@@ -74,13 +74,14 @@ impl App for Terminal {
         let lines = self.wrapped(cols);
         let end = lines.len().saturating_sub(self.scroll);
         let start = end.saturating_sub(rows);
-        let cw = MONO.glyph('M').advance as i32;
+        let cw = MONO.char_width('M');
         for (slot, line) in lines[start..end].iter().enumerate() {
             c.text(&MONO, area.x + 10, area.y + 8 + slot as i32 * Self::lh(), line, TERMINAL_TEXT);
         }
         if self.scroll == 0 && self.status.is_none() && end > start {
             let last = lines[end - 1];
-            let x = area.x + 10 + last.len() as i32 * cw;
+            let x = area.x + 10 + (last.len() as f32 * cw + 0.5) as i32;
+            let cw = (cw + 0.5) as i32;
             let y = area.y + 8 + (end - 1 - start) as i32 * Self::lh();
             if focused { c.fill(Rect::new(x, y, cw, Self::lh() - 2), rgb_cursor()); }
             else { c.outline(Rect::new(x, y, cw, Self::lh() - 2), rgb_cursor()); }

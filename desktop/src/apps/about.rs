@@ -2,7 +2,7 @@
 use alloc::string::String;
 use user_rt::{self as rt, abi::*};
 use super::{Action, App};
-use crate::font_data::{LARGE, UI};
+use crate::font::{LARGE, UI};
 use crate::gfx::{Canvas, Rect};
 use crate::icons::{self, Icon};
 use crate::theme::*;
@@ -16,6 +16,7 @@ impl App for About {
     fn size(&self) -> (i32, i32) { (440, 330) }
     fn resizable(&self) -> bool { false }
     fn draw(&mut self, c: &mut Canvas, area: Rect, _focused: bool) {
+        c.fill(area, WINDOW);
         c.gradient_v(Rect::new(area.x, area.y, area.w, 120), crate::gfx::rgb(30, 27, 75), crate::gfx::rgb(15, 118, 110));
         icons::draw(c, Icon::Atom, area.x + 24, area.y + 24, 72);
         c.text(&LARGE, area.x + 112, area.y + 36, "Atom OS", crate::gfx::rgb(255, 255, 255));

@@ -2,7 +2,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 use user_rt::abi::*;
-use crate::font_data::{UI, UI_BOLD};
+use crate::font::{UI, UI_BOLD};
 use crate::gfx::{Canvas, Rect};
 use crate::theme::*;
 

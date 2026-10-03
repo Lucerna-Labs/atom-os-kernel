@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 user-rt = { path = "../user-rt" }
+# The Atom Rendering Engine kit, copied into this repository (third_party/), no_std.
+pmre-kit = { path = "../third_party/atom-rendering-engine/pmre-kit", default-features = false }

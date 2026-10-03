@@ -50,17 +50,15 @@ pub fn draw(c: &mut Canvas, icon: Icon, x: i32, y: i32, size: i32) {
         }
         Icon::Atom => {
             let (cx, cy) = (x as f32 + 16.0 * s, y as f32 + 16.0 * s);
-            // Three orbits as rotated ellipses, sampled into short line segments.
+            // Three orbits: rotated ellipses, stroked as closed paths by the kit.
             for angle in [0.0f32, 1.0472, 2.0944] {
                 let (sin, cos) = (sin(angle), cos(angle));
-                let mut last = None;
-                for step in 0..=36 {
-                    let t = step as f32 * core::f32::consts::TAU / 36.0;
+                let orbit: alloc::vec::Vec<(f32, f32)> = (0..48).map(|step| {
+                    let t = step as f32 * core::f32::consts::TAU / 48.0;
                     let (ex, ey) = (13.0 * s * cos_t(t), 5.0 * s * sin_t(t));
-                    let point = (cx + ex * cos - ey * sin, cy + ex * sin + ey * cos);
-                    if let Some((lx, ly)) = last { c.line(lx, ly, point.0, point.1, 1.6 * s, rgb(125, 211, 252)); }
-                    last = Some(point);
-                }
+                    (cx + ex * cos - ey * sin, cy + ex * sin + ey * cos)
+                }).collect();
+                c.polyline(&orbit, 1.6 * s, rgb(125, 211, 252), true);
             }
             c.circle(cx as i32, cy as i32, px(3.5).max(2), rgb(251, 191, 36), 255);
         }
@@ -71,13 +69,11 @@ pub fn draw(c: &mut Canvas, icon: Icon, x: i32, y: i32, size: i32) {
         }
         Icon::Power => {
             let (cx, cy) = (x as f32 + 16.0 * s, y as f32 + 17.0 * s);
-            let mut last = None;
-            for step in 0..=30 {
+            let arc: alloc::vec::Vec<(f32, f32)> = (0..=30).map(|step| {
                 let t = 0.9 + step as f32 * (core::f32::consts::TAU - 1.8) / 30.0 - core::f32::consts::FRAC_PI_2;
-                let p = (cx + 10.0 * s * cos_t(t), cy + 10.0 * s * sin_t(t));
-                if let Some((lx, ly)) = last { c.line(lx, ly, p.0, p.1, 2.4 * s, rgb(248, 113, 113)); }
-                last = Some(p);
-            }
+                (cx + 10.0 * s * cos_t(t), cy + 10.0 * s * sin_t(t))
+            }).collect();
+            c.polyline(&arc, 2.4 * s, rgb(248, 113, 113), false);
             c.line(cx, cy - 13.0 * s, cx, cy - 3.0 * s, 2.4 * s, rgb(248, 113, 113));
         }
         Icon::Exit => {

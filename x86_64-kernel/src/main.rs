@@ -577,7 +577,7 @@ pub extern "C" fn keyboard_interrupt_handler(rsp: u64) -> u64 {
         if kernel_kit::io::Port::new(0x64).read() & 0x20 == 0 {
             if let Some(scancode) = KEYBOARD.read_scancode() {
                 let (buffer, kb_sif) = kernel_kit::io::KEYBOARD_BUFFER.lock();
-                buffer.push(scancode);
+                buffer.push(scancode, kernel_kit::io::input_clock());
                 kernel_kit::io::KEYBOARD_BUFFER.unlock(kb_sif);
             }
         }
@@ -593,7 +593,7 @@ pub extern "C" fn mouse_interrupt_handler(rsp: u64) -> u64 {
         if status & 0x21 == 0x21 {
             let byte = kernel_kit::io::Port::new(0x60).read();
             let (buffer, sif) = kernel_kit::io::MOUSE_BUFFER.lock();
-            buffer.push(byte);
+            buffer.push(byte, kernel_kit::io::input_clock());
             kernel_kit::io::MOUSE_BUFFER.unlock(sif);
         }
         PICS.notify_end_of_interrupt(44);

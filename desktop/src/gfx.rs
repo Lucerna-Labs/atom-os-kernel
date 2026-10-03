@@ -1,27 +1,22 @@
-//! Software rendering into a 0x00RRGGBB back buffer.
+//! The desktop's drawing surface. All rasterization is done by pmre-kit (the Atom
+//! Rendering Engine): shapes are `DrawCmd`s scan-converted from signed-distance fields,
+//! outlines are kit path strokes, text is the kit's TrueType rasterizer. This module only
+//! owns the 0x00RRGGBB back buffer the kit draws into (as a `pmre_kit::Surface`) and the
+//! clip rectangle; it decides nothing about coverage.
 use alloc::vec;
 use alloc::vec::Vec;
-use crate::font::Font;
+use pmre_kit::path::PathCmd;
+use pmre_kit::{Affine, Bounds, DrawCmd, Paint, Rgba, Shape, Surface, Vec2};
+use crate::font::{Font, Weight};
 
 pub type Color = u32;
 pub const fn rgb(r: u8, g: u8, b: u8) -> Color { (r as u32) << 16 | (g as u32) << 8 | b as u32 }
 
-pub fn sqrt(value: f32) -> f32 {
-    use core::arch::x86_64::{_mm_cvtss_f32, _mm_set_ss, _mm_sqrt_ss};
-    unsafe { _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(value))) }
+/// A desktop colour with `alpha` (0..=255) as a kit colour.
+pub fn rgba(color: Color, alpha: u32) -> Rgba {
+    Rgba::new(((color >> 16) & 255) as f32 / 255.0, ((color >> 8) & 255) as f32 / 255.0,
+        (color & 255) as f32 / 255.0, alpha.min(255) as f32 / 255.0)
 }
-
-/// Mixes `src` over `dst` with coverage `alpha` (0..=255).
-#[inline]
-pub fn blend(dst: Color, src: Color, alpha: u32) -> Color {
-    if alpha >= 255 { return src; }
-    if alpha == 0 { return dst; }
-    let inv = 255 - alpha;
-    let rb = ((dst & 0xff00ff) * inv + (src & 0xff00ff) * alpha + 0x800080) >> 8 & 0xff00ff;
-    let g = ((dst & 0xff00) * inv + (src & 0xff00) * alpha + 0x8000) >> 8 & 0xff00;
-    rb | g
-}
-pub fn mix(a: Color, b: Color, t: u32) -> Color { blend(a, b, t) }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct Rect { pub x: i32, pub y: i32, pub w: i32, pub h: i32 }
@@ -41,11 +36,47 @@ impl Rect {
         let x = self.x.min(o.x); let y = self.y.min(o.y);
         Rect::new(x, y, self.right().max(o.right()) - x, self.bottom().max(o.bottom()) - y)
     }
+    /// `self` minus `cut`, as up to four non-overlapping rectangles.
+    pub fn subtract(&self, cut: &Rect) -> Vec<Rect> {
+        let i = self.intersect(cut);
+        if i.is_empty() { return vec![*self]; }
+        let mut out = Vec::new();
+        if i.y > self.y { out.push(Rect::new(self.x, self.y, self.w, i.y - self.y)); }
+        if i.bottom() < self.bottom() { out.push(Rect::new(self.x, i.bottom(), self.w, self.bottom() - i.bottom())); }
+        if i.x > self.x { out.push(Rect::new(self.x, i.y, i.x - self.x, i.h)); }
+        if i.right() < self.right() { out.push(Rect::new(i.right(), i.y, self.right() - i.right(), i.h)); }
+        out
+    }
     pub fn inset(&self, d: i32) -> Rect { Rect::new(self.x + d, self.y + d, self.w - 2 * d, self.h - 2 * d) }
     pub fn offset(&self, dx: i32, dy: i32) -> Rect { Rect::new(self.x + dx, self.y + dy, self.w, self.h) }
+    fn bounds(&self) -> Bounds {
+        Bounds { min: Vec2::new(self.x as f32, self.y as f32), max: Vec2::new(self.right() as f32, self.bottom() as f32) }
+    }
+    fn center(&self) -> Affine { Affine::translate(self.x as f32 + self.w as f32 / 2.0, self.y as f32 + self.h as f32 / 2.0) }
+    fn half(&self) -> Vec2 { Vec2::new(self.w as f32 / 2.0, self.h as f32 / 2.0) }
 }
 
 pub struct Canvas { pub width: i32, pub height: i32, pub pixels: Vec<Color>, clip: Rect }
+
+impl Surface for Canvas {
+    fn width(&self) -> u32 { self.width as u32 }
+    fn height(&self) -> u32 { self.height as u32 }
+    /// Rows outside the clip are skipped by the kit's rasterizers.
+    fn row_range(&self) -> (u32, u32) { (self.clip.y as u32, self.clip.bottom() as u32) }
+    /// The kit hands over straight-alpha colour with coverage folded into alpha; the back
+    /// buffer is opaque, so "over" reduces to a lerp.
+    fn blend_over(&mut self, x: u32, y: u32, src: Rgba) {
+        let (x, y) = (x as i32, y as i32);
+        if !self.clip.contains(x, y) || src.a <= 0.0 { return; }
+        let p = &mut self.pixels[(y * self.width + x) as usize];
+        let a = src.a.min(1.0);
+        let channel = |shift: u32, s: f32| {
+            let d = ((*p >> shift) & 255) as f32;
+            ((d + (s * 255.0 - d) * a + 0.5) as u32).min(255) << shift
+        };
+        *p = channel(16, src.r) | channel(8, src.g) | channel(0, src.b);
+    }
+}
 
 impl Canvas {
     pub fn new(width: i32, height: i32) -> Self {
@@ -56,35 +87,30 @@ impl Canvas {
     pub fn clip(&self) -> Rect { self.clip }
     pub fn reset_clip(&mut self) { self.clip = self.bounds(); }
 
-    #[inline]
-    pub fn pixel(&mut self, x: i32, y: i32, color: Color, alpha: u32) {
-        if self.clip.contains(x, y) {
-            let p = &mut self.pixels[(y * self.width + x) as usize];
-            *p = blend(*p, color, alpha);
-        }
+    fn draw(&mut self, cmd: DrawCmd) {
+        if self.clip.is_empty() { return; }
+        let clip = self.clip.bounds();
+        pmre_kit::raster::scan_convert(&cmd, self, Some(clip));
     }
-    pub fn fill(&mut self, rect: Rect, color: Color) {
-        let r = rect.intersect(&self.clip);
-        for y in r.y..r.bottom() {
-            let row = (y * self.width) as usize;
-            self.pixels[row + r.x as usize..row + r.right() as usize].fill(color);
-        }
+    fn shape(&mut self, shape: Shape, at: Affine, paint: Paint, soft: f32) {
+        self.draw(DrawCmd { shape, paint, transform: at, soft });
     }
+
+    pub fn fill(&mut self, rect: Rect, color: Color) { self.fill_alpha(rect, color, 255); }
     pub fn fill_alpha(&mut self, rect: Rect, color: Color, alpha: u32) {
-        let r = rect.intersect(&self.clip);
-        for y in r.y..r.bottom() {
-            let row = (y * self.width) as usize;
-            for p in &mut self.pixels[row + r.x as usize..row + r.right() as usize] { *p = blend(*p, color, alpha); }
-        }
+        if rect.is_empty() { return; }
+        self.shape(Shape::Rect { half: rect.half() }, rect.center(), Paint::Solid(rgba(color, alpha)), 0.0);
     }
     pub fn gradient_v(&mut self, rect: Rect, top: Color, bottom: Color) {
-        let r = rect.intersect(&self.clip);
-        for y in r.y..r.bottom() {
-            let t = ((y - rect.y) * 255 / rect.h.max(1)) as u32;
-            let color = mix(top, bottom, t);
-            let row = (y * self.width) as usize;
-            self.pixels[row + r.x as usize..row + r.right() as usize].fill(color);
-        }
+        let h = rect.half();
+        self.shape(Shape::Rect { half: h }, rect.center(),
+            Paint::Linear { from: Vec2::new(0.0, -h.y), to: Vec2::new(0.0, h.y), c0: rgba(top, 255), c1: rgba(bottom, 255) }, 0.0);
+    }
+    /// Linear gradient from the top-left corner to the bottom-right.
+    pub fn diagonal(&mut self, rect: Rect, from: Color, to: Color) {
+        let h = rect.half();
+        self.shape(Shape::Rect { half: h }, rect.center(),
+            Paint::Linear { from: Vec2::new(-h.x, -h.y), to: Vec2::new(h.x, h.y), c0: rgba(from, 255), c1: rgba(to, 255) }, 0.0);
     }
     pub fn outline(&mut self, rect: Rect, color: Color) {
         self.fill(Rect::new(rect.x, rect.y, rect.w, 1), color);
@@ -92,107 +118,79 @@ impl Canvas {
         self.fill(Rect::new(rect.x, rect.y, 1, rect.h), color);
         self.fill(Rect::new(rect.right() - 1, rect.y, 1, rect.h), color);
     }
-
-    /// Anti-aliased rounded rectangle, optionally translucent.
     pub fn round_rect(&mut self, rect: Rect, radius: i32, color: Color, alpha: u32) {
-        let radius = radius.min(rect.w / 2).min(rect.h / 2).max(0);
-        let r = rect.intersect(&self.clip);
-        for y in r.y..r.bottom() {
-            let row = (y * self.width) as usize;
-            for x in r.x..r.right() {
-                let cx = if x < rect.x + radius { rect.x + radius } else if x >= rect.right() - radius { rect.right() - radius - 1 } else { x };
-                let cy = if y < rect.y + radius { rect.y + radius } else if y >= rect.bottom() - radius { rect.bottom() - radius - 1 } else { y };
-                let coverage = if cx == x || cy == y { 255 } else {
-                    let (dx, dy) = ((x - cx) as f32, (y - cy) as f32);
-                    let d = sqrt(dx * dx + dy * dy);
-                    let c = radius as f32 - d + 0.5;
-                    if c <= 0.0 { 0 } else if c >= 1.0 { 255 } else { (c * 255.0) as u32 }
-                };
-                if coverage > 0 {
-                    let p = &mut self.pixels[row + x as usize];
-                    *p = blend(*p, color, coverage * alpha / 255);
-                }
-            }
-        }
+        if rect.is_empty() { return; }
+        let radius = radius.min(rect.w / 2).min(rect.h / 2).max(0) as f32;
+        self.shape(Shape::RoundedRect { half: rect.half(), radius }, rect.center(), Paint::Solid(rgba(color, alpha)), 0.0);
     }
-    /// Rounded outline one pixel wide.
+    /// A one-pixel rounded outline: the kit strokes the rounded-rectangle path.
     pub fn round_outline(&mut self, rect: Rect, radius: i32, color: Color, alpha: u32) {
-        let radius = radius.min(rect.w / 2).min(rect.h / 2).max(0);
-        let r = rect.intersect(&self.clip);
-        for y in r.y..r.bottom() {
-            for x in r.x..r.right() {
-                let cx = if x < rect.x + radius { rect.x + radius } else if x >= rect.right() - radius { rect.right() - radius - 1 } else { x };
-                let cy = if y < rect.y + radius { rect.y + radius } else if y >= rect.bottom() - radius { rect.bottom() - radius - 1 } else { y };
-                let coverage = if cx == x || cy == y {
-                    if x == rect.x || y == rect.y || x == rect.right() - 1 || y == rect.bottom() - 1 { 255 } else { 0 }
-                } else {
-                    let (dx, dy) = ((x - cx) as f32, (y - cy) as f32);
-                    let d = sqrt(dx * dx + dy * dy);
-                    let e = 1.0 - ((radius as f32 - 0.5) - d).abs();
-                    if e <= 0.0 { 0 } else { (e.min(1.0) * 255.0) as u32 }
-                };
-                if coverage > 0 { self.pixel(x, y, color, coverage * alpha / 255); }
-            }
-        }
+        if rect.is_empty() { return; }
+        let r = radius.min(rect.w / 2).min(rect.h / 2).max(0) as f32;
+        // Stroke along pixel centres so the line lands inside the rectangle.
+        let (x0, y0) = (rect.x as f32 + 0.5, rect.y as f32 + 0.5);
+        let (x1, y1) = (rect.right() as f32 - 0.5, rect.bottom() as f32 - 0.5);
+        let k = 0.552_284_8 * r; // Cubic Bézier circle constant.
+        let path = [
+            PathCmd::MoveTo(Vec2::new(x0 + r, y0)),
+            PathCmd::LineTo(Vec2::new(x1 - r, y0)),
+            PathCmd::Cubic(Vec2::new(x1 - r + k, y0), Vec2::new(x1, y0 + r - k), Vec2::new(x1, y0 + r)),
+            PathCmd::LineTo(Vec2::new(x1, y1 - r)),
+            PathCmd::Cubic(Vec2::new(x1, y1 - r + k), Vec2::new(x1 - r + k, y1), Vec2::new(x1 - r, y1)),
+            PathCmd::LineTo(Vec2::new(x0 + r, y1)),
+            PathCmd::Cubic(Vec2::new(x0 + r - k, y1), Vec2::new(x0, y1 - r + k), Vec2::new(x0, y1 - r)),
+            PathCmd::LineTo(Vec2::new(x0, y0 + r)),
+            PathCmd::Cubic(Vec2::new(x0, y0 + r - k), Vec2::new(x0 + r - k, y0), Vec2::new(x0 + r, y0)),
+            PathCmd::Close,
+        ];
+        let clip = self.clip.bounds();
+        pmre_kit::path::stroke_cmds(self, &path, 1.0, Paint::Solid(rgba(color, alpha)), Some(clip), true);
     }
-    /// Soft drop shadow around `rect`.
+    /// A soft drop shadow: the kit's widened anti-aliasing band (`soft`) on a rounded rect.
     pub fn shadow(&mut self, rect: Rect, radius: i32, spread: i32, strength: u32) {
-        for step in 0..spread {
-            let alpha = strength * (spread - step) as u32 / (spread as u32 * spread as u32 / 2).max(1);
-            self.round_outline(rect.inset(-step).offset(0, spread / 3), radius + step, 0, alpha.min(255));
-        }
+        let r = rect.offset(0, spread / 3);
+        let radius = radius.min(r.w / 2).min(r.h / 2).max(0) as f32;
+        self.shape(Shape::RoundedRect { half: r.half(), radius }, r.center(), Paint::Solid(rgba(0, strength)), spread as f32);
     }
     pub fn circle(&mut self, cx: i32, cy: i32, radius: i32, color: Color, alpha: u32) {
-        self.round_rect(Rect::new(cx - radius, cy - radius, radius * 2, radius * 2), radius, color, alpha);
+        self.shape(Shape::Circle { radius: radius as f32 }, Affine::translate(cx as f32, cy as f32), Paint::Solid(rgba(color, alpha)), 0.0);
     }
-    /// Anti-aliased line of the given width.
+    /// A soft-edged disc (for glows and the wallpaper).
+    pub fn glow(&mut self, cx: i32, cy: i32, radius: i32, color: Color, alpha: u32, soft: f32) {
+        self.shape(Shape::Circle { radius: radius as f32 }, Affine::translate(cx as f32, cy as f32), Paint::Solid(rgba(color, alpha)), soft);
+    }
     pub fn line(&mut self, x0: f32, y0: f32, x1: f32, y1: f32, width: f32, color: Color) {
-        let (minx, maxx) = (x0.min(x1) - width, x0.max(x1) + width);
-        let (miny, maxy) = (y0.min(y1) - width, y0.max(y1) + width);
-        let (vx, vy) = (x1 - x0, y1 - y0);
-        let len2 = (vx * vx + vy * vy).max(0.0001);
-        for y in miny as i32..=maxy as i32 {
-            for x in minx as i32..=maxx as i32 {
-                let (px, py) = (x as f32 + 0.5 - x0, y as f32 + 0.5 - y0);
-                let t = ((px * vx + py * vy) / len2).clamp(0.0, 1.0);
-                let (dx, dy) = (px - t * vx, py - t * vy);
-                let c = width / 2.0 - sqrt(dx * dx + dy * dy) + 0.5;
-                if c > 0.0 { self.pixel(x, y, color, (c.min(1.0) * 255.0) as u32); }
-            }
-        }
+        self.shape(Shape::Line { a: Vec2::new(x0, y0), b: Vec2::new(x1, y1), width }, Affine::translate(0.0, 0.0), Paint::Solid(rgba(color, 255)), 0.0);
     }
-
-    /// Draws text with its top-left at (x, y); returns the advance width.
+    /// A stroked polyline (round joins), through the kit's path stroker.
+    pub fn polyline(&mut self, points: &[(f32, f32)], width: f32, color: Color, closed: bool) {
+        let points: Vec<Vec2> = points.iter().map(|&(x, y)| Vec2::new(x, y)).collect();
+        let clip = self.clip.bounds();
+        pmre_kit::path::stroke(self, &[points], width, Paint::Solid(rgba(color, 255)), Some(clip), closed);
+    }
+    /// Text with the top of its line box at (x, y); returns the advance width.
     pub fn text(&mut self, font: &Font, x: i32, y: i32, text: &str, color: Color) -> i32 {
-        let mut pen = x;
-        for ch in text.chars() {
-            let g = font.glyph(ch);
-            let gx = pen + g.x as i32;
-            let gy = y + g.y as i32;
-            if gx < self.clip.right() && gx + (g.width as i32) > self.clip.x && gy < self.clip.bottom() && gy + (g.height as i32) > self.clip.y {
-                for row in 0..g.height as i32 {
-                    let base = g.offset as usize + (row * g.width as i32) as usize;
-                    for col in 0..g.width as i32 {
-                        let a = font.bitmap[base + col as usize] as u32;
-                        if a != 0 { self.pixel(gx + col, gy + row, color, a); }
-                    }
-                }
-            }
-            pen += g.advance as i32;
+        if self.clip.is_empty() { return font.width(text); }
+        let clip = Some(self.clip.bounds());
+        let origin = Vec2::new(x as f32, y as f32);
+        match font.weight {
+            Weight::Mono => pmre_kit::text::draw_face(self, Font::mono_face(), text, origin, font.px(), rgba(color, 255), clip, false),
+            w => pmre_kit::text::draw_styled(self, text, origin, font.px(), rgba(color, 255), clip, w == Weight::Bold, false),
         }
-        pen - x
+        font.width(text)
     }
     /// Text truncated with an ellipsis to fit `max` pixels.
     pub fn text_fit(&mut self, font: &Font, x: i32, y: i32, text: &str, max: i32, color: Color) {
         if font.width(text) <= max { self.text(font, x, y, text, color); return; }
-        let cut = font.fit(text, max - font.width("..."));
+        let cut = font.fit(text, max - font.width("\u{2026}"));
         let w = self.text(font, x, y, &text[..cut], color);
-        self.text(font, x + w, y, "...", color);
+        self.text(font, x + w, y, "\u{2026}", color);
     }
     pub fn text_centered(&mut self, font: &Font, rect: Rect, text: &str, color: Color) {
         let w = font.width(text);
         self.text(font, rect.x + (rect.w - w) / 2, rect.y + (rect.h - font.line_height()) / 2, text, color);
     }
+    /// Copies already-rendered pixels (the cached wallpaper) into place.
     pub fn blit(&mut self, src: &[Color], src_width: i32, dst: Rect) {
         let r = dst.intersect(&self.clip);
         for y in r.y..r.bottom() {

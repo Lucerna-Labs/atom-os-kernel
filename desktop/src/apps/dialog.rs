@@ -2,7 +2,7 @@
 use alloc::string::String;
 use user_rt::abi::*;
 use super::{Action, App, DialogResult};
-use crate::font_data::{UI, UI_BOLD};
+use crate::font::{UI, UI_BOLD};
 use crate::gfx::{Canvas, Rect};
 use crate::icons::Icon;
 use crate::theme::*;

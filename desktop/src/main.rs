@@ -5,7 +5,6 @@ extern crate alloc;
 
 mod apps;
 mod font;
-mod font_data;
 mod gfx;
 mod icons;
 mod theme;
@@ -15,13 +14,16 @@ use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 use apps::{about::About, editor::Editor, files::Files, monitor::Monitor, terminal::Terminal, Action, App, DialogResult};
-use font_data::{UI, UI_BOLD};
+use font::{UI, UI_BOLD};
 use gfx::{rgb, Canvas, Color, Rect};
 use icons::Icon;
 use theme::*;
 use user_rt::{self as rt, abi::*};
 
 user_rt::entry!(main);
+
+/// How far a window's shadow reaches beyond its frame.
+const SHADOW_MARGIN: i32 = 24;
 
 pub fn is_builtin(name: &str) -> bool {
     rt::list_files().iter().any(|f| f.builtin && f.name == name)
@@ -57,8 +59,13 @@ const MENU_ITEMS: [(MenuItem, Icon, &str); 8] = [
     (MenuItem::Restart, Icon::Power, "Restart"),
 ];
 
-struct Window { id: u32, app: Box<dyn App>, rect: Rect, minimized: bool, maximized: Option<Rect>, parent: Option<u32>, modal: Option<u32>, tag: u32 }
+struct Window { id: u32, app: Box<dyn App>, rect: Rect, minimized: bool, maximized: Option<Rect>, parent: Option<u32>, modal: Option<u32>, tag: u32, title: String }
 impl Window {
+    /// Areas this window paints opaquely: everything except its rounded corners.
+    fn opaque(&self) -> [Rect; 2] {
+        let r = self.rect;
+        [Rect::new(r.x, r.y + RADIUS, r.w, r.h - 2 * RADIUS), Rect::new(r.x + RADIUS, r.y, r.w - 2 * RADIUS, r.h)]
+    }
     fn client(&self) -> Rect { Rect::new(self.rect.x + 1, self.rect.y + TITLE_HEIGHT, self.rect.w - 2, self.rect.h - TITLE_HEIGHT - 1) }
     fn title_bar(&self) -> Rect { Rect::new(self.rect.x, self.rect.y, self.rect.w, TITLE_HEIGHT) }
     /// Close, maximise and minimise buttons, right to left.
@@ -77,28 +84,43 @@ struct Desktop {
     windows: Vec<Window>, next_id: u32,
     mx: i32, my: i32, buttons: u8, drag: Drag,
     last_click: (u64, i32, i32), menu_open: bool, menu_hover: Option<usize>, hover_button: Option<(u32, usize)>,
-    selected_icon: Option<usize>, toast: Option<(String, u64)>, dirty: bool, cursor_drawn: Option<(i32, i32)>,
-    clock: String, quit: bool,
+    selected_icon: Option<usize>, toast: Option<(String, u64)>, damage: Rect, cursor_drawn: Option<(i32, i32)>,
+    clock: String, quit: bool, pointer: Pointer, event_time: u64,
 }
 
-const CURSOR: [&str; 19] = [
-    "X", "XX", "X.X", "X..X", "X...X", "X....X", "X.....X", "X......X", "X.......X", "X........X",
-    "X.........X", "X......XXXXX", "X...X..X", "X..XX..X", "X.X  X..X", "XX   X..X", "X     X..X", "      X..X", "       XX",
-];
 
+/// The wallpaper, rendered once by the kit: a diagonal linear gradient with soft glows.
 fn wallpaper(width: i32, height: i32) -> Vec<Color> {
     let mut c = Canvas::new(width, height);
-    // Diagonal gradient from deep indigo to teal, with soft light discs.
-    for y in 0..height {
-        for x in 0..width {
-            let t = ((x * 3 + y * 4) * 255 / (width * 3 + height * 4)) as u32;
-            c.pixels[(y * width + x) as usize] = gfx::mix(rgb(24, 22, 64), rgb(13, 92, 99), t);
-        }
-    }
-    for (x, y, r, a) in [(820, 170, 260, 22u32), (180, 620, 320, 18), (560, 420, 180, 14), (980, 640, 140, 20)] {
-        c.circle(x, y, r, rgb(147, 197, 253), a);
+    c.diagonal(c.bounds(), rgb(24, 22, 64), rgb(13, 92, 99));
+    for (x, y, r, a) in [(820, 170, 260, 26u32), (180, 620, 320, 22), (560, 420, 180, 18), (980, 640, 140, 24)] {
+        c.glow(x, y, r, rgb(147, 197, 253), a, 40.0);
     }
     c.pixels
+}
+
+/// The mouse pointer, rasterized by the kit into a straight-alpha sprite: a filled arrow
+/// path with a dark outline stroke.
+struct Pointer { width: i32, height: i32, pixels: Vec<pmre_kit::Rgba> }
+impl pmre_kit::Surface for Pointer {
+    fn width(&self) -> u32 { self.width as u32 }
+    fn height(&self) -> u32 { self.height as u32 }
+    fn blend_over(&mut self, x: u32, y: u32, src: pmre_kit::Rgba) {
+        if (x as i32) < self.width && (y as i32) < self.height {
+            let i = (y as i32 * self.width + x as i32) as usize;
+            self.pixels[i] = pmre_kit::paint::over(self.pixels[i], src);
+        }
+    }
+}
+impl Pointer {
+    fn new() -> Self {
+        let mut p = Pointer { width: 16, height: 22, pixels: alloc::vec![pmre_kit::Rgba::new(0.0, 0.0, 0.0, 0.0); 16 * 22] };
+        let arrow = [(1.0, 1.0), (1.0, 17.0), (5.0, 13.5), (8.2, 20.0), (10.6, 18.9), (7.6, 12.6), (12.6, 12.6)];
+        let points: Vec<pmre_kit::Vec2> = arrow.iter().map(|&(x, y)| pmre_kit::Vec2::new(x, y)).collect();
+        pmre_kit::path::fill(&mut p, &[points.clone()], pmre_kit::Paint::Solid(pmre_kit::Rgba::new(1.0, 1.0, 1.0, 1.0)), None);
+        pmre_kit::path::stroke(&mut p, &[points], 1.1, pmre_kit::Paint::Solid(pmre_kit::Rgba::new(0.05, 0.06, 0.09, 1.0)), None, true);
+        p
+    }
 }
 
 impl Desktop {
@@ -121,13 +143,15 @@ impl Desktop {
         };
         let id = self.next_id;
         self.next_id += 1;
-        let mut window = Window { id, app, rect, minimized: false, maximized: None, parent, modal: None, tag };
+        let title = app.title();
+        let mut window = Window { id, app, rect, minimized: false, maximized: None, parent, modal: None, tag, title };
         window.rect.x = window.rect.x.clamp(0, (work.w - w).max(0));
         window.rect.y = window.rect.y.clamp(0, (work.h - h).max(0));
         if let Some(i) = parent.and_then(|p| self.index(p)) { self.windows[i].modal = Some(id); }
         rt::console_print(&alloc::format!("WINDOW_OPEN {}\n", window.app.title()));
         self.windows.push(window);
-        self.dirty = true;
+        self.invalidate_window(id);
+        self.invalidate_taskbar();
         id
     }
     fn close(&mut self, id: u32) {
@@ -135,46 +159,83 @@ impl Desktop {
         // Close modal children first.
         if let Some(child) = self.windows[i].modal { self.close(child); }
         let Some(i) = self.index(id) else { return };
+        self.invalidate_window(id);
+        self.invalidate_taskbar();
         let mut window = self.windows.remove(i);
         window.app.closing();
         if let Some(p) = window.parent.and_then(|p| self.index(p)) { self.windows[p].modal = None; }
-        self.dirty = true;
     }
     fn raise(&mut self, id: u32) {
         let Some(i) = self.index(id) else { return };
+        if let Some(previous) = self.focused() { self.invalidate_window(previous); }
         let mut window = self.windows.remove(i);
         window.minimized = false;
         let modal = window.modal;
         self.windows.push(window);
         if let Some(child) = modal { self.raise(child); }
-        self.dirty = true;
+        self.invalidate_window(id);
+        self.invalidate_taskbar();
     }
     fn minimize(&mut self, id: u32) {
         if let Some(i) = self.index(id) {
             if let Some(child) = self.windows[i].modal { self.minimize(child); }
+            self.invalidate_window(id);
             if let Some(i) = self.index(id) { self.windows[i].minimized = true; }
         }
-        self.dirty = true;
+        if let Some(next) = self.focused() { self.invalidate_window(next); }
+        self.invalidate_taskbar();
     }
     fn toggle_maximize(&mut self, id: u32) {
         let work = self.work_area();
         let Some(i) = self.index(id) else { return };
+        if !self.windows[i].app.resizable() { return; }
+        self.invalidate_window(id);
         let w = &mut self.windows[i];
-        if !w.app.resizable() { return; }
         match w.maximized.take() { Some(old) => w.rect = old, None => { w.maximized = Some(w.rect); w.rect = work; } }
         rt::console_print(&alloc::format!("WINDOW_{} {}\n", if w.maximized.is_some() { "MAXIMIZE" } else { "RESTORE" }, w.app.title()));
-        self.dirty = true;
+        self.invalidate_window(id);
     }
+    // ---- damage: only the changed region is re-rendered and presented ----
+    fn invalidate(&mut self, rect: Rect) {
+        let rect = rect.intersect(&self.screen());
+        if !rect.is_empty() { self.damage = self.damage.union(&rect); }
+    }
+    fn invalidate_window(&mut self, id: u32) {
+        if let Some(i) = self.index(id) {
+            let r = self.windows[i].rect.inset(-SHADOW_MARGIN);
+            self.invalidate(r);
+        }
+    }
+    fn invalidate_taskbar(&mut self) {
+        let s = self.screen();
+        self.invalidate(Rect::new(0, s.h - TASKBAR_HEIGHT, s.w, TASKBAR_HEIGHT));
+    }
+    fn invalidate_menu(&mut self) {
+        let m = self.menu_rect().inset(-24);
+        self.invalidate(m);
+        let start = self.start_button();
+        self.invalidate(start);
+    }
+    fn toast_area(&self) -> Rect { let s = self.screen(); Rect::new(s.w / 3, s.h - TASKBAR_HEIGHT - 90, s.w - s.w / 3, 90) }
+
     fn toast(&mut self, text: String) {
         rt::console_print(&alloc::format!("TOAST {}\n", text));
         self.toast = Some((text, rt::ticks() + 300));
-        self.dirty = true;
+        let area = self.toast_area();
+        self.invalidate(area);
     }
 
     fn apply(&mut self, id: u32, action: Action) {
         match action {
             Action::None => {}
-            Action::Redraw => self.dirty = true,
+            Action::Redraw => {
+                // The window's own frame; the taskbar only when its title changed.
+                let Some(i) = self.index(id) else { return };
+                let title = self.windows[i].app.title();
+                let rect = self.windows[i].rect;
+                if title != self.windows[i].title { self.windows[i].title = title; self.invalidate_taskbar(); }
+                self.invalidate(rect);
+            }
             Action::Close => self.close(id),
             Action::Open(app) => { self.open(app, None, 0); }
             Action::Dialog(app, tag) => { self.open(app, Some(id), tag); }
@@ -234,6 +295,7 @@ impl Desktop {
         self.mx = (self.mx + e.dx as i32).clamp(0, s.w - 1);
         self.my = (self.my + e.dy as i32).clamp(0, s.h - 1);
         let (x, y) = (self.mx, self.my);
+        self.event_time = e.time as u64;
         let pressed = e.buttons & !self.buttons;
         let released = self.buttons & !e.buttons;
         self.buttons = e.buttons;
@@ -252,19 +314,21 @@ impl Desktop {
     fn motion(&mut self, x: i32, y: i32) {
         match self.drag {
             Drag::Move(id, ox, oy) => if let Some(i) = self.index(id) {
+                self.invalidate_window(id);
                 let work = self.work_area();
                 let w = &mut self.windows[i];
                 if let Some(old) = w.maximized.take() { w.rect.w = old.w; w.rect.h = old.h; }
                 w.rect.x = (x - ox).clamp(-w.rect.w + 80, work.w - 80);
                 w.rect.y = (y - oy).clamp(0, work.h - TITLE_HEIGHT);
-                self.dirty = true;
+                self.invalidate_window(id);
             },
             Drag::Resize(id, start, sx, sy) => if let Some(i) = self.index(id) {
+                self.invalidate_window(id);
                 let w = &mut self.windows[i];
                 w.rect.w = (start.w + x - sx).max(280);
                 w.rect.h = (start.h + y - sy).max(180);
                 w.maximized = None;
-                self.dirty = true;
+                self.invalidate_window(id);
             },
             Drag::App(id) => if let Some(i) = self.index(id) {
                 let area = self.windows[i].client();
@@ -277,17 +341,21 @@ impl Desktop {
                     let w = &self.windows[i];
                     w.buttons().iter().position(|b| b.contains(x, y)).map(|b| (w.id, b))
                 });
-                if hover != self.hover_button { self.hover_button = hover; self.dirty = true; }
+                if hover != self.hover_button {
+                    for (id, _) in [self.hover_button, hover].into_iter().flatten() { self.invalidate_window(id); }
+                    self.hover_button = hover;
+                }
                 if self.menu_open {
                     let item = (0..MENU_ITEMS.len()).find(|&i| self.menu_item(i).contains(x, y));
-                    if item != self.menu_hover { self.menu_hover = item; self.dirty = true; }
+                    if item != self.menu_hover { self.menu_hover = item; self.invalidate_menu(); }
                 }
             }
         }
     }
 
     fn left_down(&mut self, x: i32, y: i32) {
-        let now = rt::ticks();
+        // Hardware delivery time, so slow frames between two clicks do not split them.
+        let now = self.event_time;
         let (lt, lx, ly) = self.last_click;
         let double = now.saturating_sub(lt) < 45 && (x - lx).abs() < 5 && (y - ly).abs() < 5;
         self.last_click = if double { (0, x, y) } else { (now, x, y) };
@@ -295,7 +363,7 @@ impl Desktop {
 
         if self.menu_open {
             self.menu_open = false;
-            self.dirty = true;
+            self.invalidate_menu();
             if let Some(i) = (0..MENU_ITEMS.len()).find(|&i| self.menu_item(i).contains(x, y)) {
                 match MENU_ITEMS[i].0 {
                     MenuItem::App(launch) => self.launch(launch),
@@ -308,7 +376,7 @@ impl Desktop {
             if self.menu_rect().contains(x, y) || self.start_button().contains(x, y) { return; }
         }
         if y >= s.h - TASKBAR_HEIGHT {
-            if self.start_button().contains(x, y) { self.menu_open = true; self.menu_hover = None; self.dirty = true; return; }
+            if self.start_button().contains(x, y) { self.menu_open = true; self.menu_hover = None; self.invalidate_menu(); return; }
             if let Some((id, _)) = self.taskbar_buttons().into_iter().find(|(_, r)| r.contains(x, y)) {
                 let i = self.index(id).unwrap();
                 if self.focused() == Some(id) && !self.windows[i].minimized { self.minimize(id); } else { self.raise(id); }
@@ -342,7 +410,7 @@ impl Desktop {
         }
         // The desktop itself: icons.
         let hit = (0..DESKTOP_ICONS.len()).find(|&i| Self::icon_rect(i).contains(x, y));
-        if hit != self.selected_icon { self.selected_icon = hit; self.dirty = true; }
+        if hit != self.selected_icon { self.selected_icon = hit; self.invalidate(Rect::new(0, 0, 130, 20 + DESKTOP_ICONS.len() as i32 * 96)); }
         if let (Some(i), true) = (hit, double) { self.launch(DESKTOP_ICONS[i].0); }
     }
 
@@ -359,8 +427,8 @@ impl Desktop {
 
     fn key(&mut self, e: &InputEvent) {
         if e.pressed == 0 { return; }
-        if e.key == KEY_SUPER { self.menu_open = !self.menu_open; self.dirty = true; return; }
-        if self.menu_open && e.key == 27 { self.menu_open = false; self.dirty = true; return; }
+        if e.key == KEY_SUPER { self.menu_open = !self.menu_open; self.invalidate_menu(); return; }
+        if self.menu_open && e.key == 27 { self.menu_open = false; self.invalidate_menu(); return; }
         if e.modifiers & MOD_ALT != 0 && e.key == KEY_F1 + 3 {
             if let Some(id) = self.focused() {
                 let a = if self.windows[self.index(id).unwrap()].parent.is_some() { Action::Finish(DialogResult::Cancel) } else { Action::Close };
@@ -389,7 +457,16 @@ impl Desktop {
         let c = &mut self.canvas;
         let w = &mut self.windows[index];
         let r = w.rect;
-        c.shadow(r, RADIUS, if focused { 14 } else { 8 }, if focused { 70 } else { 40 });
+        let saved = c.clip();
+        // The shadow is only visible around the window, so it is drawn in four bands
+        // that leave the interior out (the kit skips everything outside the clip).
+        let m = SHADOW_MARGIN;
+        for band in [Rect::new(r.x - m, r.y - m, r.w + 2 * m, m + RADIUS), Rect::new(r.x - m, r.bottom() - RADIUS, r.w + 2 * m, m + RADIUS),
+                     Rect::new(r.x - m, r.y + RADIUS, m + RADIUS, r.h - 2 * RADIUS), Rect::new(r.right() - RADIUS, r.y + RADIUS, m + RADIUS, r.h - 2 * RADIUS)] {
+            c.set_clip(band.intersect(&saved));
+            c.shadow(r, RADIUS, if focused { 14 } else { 8 }, if focused { 70 } else { 40 });
+        }
+        c.set_clip(saved);
         let mut corners = [[0 as Color; (RADIUS * RADIUS) as usize]; 2];
         for (k, (cx, cy)) in [(r.x, r.bottom() - RADIUS), (r.right() - RADIUS, r.bottom() - RADIUS)].into_iter().enumerate() {
             for yy in 0..RADIUS { for xx in 0..RADIUS {
@@ -397,9 +474,7 @@ impl Desktop {
                 if c.bounds().contains(px, py) { corners[k][(yy * RADIUS + xx) as usize] = c.pixels[(py * c.width + px) as usize]; }
             } }
         }
-        c.round_rect(r, RADIUS, WINDOW, 255);
-        // Title bar.
-        let saved = c.clip();
+        // No body fill: the app paints its whole client area; only the title bar is ours.
         c.set_clip(Rect::new(r.x, r.y, r.w, TITLE_HEIGHT).intersect(&saved));
         c.round_rect(Rect::new(r.x, r.y, r.w, TITLE_HEIGHT + RADIUS), RADIUS, if focused { TITLE_ACTIVE } else { TITLE_INACTIVE }, 255);
         c.set_clip(saved);
@@ -432,19 +507,21 @@ impl Desktop {
         c.set_clip(area.intersect(&saved));
         w.app.draw(c, area, focused);
         c.set_clip(saved);
-        // Restore what lay behind the bottom corners, outside the rounded edge,
-        // so square app content never pokes past the window's outline.
+        // Restore what lay behind the bottom corners, outside the rounded edge, so square
+        // app content never pokes past the window outline. Coverage comes from the kit's
+        // signed-distance field for the window shape.
+        let window_shape = pmre_kit::Shape::RoundedRect {
+            half: pmre_kit::Vec2::new(r.w as f32 / 2.0, r.h as f32 / 2.0), radius: RADIUS as f32 };
+        let (wcx, wcy) = (r.x as f32 + r.w as f32 / 2.0, r.y as f32 + r.h as f32 / 2.0);
+        c.set_clip(saved);
         for (k, (cx, cy)) in [(r.x, r.bottom() - RADIUS), (r.right() - RADIUS, r.bottom() - RADIUS)].into_iter().enumerate() {
             for yy in 0..RADIUS { for xx in 0..RADIUS {
                 let (px, py) = (cx + xx, cy + yy);
-                if !c.bounds().contains(px, py) { continue; }
-                let ox = if k == 0 { (RADIUS - xx) as f32 - 0.5 } else { xx as f32 + 0.5 };
-                let oy = yy as f32 + 0.5;
-                let outside = gfx::sqrt(ox * ox + oy * oy) - (RADIUS as f32 - 0.5);
-                if outside > 0.0 {
+                let local = pmre_kit::Vec2::new(px as f32 + 0.5 - wcx, py as f32 + 0.5 - wcy);
+                let inside = pmre_kit::raster::coverage(pmre_kit::raster::signed_distance(&window_shape, local), 0.5);
+                if inside < 1.0 && c.bounds().contains(px, py) {
                     let behind = corners[k][(yy * RADIUS + xx) as usize];
-                    let p = &mut c.pixels[(py * c.width + px) as usize];
-                    *p = gfx::blend(*p, behind, (outside.min(1.0) * 255.0) as u32);
+                    pmre_kit::Surface::blend_over(c, px as u32, py as u32, gfx::rgba(behind, ((1.0 - inside) * 255.0) as u32));
                 }
             } }
         }
@@ -454,9 +531,11 @@ impl Desktop {
         }
     }
 
-    fn render(&mut self) {
+    /// Re-renders the `damage` region only: everything is clipped to it, and windows,
+    /// menus and bars that do not touch it are skipped.
+    fn render(&mut self, damage: Rect) {
         let s = self.screen();
-        self.canvas.reset_clip();
+        self.canvas.set_clip(damage);
         self.canvas.blit(&self.wallpaper, s.w, s);
         for (i, (_, icon, label)) in DESKTOP_ICONS.iter().enumerate() {
             let r = Self::icon_rect(i);
@@ -467,11 +546,29 @@ impl Desktop {
             self.canvas.text(&UI, r.x + (r.w - w) / 2, r.y + 62, label, rgb(255, 255, 255));
         }
         let focused = self.focused();
-        for i in 0..self.windows.len() {
-            if !self.windows[i].minimized { let f = Some(self.windows[i].id) == focused; self.draw_window(i, f); }
+        // Occlusion: each window is drawn only where no window above it paints opaquely,
+        // so overlapping windows are not rendered underneath one another.
+        let mut visible: Vec<Vec<Rect>> = alloc::vec![Vec::new(); self.windows.len()];
+        let mut uncovered = alloc::vec![damage];
+        for i in (0..self.windows.len()).rev() {
+            let w = &self.windows[i];
+            if w.minimized { continue; }
+            let reach = w.rect.inset(-SHADOW_MARGIN);
+            visible[i] = uncovered.iter().map(|r| r.intersect(&reach)).filter(|r| !r.is_empty()).collect();
+            for cut in w.opaque() {
+                uncovered = uncovered.iter().flat_map(|r| r.subtract(&cut)).collect();
+            }
         }
-        self.draw_taskbar(focused);
-        if self.menu_open { self.draw_menu(); }
+        for i in 0..self.windows.len() {
+            let f = Some(self.windows[i].id) == focused;
+            for part in core::mem::take(&mut visible[i]) {
+                self.canvas.set_clip(part);
+                self.draw_window(i, f);
+            }
+        }
+        self.canvas.set_clip(damage);
+        if !Rect::new(0, s.h - TASKBAR_HEIGHT, s.w, TASKBAR_HEIGHT).intersect(&damage).is_empty() { self.draw_taskbar(focused); }
+        if self.menu_open && !self.menu_rect().inset(-24).intersect(&damage).is_empty() { self.draw_menu(); }
         if let Some((text, until)) = &self.toast {
             if rt::ticks() < *until {
                 let w = UI.width(text) + 40;
@@ -520,7 +617,7 @@ impl Desktop {
         c.round_rect(m, 12, MENU, 255);
         c.round_outline(m, 12, rgb(60, 68, 92), 255);
         icons::draw(c, Icon::Atom, m.x + 16, m.y + 14, 36);
-        c.text(&font_data::TITLE, m.x + 62, m.y + 14, "Atom OS", rgb(255, 255, 255));
+        c.text(&font::TITLE, m.x + 62, m.y + 14, "Atom OS", rgb(255, 255, 255));
         c.text(&UI, m.x + 62, m.y + 38, "Applications", rgb(148, 163, 184));
         for (i, (_, icon, label)) in MENU_ITEMS.iter().enumerate() {
             let r = items[i];
@@ -539,16 +636,24 @@ impl Desktop {
             unsafe { core::ptr::copy_nonoverlapping(src.as_ptr(), self.fb.add(y as usize * self.pitch + r.x as usize), r.w as usize); }
         }
     }
-    fn cursor_rect(x: i32, y: i32) -> Rect { Rect::new(x, y, 13, 20) }
+    fn cursor_rect(x: i32, y: i32) -> Rect { Rect::new(x, y, 16, 22) }
     fn draw_cursor(&mut self) {
         if let Some((ox, oy)) = self.cursor_drawn.take() { self.present(Self::cursor_rect(ox, oy)); }
         let s = self.screen();
-        for (row, line) in CURSOR.iter().enumerate() {
-            for (col, ch) in line.bytes().enumerate() {
-                let (x, y) = (self.mx + col as i32, self.my + row as i32);
-                if x >= s.w || y >= s.h { continue; }
-                let color = match ch { b'X' => 0x000000, b'.' => 0xffffff, _ => continue };
-                unsafe { *self.fb.add(y as usize * self.pitch + x as usize) = color; }
+        // Composite the kit-rasterized pointer sprite over the presented frame.
+        for y in 0..self.pointer.height {
+            for x in 0..self.pointer.width {
+                let (sx, sy) = (self.mx + x, self.my + y);
+                if sx >= s.w || sy >= s.h { continue; }
+                let src = self.pointer.pixels[(y * self.pointer.width + x) as usize];
+                if src.a <= 0.0 { continue; }
+                let i = (y + self.my) as usize * self.pitch + sx as usize;
+                let dst = unsafe { *self.fb.add(i) };
+                let mix = |shift: u32, c: f32| {
+                    let d = ((dst >> shift) & 255) as f32;
+                    ((d + (c * 255.0 - d) * src.a + 0.5) as u32).min(255) << shift
+                };
+                unsafe { *self.fb.add(i) = mix(16, src.r) | mix(8, src.g) | mix(0, src.b); }
             }
         }
         self.cursor_drawn = Some((self.mx, self.my));
@@ -576,6 +681,7 @@ fn clock_strings(unix: u64) -> (String, String) {
 }
 
 fn main() {
+    font::install();
     let mut info = DisplayInfo::default();
     let base = rt::call(SYS_DISPLAY_OPEN, &mut info as *mut DisplayInfo as u64, 0);
     if base == ERROR { rt::print("desktop: no display available\n"); rt::exit(1); }
@@ -584,12 +690,13 @@ fn main() {
         canvas: Canvas::new(w, h), wallpaper: wallpaper(w, h), fb: base as *mut u32, pitch: (info.pitch / 4) as usize,
         windows: Vec::new(), next_id: 1, mx: w / 2, my: h / 2, buttons: 0, drag: Drag::None,
         last_click: (0, 0, 0), menu_open: false, menu_hover: None, hover_button: None, selected_icon: None,
-        toast: None, dirty: true, cursor_drawn: None, clock: String::new(), quit: false,
+        toast: None, damage: Rect::new(0, 0, w, h), cursor_drawn: None, clock: String::new(), quit: false, pointer: Pointer::new(), event_time: 0,
     };
     rt::console_print("DESKTOP_READY 1024x768\n");
     let mut events = [InputEvent::default(); 64];
     let mut last_clock = String::new();
     let mut toast_shown = false;
+    let mut frames = 0u64;
     while !desktop.quit {
         let count = rt::call(SYS_INPUT_POLL, events.as_mut_ptr() as u64, events.len() as u64);
         let count = if count == ERROR { 0 } else { count as usize };
@@ -609,15 +716,18 @@ fn main() {
             desktop.apply(id, a);
         }
         let (time, _) = clock_strings(rt::time());
-        if time != last_clock { last_clock = time; desktop.dirty = true; }
+        if time != last_clock { last_clock = time; desktop.invalidate_taskbar(); }
         let toast_live = desktop.toast.as_ref().is_some_and(|(_, until)| ticks < *until);
-        if toast_live != toast_shown { toast_shown = toast_live; desktop.dirty = true; }
-        if desktop.dirty {
-            desktop.dirty = false;
-            desktop.render();
-            let screen = desktop.screen();
-            desktop.present(screen);
-            desktop.cursor_drawn = None;
+        if toast_live != toast_shown { toast_shown = toast_live; let area = desktop.toast_area(); desktop.invalidate(area); }
+        if !desktop.damage.is_empty() {
+            let damage = core::mem::take(&mut desktop.damage);
+            let started = rt::ticks();
+            desktop.render(damage);
+            frames += 1;
+            if frames <= 3 || frames % 50 == 0 {
+                rt::console_print(&alloc::format!("FRAME {} render_ms={}\n", frames, (rt::ticks() - started) * 10));
+            }
+            desktop.present(damage);
             desktop.draw_cursor();
         } else if moved {
             desktop.draw_cursor();

@@ -4,7 +4,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use user_rt::{self as rt, abi::*};
 use super::{dialog::Dialog, editor::Editor, terminal::Terminal, Action, App, DialogResult};
-use crate::font_data::UI;
+use crate::font::UI;
 use crate::gfx::{Canvas, Rect};
 use crate::icons::{self, Icon};
 use crate::theme::*;
