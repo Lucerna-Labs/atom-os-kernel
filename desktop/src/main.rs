@@ -90,8 +90,9 @@ struct Desktop {
 
 
 /// The wallpaper, rendered once by the kit: a diagonal linear gradient with soft glows.
-fn wallpaper(width: i32, height: i32) -> Vec<Color> {
-    let mut c = Canvas::new(width, height);
+fn wallpaper(width: i32, height: i32, scale: i32) -> Vec<Color> {
+    let mut c = Canvas::new(width, height, scale);
+    let (width, height) = (c.bounds().w, c.bounds().h);
     c.diagonal(c.bounds(), rgb(24, 22, 64), rgb(13, 92, 99));
     // Glow positions are laid out on a 1024x768 design and scaled to the screen.
     let scale = |v: i32, design: i32, actual: i32| v * actual / design;
@@ -116,12 +117,15 @@ impl pmre_kit::Surface for Pointer {
     }
 }
 impl Pointer {
-    fn new() -> Self {
-        let mut p = Pointer { width: 16, height: 22, pixels: alloc::vec![pmre_kit::Rgba::new(0.0, 0.0, 0.0, 0.0); 16 * 22] };
+    /// The 16x22 logical arrow, rasterized at `scale` physical pixels per logical pixel.
+    fn new(scale: i32) -> Self {
+        let (width, height) = (16 * scale, 22 * scale);
+        let mut p = Pointer { width, height, pixels: alloc::vec![pmre_kit::Rgba::new(0.0, 0.0, 0.0, 0.0); (width * height) as usize] };
+        let k = scale as f32;
         let arrow = [(1.0, 1.0), (1.0, 17.0), (5.0, 13.5), (8.2, 20.0), (10.6, 18.9), (7.6, 12.6), (12.6, 12.6)];
-        let points: Vec<pmre_kit::Vec2> = arrow.iter().map(|&(x, y)| pmre_kit::Vec2::new(x, y)).collect();
+        let points: Vec<pmre_kit::Vec2> = arrow.iter().map(|&(x, y)| pmre_kit::Vec2::new(x * k, y * k)).collect();
         pmre_kit::path::fill(&mut p, &[points.clone()], pmre_kit::Paint::Solid(pmre_kit::Rgba::new(1.0, 1.0, 1.0, 1.0)), None);
-        pmre_kit::path::stroke(&mut p, &[points], 1.1, pmre_kit::Paint::Solid(pmre_kit::Rgba::new(0.05, 0.06, 0.09, 1.0)), None, true);
+        pmre_kit::path::stroke(&mut p, &[points], 1.1 * k, pmre_kit::Paint::Solid(pmre_kit::Rgba::new(0.05, 0.06, 0.09, 1.0)), None, true);
         p
     }
 }
@@ -470,13 +474,7 @@ impl Desktop {
             c.shadow(r, RADIUS, if focused { 14 } else { 8 }, if focused { 70 } else { 40 });
         }
         c.set_clip(saved);
-        let mut corners = [[0 as Color; (RADIUS * RADIUS) as usize]; 2];
-        for (k, (cx, cy)) in [(r.x, r.bottom() - RADIUS), (r.right() - RADIUS, r.bottom() - RADIUS)].into_iter().enumerate() {
-            for yy in 0..RADIUS { for xx in 0..RADIUS {
-                let (px, py) = (cx + xx, cy + yy);
-                if c.bounds().contains(px, py) { corners[k][(yy * RADIUS + xx) as usize] = c.pixels[(py * c.width + px) as usize]; }
-            } }
-        }
+        let corners = c.save_corners(r, RADIUS);
         // No body fill: the app paints its whole client area; only the title bar is ours.
         c.set_clip(Rect::new(r.x, r.y, r.w, TITLE_HEIGHT).intersect(&saved));
         c.round_rect(Rect::new(r.x, r.y, r.w, TITLE_HEIGHT + RADIUS), RADIUS, if focused { TITLE_ACTIVE } else { TITLE_INACTIVE }, 255);
@@ -511,23 +509,9 @@ impl Desktop {
         w.app.draw(c, area, focused);
         c.set_clip(saved);
         // Restore what lay behind the bottom corners, outside the rounded edge, so square
-        // app content never pokes past the window outline. Coverage comes from the kit's
-        // signed-distance field for the window shape.
-        let window_shape = pmre_kit::Shape::RoundedRect {
-            half: pmre_kit::Vec2::new(r.w as f32 / 2.0, r.h as f32 / 2.0), radius: RADIUS as f32 };
-        let (wcx, wcy) = (r.x as f32 + r.w as f32 / 2.0, r.y as f32 + r.h as f32 / 2.0);
+        // app content never pokes past the window outline.
         c.set_clip(saved);
-        for (k, (cx, cy)) in [(r.x, r.bottom() - RADIUS), (r.right() - RADIUS, r.bottom() - RADIUS)].into_iter().enumerate() {
-            for yy in 0..RADIUS { for xx in 0..RADIUS {
-                let (px, py) = (cx + xx, cy + yy);
-                let local = pmre_kit::Vec2::new(px as f32 + 0.5 - wcx, py as f32 + 0.5 - wcy);
-                let inside = pmre_kit::raster::coverage(pmre_kit::raster::signed_distance(&window_shape, local), 0.5);
-                if inside < 1.0 && c.bounds().contains(px, py) {
-                    let behind = corners[k][(yy * RADIUS + xx) as usize];
-                    pmre_kit::Surface::blend_over(c, px as u32, py as u32, gfx::rgba(behind, ((1.0 - inside) * 255.0) as u32));
-                }
-            } }
-        }
+        c.restore_corners(r, RADIUS, &corners);
         c.round_outline(r, RADIUS, if focused { rgb(148, 163, 184) } else { BORDER }, 255);
         if w.app.resizable() && w.maximized.is_none() {
             for i in 0..3 { let d = 4 + i * 4; c.line((r.right() - 4) as f32, (r.bottom() - d) as f32, (r.right() - d) as f32, (r.bottom() - 4) as f32, 1.0, BORDER); }
@@ -539,7 +523,7 @@ impl Desktop {
     fn render(&mut self, damage: Rect) {
         let s = self.screen();
         self.canvas.set_clip(damage);
-        self.canvas.blit(&self.wallpaper, s.w, s);
+        self.canvas.blit(&self.wallpaper, self.canvas.width, s);
         for (i, (_, icon, label)) in DESKTOP_ICONS.iter().enumerate() {
             let r = Self::icon_rect(i);
             if self.selected_icon == Some(i) { self.canvas.round_rect(r, 8, rgb(255, 255, 255), 50); }
@@ -633,7 +617,7 @@ impl Desktop {
 
     // ---- output --------------------------------------------------------
     fn present(&mut self, rect: Rect) {
-        let r = rect.intersect(&self.screen());
+        let r = self.canvas.physical(rect);
         for y in r.y..r.bottom() {
             let src = &self.canvas.pixels[(y * self.canvas.width + r.x) as usize..][..r.w as usize];
             unsafe { core::ptr::copy_nonoverlapping(src.as_ptr(), self.fb.add(y as usize * self.pitch + r.x as usize), r.w as usize); }
@@ -642,15 +626,16 @@ impl Desktop {
     fn cursor_rect(x: i32, y: i32) -> Rect { Rect::new(x, y, 16, 22) }
     fn draw_cursor(&mut self) {
         if let Some((ox, oy)) = self.cursor_drawn.take() { self.present(Self::cursor_rect(ox, oy)); }
-        let s = self.screen();
+        let k = self.canvas.scale;
+        let (left, top) = (self.mx * k, self.my * k);
         // Composite the kit-rasterized pointer sprite over the presented frame.
         for y in 0..self.pointer.height {
             for x in 0..self.pointer.width {
-                let (sx, sy) = (self.mx + x, self.my + y);
-                if sx >= s.w || sy >= s.h { continue; }
+                let (sx, sy) = (left + x, top + y);
+                if sx >= self.canvas.width || sy >= self.canvas.height { continue; }
                 let src = self.pointer.pixels[(y * self.pointer.width + x) as usize];
                 if src.a <= 0.0 { continue; }
-                let i = (y + self.my) as usize * self.pitch + sx as usize;
+                let i = sy as usize * self.pitch + sx as usize;
                 let dst = unsafe { *self.fb.add(i) };
                 let mix = |shift: u32, c: f32| {
                     let d = ((dst >> shift) & 255) as f32;
@@ -692,20 +677,29 @@ pub fn screen_size() -> (u32, u32) {
     (v >> 16, v & 0xffff)
 }
 
+/// Integer UI scale: keep the logical screen at least about 1080 pixels tall, so the
+/// interface has the same physical size as at Full HD and the extra pixels add detail
+/// (1080p and 1440p: 1x; 4K and 5K: 2x; 6K: 3x).
+fn ui_scale(width: i32, height: i32) -> i32 {
+    (height / 1080).min(width / 1920).clamp(1, 4)
+}
+
 fn main() {
     font::install();
     let mut info = DisplayInfo::default();
     let base = rt::call(SYS_DISPLAY_OPEN, &mut info as *mut DisplayInfo as u64, 0);
     if base == ERROR { rt::print("desktop: no display available\n"); rt::exit(1); }
-    let (w, h) = (info.width as i32, info.height as i32);
+    let (pw, ph) = (info.width as i32, info.height as i32);
+    let scale = ui_scale(pw, ph);
+    let (w, h) = (pw / scale, ph / scale);
     let mut desktop = Desktop {
-        canvas: Canvas::new(w, h), wallpaper: wallpaper(w, h), fb: base as *mut u32, pitch: (info.pitch / 4) as usize,
+        canvas: Canvas::new(pw, ph, scale), wallpaper: wallpaper(pw, ph, scale), fb: base as *mut u32, pitch: (info.pitch / 4) as usize,
         windows: Vec::new(), next_id: 1, mx: w / 2, my: h / 2, buttons: 0, drag: Drag::None,
         last_click: (0, 0, 0), menu_open: false, menu_hover: None, hover_button: None, selected_icon: None,
-        toast: None, damage: Rect::new(0, 0, w, h), cursor_drawn: None, clock: String::new(), quit: false, pointer: Pointer::new(), event_time: 0,
+        toast: None, damage: Rect::new(0, 0, w, h), cursor_drawn: None, clock: String::new(), quit: false, pointer: Pointer::new(scale), event_time: 0,
     };
-    SCREEN.store((w as u32) << 16 | h as u32, core::sync::atomic::Ordering::Relaxed);
-    rt::console_print(&alloc::format!("DESKTOP_READY {}x{}\n", w, h));
+    SCREEN.store((pw as u32) << 16 | ph as u32, core::sync::atomic::Ordering::Relaxed);
+    rt::console_print(&alloc::format!("DESKTOP_READY {}x{} scale={}\n", pw, ph, scale));
     let mut events = [InputEvent::default(); 64];
     let mut last_clock = String::new();
     let mut toast_shown = false;

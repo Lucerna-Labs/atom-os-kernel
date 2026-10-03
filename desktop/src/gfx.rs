@@ -3,6 +3,11 @@
 //! outlines are kit path strokes, text is the kit's TrueType rasterizer. This module only
 //! owns the 0x00RRGGBB back buffer the kit draws into (as a `pmre_kit::Surface`) and the
 //! clip rectangle; it decides nothing about coverage.
+//!
+//! HiDPI: the desktop works in logical pixels and the canvas has an integer `scale`
+//! (1 at Full HD and below, 2 at 4K, 3 at 6K). Every drawing call multiplies its
+//! geometry by the scale before it reaches the kit, so shapes keep the kit's pure
+//! translation fast path and text is rasterized at the larger size, staying sharp.
 use alloc::vec;
 use alloc::vec::Vec;
 use pmre_kit::{Affine, Bounds, DrawCmd, Paint, Rgba, Shape, Surface, Vec2};
@@ -55,7 +60,21 @@ impl Rect {
     fn half(&self) -> Vec2 { Vec2::new(self.w as f32 / 2.0, self.h as f32 / 2.0) }
 }
 
-pub struct Canvas { pub width: i32, pub height: i32, pub pixels: Vec<Color>, clip: Rect }
+/// `width`, `height`, `pixels` and the clip are physical; the drawing API is logical.
+pub struct Canvas { pub width: i32, pub height: i32, pub pixels: Vec<Color>, clip: Rect, pub scale: i32 }
+
+/// A kit shape with its geometry multiplied by `k`.
+fn scaled(shape: Shape, k: f32) -> Shape {
+    match shape {
+        Shape::Rect { half } => Shape::Rect { half: half.scale(k) },
+        Shape::RoundedRect { half, radius } => Shape::RoundedRect { half: half.scale(k), radius: radius * k },
+        Shape::Circle { radius } => Shape::Circle { radius: radius * k },
+        Shape::Line { a, b, width } => Shape::Line { a: a.scale(k), b: b.scale(k), width: width * k },
+        Shape::RoundedRectOutline { half, radius, width } =>
+            Shape::RoundedRectOutline { half: half.scale(k), radius: radius * k, width: width * k },
+        Shape::CircleOutline { radius, width } => Shape::CircleOutline { radius: radius * k, width: width * k },
+    }
+}
 
 impl Surface for Canvas {
     fn width(&self) -> u32 { self.width as u32 }
@@ -102,21 +121,43 @@ impl Surface for Canvas {
 }
 
 impl Canvas {
-    pub fn new(width: i32, height: i32) -> Self {
-        Self { width, height, pixels: vec![0; (width * height) as usize], clip: Rect::new(0, 0, width, height) }
+    /// A canvas of `width` x `height` physical pixels drawn at `scale`.
+    pub fn new(width: i32, height: i32, scale: i32) -> Self {
+        let scale = scale.max(1);
+        Self { width, height, pixels: vec![0; (width * height) as usize], clip: Rect::new(0, 0, width, height), scale }
     }
-    pub fn bounds(&self) -> Rect { Rect::new(0, 0, self.width, self.height) }
-    pub fn set_clip(&mut self, rect: Rect) { self.clip = rect.intersect(&self.bounds()); }
-    pub fn clip(&self) -> Rect { self.clip }
-    pub fn reset_clip(&mut self) { self.clip = self.bounds(); }
+    fn physical_bounds(&self) -> Rect { Rect::new(0, 0, self.width, self.height) }
+    /// Logical size of the canvas.
+    pub fn bounds(&self) -> Rect { Rect::new(0, 0, self.width / self.scale, self.height / self.scale) }
+    /// A logical rectangle in physical pixels.
+    pub fn physical(&self, r: Rect) -> Rect {
+        let k = self.scale;
+        Rect::new(r.x * k, r.y * k, r.w * k, r.h * k).intersect(&self.physical_bounds())
+    }
+    pub fn set_clip(&mut self, rect: Rect) { self.clip = self.physical(rect); }
+    /// The clip in logical pixels (the smallest logical rectangle covering it).
+    pub fn clip(&self) -> Rect {
+        let (k, c) = (self.scale, self.clip);
+        let (x, y) = (c.x / k, c.y / k);
+        Rect::new(x, y, (c.right() + k - 1) / k - x, (c.bottom() + k - 1) / k - y)
+    }
+    pub fn reset_clip(&mut self) { self.clip = self.physical_bounds(); }
+    fn k(&self) -> f32 { self.scale as f32 }
 
     fn draw(&mut self, cmd: DrawCmd) {
         if self.clip.is_empty() { return; }
         let clip = self.clip.bounds();
         pmre_kit::raster::scan_convert(&cmd, self, Some(clip));
     }
+    /// `at` is a logical translation; shape, paint and softness are scaled with it.
     fn shape(&mut self, shape: Shape, at: Affine, paint: Paint, soft: f32) {
-        self.draw(DrawCmd { shape, paint, transform: at, soft });
+        let k = self.k();
+        let paint = match paint {
+            Paint::Linear { from, to, c0, c1 } => Paint::Linear { from: from.scale(k), to: to.scale(k), c0, c1 },
+            other => other,
+        };
+        let transform = Affine::translate(at.e * k, at.f * k);
+        self.draw(DrawCmd { shape: scaled(shape, k), paint, transform, soft: soft * k });
     }
 
     pub fn fill(&mut self, rect: Rect, color: Color) { self.fill_alpha(rect, color, 255); }
@@ -171,18 +212,21 @@ impl Canvas {
     }
     /// A stroked polyline (round joins), through the kit's path stroker.
     pub fn polyline(&mut self, points: &[(f32, f32)], width: f32, color: Color, closed: bool) {
-        let points: Vec<Vec2> = points.iter().map(|&(x, y)| Vec2::new(x, y)).collect();
+        let k = self.k();
+        let points: Vec<Vec2> = points.iter().map(|&(x, y)| Vec2::new(x * k, y * k)).collect();
         let clip = self.clip.bounds();
-        pmre_kit::path::stroke(self, &[points], width, Paint::Solid(rgba(color, 255)), Some(clip), closed);
+        pmre_kit::path::stroke(self, &[points], width * k, Paint::Solid(rgba(color, 255)), Some(clip), closed);
     }
     /// Text with the top of its line box at (x, y); returns the advance width.
     pub fn text(&mut self, font: &Font, x: i32, y: i32, text: &str, color: Color) -> i32 {
         if self.clip.is_empty() { return font.width(text); }
         let clip = Some(self.clip.bounds());
-        let origin = Vec2::new(x as f32, y as f32);
+        let k = self.k();
+        let origin = Vec2::new(x as f32 * k, y as f32 * k);
+        let px = font.px() * k;
         match font.weight {
-            Weight::Mono => pmre_kit::text::draw_face(self, Font::mono_face(), text, origin, font.px(), rgba(color, 255), clip, false),
-            w => pmre_kit::text::draw_styled(self, text, origin, font.px(), rgba(color, 255), clip, w == Weight::Bold, false),
+            Weight::Mono => pmre_kit::text::draw_face(self, Font::mono_face(), text, origin, px, rgba(color, 255), clip, false),
+            w => pmre_kit::text::draw_styled(self, text, origin, px, rgba(color, 255), clip, w == Weight::Bold, false),
         }
         font.width(text)
     }
@@ -197,13 +241,53 @@ impl Canvas {
         let w = font.width(text);
         self.text(font, rect.x + (rect.w - w) / 2, rect.y + (rect.h - font.line_height()) / 2, text, color);
     }
-    /// Copies already-rendered pixels (the cached wallpaper) into place.
+    /// Copies already-rendered physical pixels (the cached wallpaper, `src_width` physical
+    /// pixels wide) to the logical rectangle `dst`.
     pub fn blit(&mut self, src: &[Color], src_width: i32, dst: Rect) {
+        let dst = self.physical(dst);
         let r = dst.intersect(&self.clip);
         for y in r.y..r.bottom() {
             let s = ((y - dst.y) * src_width + (r.x - dst.x)) as usize;
             let d = (y * self.width + r.x) as usize;
             self.pixels[d..d + r.w as usize].copy_from_slice(&src[s..s + r.w as usize]);
+        }
+    }
+
+    /// The physical pixels of the two bottom corner squares (`radius` logical pixels) of
+    /// `r`, saved before content is drawn over them.
+    pub fn save_corners(&self, r: Rect, radius: i32) -> [Vec<Color>; 2] {
+        let k = self.scale;
+        let n = radius * k;
+        let pr = Rect::new(r.x * k, r.y * k, r.w * k, r.h * k);
+        let bounds = self.physical_bounds();
+        let corner = |cx: i32, cy: i32| {
+            let mut out = vec![0; (n * n) as usize];
+            for yy in 0..n { for xx in 0..n {
+                if bounds.contains(cx + xx, cy + yy) { out[(yy * n + xx) as usize] = self.pixels[((cy + yy) * self.width + cx + xx) as usize]; }
+            } }
+            out
+        };
+        [corner(pr.x, pr.bottom() - n), corner(pr.right() - n, pr.bottom() - n)]
+    }
+    /// Puts back the saved corner pixels outside the rounded edge of `r`, blended by the
+    /// kit's coverage of the rounded-rect signed-distance field, so square content never
+    /// pokes past the rounded window outline.
+    pub fn restore_corners(&mut self, r: Rect, radius: i32, saved: &[Vec<Color>; 2]) {
+        let k = self.scale;
+        let n = radius * k;
+        let pr = Rect::new(r.x * k, r.y * k, r.w * k, r.h * k);
+        let shape = Shape::RoundedRect { half: pr.half(), radius: n as f32 };
+        let (wcx, wcy) = (pr.x as f32 + pr.w as f32 / 2.0, pr.y as f32 + pr.h as f32 / 2.0);
+        for (c, (cx, cy)) in [(pr.x, pr.bottom() - n), (pr.right() - n, pr.bottom() - n)].into_iter().enumerate() {
+            for yy in 0..n { for xx in 0..n {
+                let (px, py) = (cx + xx, cy + yy);
+                let local = Vec2::new(px as f32 + 0.5 - wcx, py as f32 + 0.5 - wcy);
+                let inside = pmre_kit::raster::coverage(pmre_kit::raster::signed_distance(&shape, local), 0.5);
+                if inside < 1.0 && px >= 0 && py >= 0 {
+                    let behind = saved[c][(yy * n + xx) as usize];
+                    self.blend_over(px as u32, py as u32, rgba(behind, ((1.0 - inside) * 255.0) as u32));
+                }
+            } }
         }
     }
 }

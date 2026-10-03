@@ -12,9 +12,12 @@ import subprocess
 import time
 import zlib
 
-# Start menu and desktop layout (desktop/src/main.rs). The taskbar and start menu are
-# anchored to the bottom of the screen, so their y coordinates are offsets from it.
+# Start menu and desktop layout (desktop/src/main.rs), in logical pixels. The taskbar
+# and start menu are anchored to the bottom of the screen, so their y coordinates are
+# offsets from it. SCREEN is the logical size and SCALE the HiDPI factor, both set
+# from the desktop's DESKTOP_READY line.
 SCREEN = (1920, 1080)
+SCALE = 1
 START_FROM_BOTTOM = 23
 MENU_FROM_BOTTOM = {"files": 372, "editor": 332, "terminal": 292, "monitor": 252, "about": 212, "sync": 164,
                     "exit": 124, "restart": 84}
@@ -37,9 +40,18 @@ def write_png(path, width, height, rgb):
     path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(rows, 6)) + chunk(b"IEND", b""))
 
 
+def vga_memory_mb(width, height):
+    mb = 16
+    while mb * 1024 * 1024 < width * height * 4: mb *= 2
+    return mb
+
+
 class Shot:
+    """A screendump; `pixel` takes logical coordinates and samples the middle of the
+    physical pixels that logical pixel covers."""
     def __init__(self, width, height, rgb): self.width, self.height, self.rgb = width, height, rgb
     def pixel(self, x, y):
+        x, y = x * SCALE + SCALE // 2, y * SCALE + SCALE // 2
         i = (y * self.width + x) * 3
         return tuple(self.rgb[i:i + 3])
     def near(self, x, y, color, tolerance=10):
@@ -47,7 +59,7 @@ class Shot:
 
 
 class Desktop:
-    def __init__(self, source, output, disk, accel, memory):
+    def __init__(self, source, output, disk, accel, memory, resolution):
         self.output = output
         output.mkdir(parents=True)
         image = source / "target/x86_64-os/release/bootimage-x86_64-kernel.bin"
@@ -55,7 +67,8 @@ class Desktop:
                    "-drive", f"format=raw,file={image},snapshot=on",
                    "-drive", f"if=none,format=raw,file={disk},id=atomdata,cache=writeback",
                    "-device", "virtio-blk-pci,drive=atomdata,disable-modern=on",
-                   "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04", "-vga", "std",
+                   "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
+                   "-device", f"VGA,xres={resolution[0]},yres={resolution[1]},vgamem_mb={vga_memory_mb(*resolution)}",
                    "-display", "none", "-nic", "none", "-serial", f"file:{output / 'serial.log'}",
                    "-qmp", f"unix:{output / 'qmp.sock'},server=on,wait=off", "-no-shutdown"]
         if accel == "kvm" and not os.access("/dev/kvm", os.R_OK | os.W_OK):
@@ -188,12 +201,14 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--accel", choices=["kvm", "tcg"], default="tcg")
     parser.add_argument("--memory", default="8G")
+    parser.add_argument("--resolution", default="1920x1080", help="the virtual monitor's preferred mode")
     args = parser.parse_args()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     disk = output / "data.img"
     with disk.open("xb") as stream: stream.truncate(8 * 1024 * 1024)
-    result = {"acceleration": args.accel, "memory": args.memory, "checks": {}}
+    resolution = tuple(int(v) for v in args.resolution.split("x"))
+    result = {"acceleration": args.accel, "memory": args.memory, "resolution": args.resolution, "checks": {}}
     started = time.monotonic()
     vm = None
     note = "Notes typed in the Atom desktop: ABC xyz !@# > |"
@@ -203,16 +218,20 @@ def main():
         print(name + " PASS", flush=True)
 
     try:
-        vm = Desktop(args.source, output / "session", disk, args.accel, args.memory)
-        match = vm.wait(r"DESKTOP_READY (\d+)x(\d+)", seconds=240)
-        assert (int(match[1]), int(match[2])) == SCREEN, match[0]
+        global SCREEN, SCALE
+        vm = Desktop(args.source, output / "session", disk, args.accel, args.memory, resolution)
+        match = vm.wait(r"DESKTOP_READY (\d+)x(\d+) scale=(\d+)", seconds=240)
+        assert (int(match[1]), int(match[2])) == resolution, match[0]
+        SCALE = int(match[3])
+        SCREEN = (resolution[0] // SCALE, resolution[1] // SCALE)
+        result["scale"] = SCALE
         width, height = SCREEN
         time.sleep(2)
-        s = vm.shot_until("desktop", lambda s: max(s.pixel(600, height - 8)) < 70)
-        assert (s.width, s.height) == SCREEN, (s.width, s.height)
+        s = vm.shot_until("desktop", lambda s: max(s.pixel(600, height - 8)) < 70, seconds=120)
+        assert (s.width, s.height) == resolution, (s.width, s.height)
         assert max(s.pixel(600, height - 8)) < 70, s.pixel(600, height - 8)  # Taskbar.
         assert s.pixel(600, 300)[2] > s.pixel(600, 300)[0], s.pixel(600, 300)  # Blue wallpaper.
-        passed(f"DESKTOP_BOOT_{width}x{height}")
+        passed(f"DESKTOP_BOOT_{resolution[0]}x{resolution[1]}_SCALE_{SCALE}")
 
         vm.start()
         menu_probe = (150, height - 348)
@@ -314,7 +333,7 @@ def main():
         vm.wait(r"DESKTOP_READY", offset)
         time.sleep(2)
         s = vm.shot("desktop-again")
-        assert (s.width, s.height) == SCREEN, (s.width, s.height)
+        assert (s.width, s.height) == resolution, (s.width, s.height)
         passed("EXIT_TO_TEXT_CONSOLE_AND_BACK")
 
         offset = len(vm.serial())

@@ -472,3 +472,49 @@ fn rtc_fields_convert_to_unix_time() {
     // The same time in binary, 12-hour mode with the PM bit.
     assert_eq!(to_unix([30, 45, 0x80 | 7, 3, 10, 26], 0x04), 1_791_056_730);
 }
+
+#[test]
+fn display_mode_follows_edid_and_video_memory() {
+    use kernel_kit::display::{candidates, parse_edid};
+    fn checksum(block: &mut [u8]) {
+        block[127] = 0u8.wrapping_sub(block[..127].iter().fold(0u8, |s, &b| s.wrapping_add(b)));
+    }
+    // Base block whose first detailed timing is 2560x1440.
+    let mut base = [0u8; 128];
+    base[..8].copy_from_slice(&[0, 255, 255, 255, 255, 255, 255, 0]);
+    base[54] = 1; // Non-zero pixel clock: a timing descriptor.
+    base[56] = 0x00; base[58] = 0xa0; // 2560 = 0xa00
+    base[59] = 0xa0; base[61] = 0x50; // 1440 = 0x5a0
+    checksum(&mut base);
+    assert_eq!(parse_edid(&base), Some((2560, 1440)));
+    let mut bad = base;
+    bad[100] ^= 1;
+    assert_eq!(parse_edid(&bad), None, "checksum");
+
+    // QEMU's EDID for a 6144x3456 display (-device VGA,xres=6144,yres=3456): no
+    // detailed timing in the base block, the mode is in a DisplayID extension.
+    let mut edid = [0u8; 384];
+    edid[..8].copy_from_slice(&[0, 255, 255, 255, 255, 255, 255, 0]);
+    edid[54..58].copy_from_slice(&[0, 0, 0, 0xf7]);
+    edid[126] = 2;
+    checksum(&mut edid[..128]);
+    edid[128..132].copy_from_slice(&[0x02, 0x03, 0x0b, 0x00]); // CTA-861 with no timings.
+    checksum(&mut edid[128..256]);
+    edid[256..285].copy_from_slice(&[0x70, 0x13, 0x17, 0x03, 0x00, 0x03, 0x00, 0x14, 0xed, 0x64, 0x03, 0x88,
+        0xff, 0x17, 0x65, 0x08, 0xff, 0x05, 0xb7, 0x00, 0x7f, 0x0d, 0x77, 0x00, 0x10, 0x00, 0x10, 0x00, 0x7f]);
+    checksum(&mut edid[256..384]);
+    assert_eq!(parse_edid(&edid), Some((6144, 3456)));
+
+    let mib = |n: u64| n << 20;
+    // Enough video memory: the monitor's own mode wins.
+    assert_eq!(candidates(Some((6144, 3456)), (16000, 12000, mib(128)))[0], (6144, 3456));
+    // 16 MiB holds at most 2560x1440 at 32 bpp, so a 6K monitor gets that.
+    assert_eq!(candidates(Some((6144, 3456)), (16000, 12000, mib(16)))[0], (2560, 1440));
+    // A mode the adapter cannot do is skipped.
+    assert_eq!(candidates(Some((3840, 2160)), (2560, 1600, mib(64)))[0], (2560, 1440));
+    // No EDID: Full HD at most, never a giant mode on an unknown screen.
+    assert_eq!(candidates(None, (16000, 12000, mib(256)))[0], (1920, 1080));
+    // An unusual preferred mode comes first, then standard modes below it.
+    let list = candidates(Some((1280, 800)), (16000, 12000, mib(16)));
+    assert_eq!(&list[..3], &[(1280, 800), (1280, 720), (1024, 768)]);
+}

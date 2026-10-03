@@ -8,8 +8,9 @@ pub const STACK_TOP: u64 = crate::elf::IMAGE_BASE;
 pub const STACK_BYTES: usize = 32 * 1024;
 pub const HEAP_BASE: u64 = 0x0000_7f10_0000_0000;
 pub const HEAP_BYTES: usize = 1024 * 1024 * 1024;
-/// Largest single heap allocation (physically contiguous frames).
-pub const ALLOC_MAX: usize = 64 * 1024 * 1024;
+/// Largest single heap allocation (physically contiguous frames). Large enough for a
+/// 6K (6144x3456x4, about 85 MB) back buffer with headroom.
+pub const ALLOC_MAX: usize = 256 * 1024 * 1024;
 /// Where SYS_DISPLAY_OPEN maps the framebuffer in the display owner.
 pub const FRAMEBUFFER_BASE: u64 = 0x0000_7f20_0000_0000;
 pub const RECV_BASE: u64 = 0x0000_7f00_0000_0000;

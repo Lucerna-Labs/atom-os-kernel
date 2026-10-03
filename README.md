@@ -22,7 +22,8 @@ been validated.
 
 ## What works
 
-- **Graphical desktop:** a Full HD (1920×1080) 32-bit desktop with overlapping windows,
+- **Graphical desktop:** a 32-bit desktop that adapts to the display, from 1024×768
+  up to 6K (6144×3456), with HiDPI scaling (2× at 4K, 3× at 6K) and overlapping windows,
   a taskbar, a start menu and a mouse pointer. It includes a file manager, a
   text editor with a file picker, a terminal, a system monitor and an About
   window; see [Desktop](#desktop).
@@ -138,8 +139,17 @@ To use the desktop yourself, open it in a QEMU window. Files you save to disk
 are kept in `target/atom-data.img` between runs:
 
 ```sh
-bash scripts/run-desktop.sh
+bash scripts/run-desktop.sh                            # Full HD
+ATOM_RESOLUTION=3840x2160 bash scripts/run-desktop.sh  # 4K, UI at 2x
+ATOM_RESOLUTION=6144x3456 bash scripts/run-desktop.sh  # 6K, UI at 3x
 ```
+
+The kernel reads the monitor's preferred mode from its EDID (including the DisplayID
+block that 5K and 6K displays use) and uses it if the adapter's video memory and mode
+limits allow; otherwise it takes the largest standard mode that fits. Without EDID it
+stays at Full HD or below. The desktop then picks an integer UI scale so the
+interface keeps the same physical size: shapes and text are drawn at the higher
+resolution, not stretched.
 
 [`build.sh`](scripts/build.sh) builds the shell, daemon, worker, fault probe
 and desktop before embedding them in the kernel. The resulting boot image is:
@@ -154,7 +164,8 @@ Use [`test-native.sh`](scripts/test-native.sh) for native checks,
 runs are headless and boot the guest with 8 GiB of RAM (`--memory` changes
 this). `boot-test.py` runs without a display device, so the shell stays in
 text mode, and injects keyboard input through QMP. `desktop-test.py` boots with
-`-vga std`, drives the desktop with QMP mouse and keyboard events, and saves
+a virtual monitor of `--resolution` (default 1920x1080; 3840x2160 and 6144x3456 are
+also tested), drives the desktop with QMP mouse and keyboard events, and saves
 PNG screenshots of each step. Both record serial output and machine-readable
 results. Each run requires a **new output directory**, creates
 an isolated **8 MiB test disk**, and stops its QEMU instances when finished.
@@ -342,9 +353,9 @@ with `virtio-blk-pci,disable-modern=on`; the storage contracts follow the
 | Task slots | 16 |
 | User stack | 32 KiB per process, with a guard page |
 | Heap address window | 1 GiB per process |
-| Individual user allocation | Up to 64 MiB (physically contiguous) |
+| Individual user allocation | Up to 256 MiB (physically contiguous) |
 | Pipes | 4 KiB buffer each; 8 pipe handles per process |
-| Display | 1920×1080×32 (falls back to 1280×720, then 1024×768) on a Bochs/QEMU VBE (BGA) device; one display owner at a time |
+| Display | EDID preferred mode up to 6K (6144×3456×32), limited by video memory, on a Bochs/QEMU VBE (BGA) device; one display owner at a time |
 | Physical memory | All usable RAM below 16 GiB physical; tests run with 8 GiB |
 | Open file descriptors | 16 per process |
 | IPC queue | 4 messages per recipient; up to 255 message bytes |
