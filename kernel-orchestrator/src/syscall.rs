@@ -70,15 +70,9 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
     } else if is(number, SYS_EXIT) {
         system.exit_current(arg); switch = true;
     } else if is(number, SYS_READ) {
-        loop {
-            let (buffer, flags) = kernel_kit::io::KEYBOARD_BUFFER.lock();
-            let code = buffer.pop();
-            kernel_kit::io::KEYBOARD_BUFFER.unlock(flags);
-            match code {
-                Some(code) => if let Some(byte) = kernel_kit::keyboard::scancode_to_ascii(code) { frame.rax = byte as u64; break; },
-                None => { frame.rax = 0; break; }
-            }
-        }
+        // While a desktop owns the display, keystrokes belong to it alone.
+        frame.rax = if system.display_owner.is_some() { 0 }
+            else { kernel_kit::input::console_byte().unwrap_or(0) as u64 };
     } else if is(number, SYS_WRITE) || is(number, 14) {
         kernel_kit::vga::VgaWriter::new().write_byte(arg as u8); frame.rax = 1;
     } else if is(number, SYS_WRITE_BUFFER) {
@@ -215,6 +209,48 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             frame.rax = 0;
             if arg as usize == pid { switch = true; }
         }
+    } else if is(number, SYS_DISPLAY_PRESENT) {
+        frame.rax = kernel_kit::display::find().is_some() as u64;
+    } else if is(number, SYS_DISPLAY_OPEN) {
+        if system.display_owner.is_none_or(|owner| owner == pid) {
+            let context = system.scheduler.current_task_mut().unwrap();
+            let info_ok = context.space.as_ref().unwrap().valid_user_range(arg, core::mem::size_of::<DisplayInfo>(), true);
+            if info_ok {
+                if let Some(fb) = kernel_kit::display::enable() {
+                    let space = context.space.as_mut().unwrap();
+                    space.unmap_device(kernel_kit::address_space::FRAMEBUFFER_BASE);
+                    if space.map_device(kernel_kit::address_space::FRAMEBUFFER_BASE, fb.phys, kernel_kit::display::bytes(&fb)).is_ok() {
+                        let info = DisplayInfo { width: fb.width, height: fb.height, pitch: fb.pitch, bpp: 32 };
+                        let bytes = unsafe { core::slice::from_raw_parts(&info as *const DisplayInfo as *const u8, core::mem::size_of::<DisplayInfo>()) };
+                        if copy_to_user(context, arg, bytes) {
+                            system.display_owner = Some(pid);
+                            kernel_kit::input::clear();
+                            frame.rax = kernel_kit::address_space::FRAMEBUFFER_BASE;
+                        }
+                    } else { kernel_kit::display::disable(); }
+                }
+            }
+        }
+    } else if is(number, SYS_DISPLAY_CLOSE) {
+        if system.display_owner == Some(pid) {
+            system.scheduler.current_task_mut().unwrap().space.as_mut().unwrap()
+                .unmap_device(kernel_kit::address_space::FRAMEBUFFER_BASE);
+            system.release_display();
+            frame.rax = 0;
+        }
+    } else if is(number, SYS_INPUT_POLL) {
+        if system.display_owner == Some(pid) {
+            let size = core::mem::size_of::<InputEvent>();
+            let capacity = (arg1 as usize).min(256);
+            let context = system.scheduler.current_task().unwrap();
+            if context.space.as_ref().unwrap().valid_user_range(arg, capacity * size, true) {
+                let events = kernel_kit::input::poll(capacity);
+                let bytes = unsafe { core::slice::from_raw_parts(events.as_ptr() as *const u8, events.len() * size) };
+                if copy_to_user(context, arg, bytes) { frame.rax = events.len() as u64; }
+            }
+        }
+    } else if is(number, SYS_TIME) {
+        frame.rax = kernel_kit::rtc::now();
     } else if is(number, SYS_SYNC) {
         if kernel_kit::storage::sync().is_ok() { frame.rax = 0; }
     } else if is(number, SYS_FREE_FRAMES) {

@@ -6,10 +6,12 @@ pub struct System {
     pub scheduler: Scheduler,
     pub kernel_root: u64,
     next_pid: usize,
+    /// Process that owns the framebuffer and receives all input.
+    pub display_owner: Option<usize>,
 }
 impl System {
     pub const fn new(kernel_root: u64) -> Self {
-        Self { scheduler: Scheduler::new(), kernel_root, next_pid: 1 }
+        Self { scheduler: Scheduler::new(), kernel_root, next_pid: 1, display_owner: None }
     }
     pub fn spawn_program(&mut self, parent: usize, name: &str) -> Result<usize, ()> {
         self.scheduler.collect();
@@ -40,6 +42,7 @@ impl System {
         Ok(())
     }
     fn terminate(&mut self, pid: usize, code: u64) {
+        if self.display_owner == Some(pid) { self.release_display(); }
         let Some(task) = self.scheduler.task_mut(pid) else { return; };
         task.exit_code = code;
         task.state = TaskState::Terminated;
@@ -55,6 +58,14 @@ impl System {
             if task.parent == pid { task.parent = 0; }
         }
         if waited { self.scheduler.task_mut(pid).unwrap().waited = true; }
+    }
+    /// Returns the screen to text mode and input to the console. The owner's
+    /// framebuffer mapping disappears with its address space.
+    pub fn release_display(&mut self) {
+        if self.display_owner.take().is_some() {
+            kernel_kit::display::disable();
+            kernel_kit::input::clear();
+        }
     }
     pub fn wait(&mut self, pid: usize) -> Result<Option<u64>, ()> {
         let parent = self.scheduler.current_task().ok_or(())?.id;

@@ -91,3 +91,5 @@ impl RingBuffer {
 
 /// A global shared instance of a Ring Buffer protected by our mathematical Spinlock.
 pub static KEYBOARD_BUFFER: IrqSpinlock<RingBuffer> = IrqSpinlock::new(RingBuffer::new());
+/// Raw PS/2 mouse bytes queued by the IRQ12 handler.
+pub static MOUSE_BUFFER: IrqSpinlock<RingBuffer> = IrqSpinlock::new(RingBuffer::new());

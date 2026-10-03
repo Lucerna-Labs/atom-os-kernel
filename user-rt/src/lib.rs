@@ -93,15 +93,54 @@ pub fn receive() -> Option<alloc::string::String> {
     alloc::string::String::from_utf8(bytes).ok()
 }
 
+/// Process heap: power-of-two size classes (16 B to 2 KiB) carved from
+/// 64 KiB kernel allocations, with larger blocks allocated directly. Each
+/// process is single-threaded, so the free lists need no locking.
 struct ProcessHeap;
 #[global_allocator]
 static HEAP: ProcessHeap = ProcessHeap;
+const CLASSES: usize = 8; // 16, 32, ..., 2048 bytes
+const CHUNK: usize = 64 * 1024;
+static mut FREE: [usize; CLASSES] = [0; CLASSES];
+
+fn class_of(layout: &Layout) -> Option<usize> {
+    let size = layout.size().max(layout.align()).max(16).next_power_of_two();
+    (size <= 2048).then(|| size.trailing_zeros() as usize - 4)
+}
 unsafe impl GlobalAlloc for ProcessHeap {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let address = call(SYS_ALLOC, layout.size().max(1) as u64, layout.align() as u64);
-        if address == ERROR { core::ptr::null_mut() } else { address as *mut u8 }
+        let Some(class) = class_of(&layout) else {
+            let address = call(SYS_ALLOC, layout.size().max(1) as u64, layout.align() as u64);
+            return if address == ERROR { core::ptr::null_mut() } else { address as *mut u8 };
+        };
+        unsafe {
+            let free = &raw mut FREE;
+            if (*free)[class] == 0 {
+                let chunk = call(SYS_ALLOC, CHUNK as u64, 4096);
+                if chunk == ERROR { return core::ptr::null_mut(); }
+                // Thread the new chunk's blocks onto the free list.
+                let size = 16usize << class;
+                for block in (0..CHUNK / size).rev() {
+                    let address = chunk as usize + block * size;
+                    *(address as *mut usize) = (*free)[class];
+                    (*free)[class] = address;
+                }
+            }
+            let block = (*free)[class];
+            (*free)[class] = *(block as *const usize);
+            block as *mut u8
+        }
     }
-    unsafe fn dealloc(&self, pointer: *mut u8, _: Layout) { call(SYS_FREE, pointer as u64, 0); }
+    unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+        match class_of(&layout) {
+            Some(class) => unsafe {
+                let free = &raw mut FREE;
+                *(pointer as *mut usize) = (*free)[class];
+                (*free)[class] = pointer as usize;
+            },
+            None => { call(SYS_FREE, pointer as u64, 0); }
+        }
+    }
 }
 #[alloc_error_handler]
 fn allocation_failed(_: Layout) -> ! { print("USER_OOM\n"); exit(100) }

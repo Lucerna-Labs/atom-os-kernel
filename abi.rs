@@ -74,4 +74,59 @@ pub struct SpawnRequest {
     pub stdin: u64,
     pub stdout: u64,
 }
+/// Display and input (desktop). SYS_DISPLAY_OPEN switches to the linear
+/// framebuffer, maps it into the caller at the returned address and makes the
+/// caller the display owner: it alone receives keyboard and mouse input until
+/// it exits or calls SYS_DISPLAY_CLOSE. rdi = DisplayInfo pointer to fill.
+pub const SYS_DISPLAY_OPEN: u64 = 42;
+pub const SYS_DISPLAY_CLOSE: u64 = 43;
+/// rdi = InputEvent buffer, rsi = capacity; returns events written.
+pub const SYS_INPUT_POLL: u64 = 44;
+/// Returns the real-time clock as seconds since 1970-01-01 (UTC).
+pub const SYS_TIME: u64 = 45;
+/// Non-zero when a display device is present (the desktop can start).
+pub const SYS_DISPLAY_PRESENT: u64 = 46;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct DisplayInfo { pub width: u32, pub height: u32, pub pitch: u32, pub bpp: u32 }
+
+pub const INPUT_KEY: u8 = 1;
+pub const INPUT_MOUSE: u8 = 2;
+pub const MOD_SHIFT: u8 = 1;
+pub const MOD_CTRL: u8 = 2;
+pub const MOD_ALT: u8 = 4;
+pub const MOD_CAPS: u8 = 8;
+pub const MOUSE_LEFT: u8 = 1;
+pub const MOUSE_RIGHT: u8 = 2;
+pub const MOUSE_MIDDLE: u8 = 4;
+/// Key codes: printable ASCII and \n, 8 (backspace), 9 (tab), 27 (escape)
+/// stand for themselves; other keys use these codes.
+pub const KEY_UP: u16 = 0x100;
+pub const KEY_DOWN: u16 = 0x101;
+pub const KEY_LEFT: u16 = 0x102;
+pub const KEY_RIGHT: u16 = 0x103;
+pub const KEY_HOME: u16 = 0x104;
+pub const KEY_END: u16 = 0x105;
+pub const KEY_PAGE_UP: u16 = 0x106;
+pub const KEY_PAGE_DOWN: u16 = 0x107;
+pub const KEY_DELETE: u16 = 0x108;
+pub const KEY_INSERT: u16 = 0x109;
+/// F1..F12 are KEY_F1 + 0..11.
+pub const KEY_F1: u16 = 0x110;
+pub const KEY_SHIFT: u16 = 0x120;
+pub const KEY_CTRL: u16 = 0x121;
+pub const KEY_ALT: u16 = 0x122;
+pub const KEY_CAPS_LOCK: u16 = 0x123;
+pub const KEY_SUPER: u16 = 0x124;
+
+/// One keyboard or mouse event. Mouse deltas use screen orientation
+/// (positive dy is downward); wheel is positive when scrolled up.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct InputEvent {
+    pub kind: u8, pub modifiers: u8, pub pressed: u8, pub buttons: u8,
+    pub key: u16, pub dx: i16, pub dy: i16, pub wheel: i16,
+}
+
 pub const ERROR: u64 = u64::MAX;

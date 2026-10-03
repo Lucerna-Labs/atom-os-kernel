@@ -409,3 +409,66 @@ fn pipe_reports_end_of_input_and_broken_pipe_by_counted_ends() {
     drop(reader);
     assert_eq!(writer.write(b"z"), Write::Broken);
 }
+
+#[test]
+fn keyboard_decoder_tracks_shift_caps_ctrl_and_extended_keys() {
+    use kernel_kit::abi::*;
+    use kernel_kit::input::KeyboardDecoder;
+    let mut k = KeyboardDecoder::new();
+    let mut typed = |k: &mut KeyboardDecoder, codes: &[u8]| -> String {
+        codes.iter().filter_map(|&c| k.feed(c)).filter_map(|e| KeyboardDecoder::console_byte(&e)).map(|b| b as char).collect()
+    };
+    // a, Shift+a, Shift+1, Shift+., Shift+\ then release Shift, '.'
+    assert_eq!(typed(&mut k, &[0x1e, 0x9e, 0x2a, 0x1e, 0x02, 0x34, 0x2b, 0xaa, 0x34]), "aA!>|.");
+    // Caps Lock affects letters only; Shift inverts it.
+    assert_eq!(typed(&mut k, &[0x3a, 0xba, 0x1e, 0x02, 0x36, 0x1e, 0xb6]), "A1a");
+    assert_eq!(typed(&mut k, &[0x3a, 0xba]), "");
+    // Ctrl+C produces a key event with MOD_CTRL but no console byte.
+    let events: Vec<_> = [0x1d, 0x2e, 0x9d].iter().filter_map(|&c| k.feed(c)).collect();
+    assert_eq!(events[1].key, b'c' as u16);
+    assert_eq!(events[1].modifiers & MOD_CTRL, MOD_CTRL);
+    assert_eq!(KeyboardDecoder::console_byte(&events[1]), None);
+    // Extended arrows and release events.
+    let up = k.feed(0xe0).or(k.feed(0x48)).unwrap();
+    assert_eq!((up.key, up.pressed), (KEY_UP, 1));
+    let release = { k.feed(0xe0); k.feed(0xc8).unwrap() };
+    assert_eq!((release.key, release.pressed), (KEY_UP, 0));
+    // The legacy numpad '+' still types '>'.
+    assert_eq!(typed(&mut k, &[0x4e]), ">");
+    assert_eq!(k.feed(0x3c).unwrap().key, KEY_F1 + 1);
+}
+
+#[test]
+fn mouse_decoder_assembles_packets_with_signs_and_wheel() {
+    use kernel_kit::abi::*;
+    use kernel_kit::input::MouseDecoder;
+    let mut m = MouseDecoder::new();
+    // Out-of-sync byte (bit 3 clear) is skipped.
+    assert!(m.feed(0x00).is_none());
+    // Left button, dx = +5, dy = -3 in PS/2 terms (up), so screen dy = +3.
+    assert!(m.feed(0x08 | 0x01 | 0x20).is_none());
+    assert!(m.feed(5).is_none());
+    let e = m.feed((-3i8) as u8).unwrap();
+    assert_eq!((e.kind, e.buttons, e.dx, e.dy), (INPUT_MOUSE, MOUSE_LEFT, 5, 3));
+    // dx = -2 with the sign bit; overflowed packets are dropped.
+    m.feed(0x18); m.feed((-2i8) as u8);
+    assert_eq!(m.feed(0).unwrap().dx, -2);
+    m.feed(0x48); m.feed(1);
+    assert!(m.feed(1).is_none());
+    // IntelliMouse 4-byte packets: z = -1 means the wheel moved up.
+    let mut w = MouseDecoder::new();
+    w.wheel = true;
+    w.feed(0x08); w.feed(0); w.feed(0);
+    assert_eq!(w.feed(0x0f).unwrap().wheel, 1);
+}
+
+#[test]
+fn rtc_fields_convert_to_unix_time() {
+    use kernel_kit::rtc::{days_from_civil, to_unix};
+    assert_eq!(days_from_civil(1970, 1, 1), 0);
+    assert_eq!(days_from_civil(2000, 3, 1), 11017);
+    // 2026-10-03 19:45:30 in BCD, 24-hour mode (status B = 0x02).
+    assert_eq!(to_unix([0x30, 0x45, 0x19, 0x03, 0x10, 0x26], 0x02), 1_791_056_730);
+    // The same time in binary, 12-hour mode with the PM bit.
+    assert_eq!(to_unix([30, 45, 0x80 | 7, 3, 10, 26], 0x04), 1_791_056_730);
+}
