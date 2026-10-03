@@ -45,6 +45,7 @@ cat "$run/results/native.log"
 cp target/native-tests/compile.log "$run/results/native-compile.log"
 cp target/x86_64-os/release/bootimage-x86_64-kernel.bin "$run/results/bootimage.bin"
 python3 scripts/boot-test.py --accel "$accel" --output "$run/results/acceptance"
+python3 scripts/desktop-test.py --accel "$accel" --output "$run/results/desktop"
 SH
 status=$?
 set -e
