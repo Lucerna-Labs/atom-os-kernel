@@ -40,4 +40,38 @@ pub const STATE_BLOCKED: u8 = 2;
 pub const STATE_EXITED: u8 = 3;
 /// Exit status reported to the parent of a killed process.
 pub const KILLED_STATUS: u64 = 137;
+/// Exit status of a process that wrote to a pipe nobody reads.
+pub const BROKEN_PIPE_STATUS: u64 = 141;
+
+/// rdi = SpawnRequest pointer; returns the child's pid.
+pub const SYS_SPAWN_WITH: u64 = 36;
+/// rdi = buffer, rsi = capacity; copies the caller's arguments and returns
+/// their full length (which may exceed the capacity).
+pub const SYS_ARGS: u64 = 37;
+/// Creates a pipe and returns a handle holding both of its ends.
+pub const SYS_PIPE: u64 = 38;
+pub const SYS_PIPE_CLOSE: u64 = 39;
+/// rdi = buffer, rsi = capacity; returns bytes read, 0 at end of input, or
+/// WOULD_BLOCK. On the console, Esc ends input.
+pub const SYS_STDIN_READ: u64 = 40;
+/// rdi = buffer, rsi = length; always writes to the console (diagnostics).
+pub const SYS_CONSOLE_WRITE: u64 = 41;
+/// SYS_WRITE_BUFFER writes to stdout. It returns bytes written (possibly
+/// fewer than requested), WOULD_BLOCK when a pipe is full, or ERROR when no
+/// reader remains. SYS_EXEC takes an optional argument string in rsi.
+pub const WOULD_BLOCK: u64 = u64::MAX - 1;
+
+pub const ARGS_MAX: usize = 255;
+/// SpawnRequest stdin/stdout values; anything else is a pipe handle.
+pub const STDIO_INHERIT: u64 = u64::MAX;
+pub const STDIO_CONSOLE: u64 = u64::MAX - 1;
+#[repr(C)]
+pub struct SpawnRequest {
+    /// NUL-terminated program name.
+    pub path: [u8; 64],
+    /// NUL-terminated argument string.
+    pub args: [u8; ARGS_MAX + 1],
+    pub stdin: u64,
+    pub stdout: u64,
+}
 pub const ERROR: u64 = u64::MAX;

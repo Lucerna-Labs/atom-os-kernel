@@ -381,3 +381,31 @@ fn builtin_programs_are_excluded_from_snapshots() {
     }
     assert!(!fs::builtin("notes.txt"));
 }
+
+#[test]
+fn pipe_reports_end_of_input_and_broken_pipe_by_counted_ends() {
+    use kernel_kit::pipe::{PipeEnd, Read, Write, PIPE_CAPACITY};
+    let (reader, writer) = PipeEnd::pair();
+    let mut out = [0u8; 8];
+    assert_eq!(reader.read(&mut out), Read::WouldBlock, "empty pipe with a writer must block");
+    assert_eq!(writer.write(b"hello"), Write::Wrote(5));
+    assert_eq!(reader.read(&mut out[..3]), Read::Data(3));
+    assert_eq!(&out[..3], b"hel");
+    // A full pipe accepts a partial write, then blocks.
+    let big = vec![b'x'; PIPE_CAPACITY];
+    assert_eq!(writer.write(&big), Write::Wrote(PIPE_CAPACITY - 2));
+    assert_eq!(writer.write(b"y"), Write::WouldBlock);
+    // A cloned writer keeps the pipe open after the original is dropped.
+    let second = writer.clone();
+    drop(writer);
+    let mut drain = vec![0u8; PIPE_CAPACITY];
+    assert_eq!(reader.read(&mut drain), Read::Data(PIPE_CAPACITY));
+    assert_eq!(&drain[..2], b"lo");
+    assert_eq!(reader.read(&mut out), Read::WouldBlock);
+    drop(second);
+    assert_eq!(reader.read(&mut out), Read::End, "no writers and no data is end of input");
+    // Writing with no reader left is a broken pipe.
+    let (reader, writer) = PipeEnd::pair();
+    drop(reader);
+    assert_eq!(writer.write(b"z"), Write::Broken);
+}
