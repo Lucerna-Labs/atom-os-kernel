@@ -22,7 +22,7 @@ been validated.
 
 ## What works
 
-- **Graphical desktop:** a 1024×768 32-bit desktop with overlapping windows,
+- **Graphical desktop:** a Full HD (1920×1080) 32-bit desktop with overlapping windows,
   a taskbar, a start menu and a mouse pointer. It includes a file manager, a
   text editor with a file picker, a terminal, a system monitor and an About
   window; see [Desktop](#desktop).
@@ -344,7 +344,7 @@ with `virtio-blk-pci,disable-modern=on`; the storage contracts follow the
 | Heap address window | 1 GiB per process |
 | Individual user allocation | Up to 64 MiB (physically contiguous) |
 | Pipes | 4 KiB buffer each; 8 pipe handles per process |
-| Display | 1024×768×32 on a Bochs/QEMU VBE (BGA) device; one display owner at a time |
+| Display | 1920×1080×32 (falls back to 1280×720, then 1024×768) on a Bochs/QEMU VBE (BGA) device; one display owner at a time |
 | Physical memory | All usable RAM below 16 GiB physical; tests run with 8 GiB |
 | Open file descriptors | 16 per process |
 | IPC queue | 4 messages per recipient; up to 255 message bytes |

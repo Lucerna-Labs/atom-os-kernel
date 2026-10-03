@@ -26,7 +26,10 @@ impl App for About {
             String::from("An experimental x86-64 operating system written in Rust."),
             String::new(),
             alloc::format!("Memory:      {} MiB", total),
-            String::from("Display:     1024 x 768, 32-bit colour"),
+            {
+                let (w, h) = crate::screen_size();
+                alloc::format!("Display:     {} x {}, 32-bit colour", w, h)
+            },
             alloc::format!("Uptime:      {}:{:02}:{:02}", seconds / 3600, seconds / 60 % 60, seconds % 60),
             alloc::format!("Processes:   {}", rt::call(SYS_TASK_COUNT, 0, 0)),
             String::new(),

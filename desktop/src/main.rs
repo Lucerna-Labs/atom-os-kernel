@@ -93,8 +93,11 @@ struct Desktop {
 fn wallpaper(width: i32, height: i32) -> Vec<Color> {
     let mut c = Canvas::new(width, height);
     c.diagonal(c.bounds(), rgb(24, 22, 64), rgb(13, 92, 99));
+    // Glow positions are laid out on a 1024x768 design and scaled to the screen.
+    let scale = |v: i32, design: i32, actual: i32| v * actual / design;
+    let r_scale = |r: i32| r * width.min(height * 4 / 3) / 1024;
     for (x, y, r, a) in [(820, 170, 260, 26u32), (180, 620, 320, 22), (560, 420, 180, 18), (980, 640, 140, 24)] {
-        c.glow(x, y, r, rgb(147, 197, 253), a, 40.0);
+        c.glow(scale(x, 1024, width), scale(y, 768, height), r_scale(r), rgb(147, 197, 253), a, 40.0);
     }
     c.pixels
 }
@@ -680,6 +683,15 @@ fn clock_strings(unix: u64) -> (String, String) {
      alloc::format!("{} {} {} {}", WEEKDAYS[days.rem_euclid(7) as usize], day, MONTHS[(month - 1) as usize], year))
 }
 
+/// Screen size as `width << 16 | height`, for apps that report it.
+pub static SCREEN: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+
+/// The screen size the kernel gave the desktop.
+pub fn screen_size() -> (u32, u32) {
+    let v = SCREEN.load(core::sync::atomic::Ordering::Relaxed);
+    (v >> 16, v & 0xffff)
+}
+
 fn main() {
     font::install();
     let mut info = DisplayInfo::default();
@@ -692,7 +704,8 @@ fn main() {
         last_click: (0, 0, 0), menu_open: false, menu_hover: None, hover_button: None, selected_icon: None,
         toast: None, damage: Rect::new(0, 0, w, h), cursor_drawn: None, clock: String::new(), quit: false, pointer: Pointer::new(), event_time: 0,
     };
-    rt::console_print("DESKTOP_READY 1024x768\n");
+    SCREEN.store((w as u32) << 16 | h as u32, core::sync::atomic::Ordering::Relaxed);
+    rt::console_print(&alloc::format!("DESKTOP_READY {}x{}\n", w, h));
     let mut events = [InputEvent::default(); 64];
     let mut last_clock = String::new();
     let mut toast_shown = false;

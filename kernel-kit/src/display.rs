@@ -14,8 +14,9 @@ const VIRT_WIDTH: u16 = 6;
 const ENABLED: u16 = 1;
 const LFB: u16 = 0x40;
 
-pub const WIDTH: u32 = 1024;
-pub const HEIGHT: u32 = 768;
+/// Modes tried in order: Full HD first, then smaller ones for adapters with less video
+/// memory. The desktop reads the size it got from `DisplayInfo`.
+pub const MODES: [(u32, u32); 3] = [(1920, 1080), (1280, 720), (1024, 768)];
 pub const BYTES_PER_PIXEL: u32 = 4;
 
 #[derive(Clone, Copy, Debug)]
@@ -40,21 +41,24 @@ pub fn find() -> Option<u64> {
     None
 }
 
-/// Switches to WIDTH x HEIGHT x 32 with a linear framebuffer.
+/// Switches to the first mode in `MODES` the adapter accepts, 32-bit with a linear
+/// framebuffer.
 pub fn enable() -> Option<Framebuffer> {
     let phys = find()?;
     if read(ENABLE) & ENABLED == 0 { save_text_font(); }
-    write(ENABLE, 0);
-    write(XRES, WIDTH as u16);
-    write(YRES, HEIGHT as u16);
-    write(BPP, 32);
-    write(VIRT_WIDTH, WIDTH as u16);
-    write(ENABLE, ENABLED | LFB);
-    if read(XRES) != WIDTH as u16 || read(YRES) != HEIGHT as u16 || read(BPP) != 32 {
+    for (width, height) in MODES {
         write(ENABLE, 0);
-        return None;
+        write(XRES, width as u16);
+        write(YRES, height as u16);
+        write(BPP, 32);
+        write(VIRT_WIDTH, width as u16);
+        write(ENABLE, ENABLED | LFB);
+        if read(XRES) == width as u16 && read(YRES) == height as u16 && read(BPP) == 32 {
+            return Some(Framebuffer { phys, width, height, pitch: width * BYTES_PER_PIXEL });
+        }
     }
-    Some(Framebuffer { phys, width: WIDTH, height: HEIGHT, pitch: WIDTH * BYTES_PER_PIXEL })
+    write(ENABLE, 0);
+    None
 }
 
 /// Returns to the legacy VGA (text) mode the console uses.

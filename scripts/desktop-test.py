@@ -12,9 +12,12 @@ import subprocess
 import time
 import zlib
 
-# Start menu and desktop layout (desktop/src/main.rs).
-START = (32, 745)
-MENU = {"files": 396, "editor": 436, "terminal": 476, "monitor": 516, "about": 556, "sync": 604, "exit": 644, "restart": 684}
+# Start menu and desktop layout (desktop/src/main.rs). The taskbar and start menu are
+# anchored to the bottom of the screen, so their y coordinates are offsets from it.
+SCREEN = (1920, 1080)
+START_FROM_BOTTOM = 23
+MENU_FROM_BOTTOM = {"files": 372, "editor": 332, "terminal": 292, "monitor": 252, "about": 212, "sync": 164,
+                    "exit": 124, "restart": 84}
 TITLE_ACTIVE = (232, 236, 244)
 
 
@@ -128,7 +131,7 @@ class Desktop:
             time.sleep(0.02)
 
     def goto(self, x, y):
-        self.move(-1100, -800)  # The pointer clamps at the top-left corner.
+        self.move(-SCREEN[0] - 100, -SCREEN[1] - 100)  # The pointer clamps at the top-left corner.
         time.sleep(0.15)
         self.move(x, y)
         time.sleep(0.25)
@@ -162,9 +165,12 @@ class Desktop:
         self.qmp("send-key", {"keys": [{"type": "qcode", "data": k} for k in keys], "hold-time": 50})
         time.sleep(0.4)
 
+    def start(self):
+        self.click(32, SCREEN[1] - START_FROM_BOTTOM)
+
     def menu(self, item):
-        self.click(*START)
-        self.click(110, MENU[item])
+        self.start()
+        self.click(110, SCREEN[1] - MENU_FROM_BOTTOM[item])
 
     def close(self):
         if self.process.poll() is None:
@@ -198,17 +204,20 @@ def main():
 
     try:
         vm = Desktop(args.source, output / "session", disk, args.accel, args.memory)
-        vm.wait(r"DESKTOP_READY 1024x768", seconds=240)
+        match = vm.wait(r"DESKTOP_READY (\d+)x(\d+)", seconds=240)
+        assert (int(match[1]), int(match[2])) == SCREEN, match[0]
+        width, height = SCREEN
         time.sleep(2)
-        s = vm.shot_until("desktop", lambda s: max(s.pixel(600, 760)) < 70)
-        assert (s.width, s.height) == (1024, 768), (s.width, s.height)
-        assert max(s.pixel(600, 760)) < 70, s.pixel(600, 760)          # Taskbar.
+        s = vm.shot_until("desktop", lambda s: max(s.pixel(600, height - 8)) < 70)
+        assert (s.width, s.height) == SCREEN, (s.width, s.height)
+        assert max(s.pixel(600, height - 8)) < 70, s.pixel(600, height - 8)  # Taskbar.
         assert s.pixel(600, 300)[2] > s.pixel(600, 300)[0], s.pixel(600, 300)  # Blue wallpaper.
-        passed("DESKTOP_BOOT_1024x768")
+        passed(f"DESKTOP_BOOT_{width}x{height}")
 
-        vm.click(*START)
-        s = vm.shot_until("start-menu", lambda s: s.near(150, 420, (28, 32, 46), 6))
-        assert s.near(150, 420, (28, 32, 46), 6), s.pixel(150, 420)
+        vm.start()
+        menu_probe = (150, height - 348)
+        s = vm.shot_until("start-menu", lambda s: s.near(*menu_probe, (28, 32, 46), 6))
+        assert s.near(*menu_probe, (28, 32, 46), 6), s.pixel(*menu_probe)
         vm.combo("esc")
         passed("START_MENU")
 
@@ -305,7 +314,7 @@ def main():
         vm.wait(r"DESKTOP_READY", offset)
         time.sleep(2)
         s = vm.shot("desktop-again")
-        assert (s.width, s.height) == (1024, 768)
+        assert (s.width, s.height) == SCREEN, (s.width, s.height)
         passed("EXIT_TO_TEXT_CONSOLE_AND_BACK")
 
         offset = len(vm.serial())
