@@ -7,7 +7,8 @@ use crate::gfx::{Canvas, Rect};
 use crate::icons::{self, Icon};
 use crate::theme::*;
 
-pub struct About;
+pub struct About { last: u64 }
+impl About { pub fn new() -> Self { Self { last: 0 } } }
 
 impl App for About {
     fn title(&self) -> String { "About Atom OS".into() }
@@ -34,5 +35,9 @@ impl App for About {
             c.text(&UI, area.x + 24, area.y + 136 + i as i32 * 20, line, if i == 7 { TEXT_MUTED } else { TEXT });
         }
     }
-    fn tick(&mut self, ticks: u64) -> Action { if ticks % 100 == 0 { Action::Redraw } else { Action::None } }
+    fn tick(&mut self, ticks: u64) -> Action {
+        if ticks.saturating_sub(self.last) < 100 { return Action::None; }
+        self.last = ticks;
+        Action::Redraw
+    }
 }

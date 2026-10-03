@@ -36,7 +36,7 @@ impl Launch {
             Launch::Editor => Box::new(Editor::new()),
             Launch::Terminal => Box::new(Terminal::shell()),
             Launch::Monitor => Box::new(Monitor::new()),
-            Launch::About => Box::new(About),
+            Launch::About => Box::new(About::new()),
         }
     }
 }
@@ -162,6 +162,7 @@ impl Desktop {
         let w = &mut self.windows[i];
         if !w.app.resizable() { return; }
         match w.maximized.take() { Some(old) => w.rect = old, None => { w.maximized = Some(w.rect); w.rect = work; } }
+        rt::console_print(&alloc::format!("WINDOW_{} {}\n", if w.maximized.is_some() { "MAXIMIZE" } else { "RESTORE" }, w.app.title()));
         self.dirty = true;
     }
     fn toast(&mut self, text: String) {
@@ -207,9 +208,15 @@ impl Desktop {
     fn taskbar_buttons(&self) -> Vec<(u32, Rect)> {
         let s = self.screen();
         let mut x = 64;
-        self.windows.iter().filter(|w| w.parent.is_none()).map(|w| {
-            let r = Rect::new(x, s.h - TASKBAR_HEIGHT + 6, 180, TASKBAR_HEIGHT - 12);
-            x += 186;
+        // Stable order (by creation), independent of stacking.
+        let mut top: Vec<&Window> = self.windows.iter().filter(|w| w.parent.is_none()).collect();
+        top.sort_by_key(|w| w.id);
+        // Buttons shrink to fit between the start button and the clock.
+        let available = s.w - 64 - 140;
+        let width = (available / top.len().max(1) as i32 - 6).clamp(44, 180);
+        top.into_iter().map(|w| {
+            let r = Rect::new(x, s.h - TASKBAR_HEIGHT + 6, width, TASKBAR_HEIGHT - 12);
+            x += width + 6;
             (w.id, r)
         }).collect()
     }
@@ -230,7 +237,8 @@ impl Desktop {
         let pressed = e.buttons & !self.buttons;
         let released = self.buttons & !e.buttons;
         self.buttons = e.buttons;
-        self.motion(x, y);
+        // Button-only packets are not motion (a click must not start a drag).
+        if e.dx != 0 || e.dy != 0 { self.motion(x, y); }
         if pressed & MOUSE_LEFT != 0 { self.left_down(x, y); }
         if released & MOUSE_LEFT != 0 { self.left_up(x, y); }
         if e.wheel != 0 {
@@ -493,8 +501,8 @@ impl Desktop {
             let icon = self.windows[i].app.icon();
             let title = self.windows[i].app.title();
             icons::draw(&mut self.canvas, icon, r.x + 10, r.y + 8, 18);
-            self.canvas.text_fit(&UI, r.x + 36, r.y + (r.h - UI.line_height()) / 2, &title, r.w - 46,
-                if self.windows[i].minimized { rgb(148, 163, 184) } else { TASKBAR_TEXT });
+            if r.w > 60 { self.canvas.text_fit(&UI, r.x + 36, r.y + (r.h - UI.line_height()) / 2, &title, r.w - 46,
+                if self.windows[i].minimized { rgb(148, 163, 184) } else { TASKBAR_TEXT }); }
         }
         let (time, date) = clock_strings(rt::time());
         self.clock = time.clone();

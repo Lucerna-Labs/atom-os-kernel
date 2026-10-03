@@ -174,8 +174,8 @@ impl App for Editor {
         c.fill(status, SURFACE);
         c.fill(Rect::new(area.x, status.y, area.w, 1), DIVIDER);
         let bytes = self.lines.iter().map(|l| l.len() + 1).sum::<usize>().saturating_sub(1);
-        c.text(&UI, area.x + 12, status.y + 6, &alloc::format!("Ln {}, Col {}   ·   {} lines   ·   {} bytes{}",
-            self.cursor.line + 1, self.cursor.col + 1, self.lines.len(), bytes,
+        c.text(&UI, area.x + 12, status.y + 6, &alloc::format!("Ln {}, Col {}   ·   {} line{}   ·   {} bytes{}",
+            self.cursor.line + 1, self.cursor.col + 1, self.lines.len(), if self.lines.len() == 1 { "" } else { "s" }, bytes,
             if self.modified { "   ·   unsaved" } else { "" }), TEXT_MUTED);
     }
     fn key(&mut self, e: &InputEvent, area: Rect) -> Action {
@@ -184,6 +184,7 @@ impl App for Editor {
         let ctrl = e.modifiers & MOD_CTRL != 0;
         if ctrl {
             match e.key {
+                k if (k == b's' as u16 || k == b'S' as u16) && shift => return self.command(3),
                 k if k == b's' as u16 || k == b'S' as u16 => return self.save(),
                 k if k == b'o' as u16 || k == b'O' as u16 => return self.open_flow(),
                 k if k == b'n' as u16 || k == b'N' as u16 => return self.command(0),

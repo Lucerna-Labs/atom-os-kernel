@@ -16,7 +16,7 @@ pub struct Picker { mode: Mode, list: ListView, field: TextField, focus_field: b
 
 impl Picker {
     pub fn new(mode: Mode, initial: &str) -> Self {
-        let mut picker = Self { mode, list: ListView::new(&[300, 100, 120]), field: TextField::new(initial),
+        let mut picker = Self { mode, list: ListView::new(&[300, 100, 120]), field: if mode == Mode::Save { TextField::selected(initial) } else { TextField::new(initial) },
             focus_field: mode == Mode::Save, names: Vec::new(), error: String::new() };
         picker.refresh();
         if !initial.is_empty() { picker.list.select_where(0, initial); }
@@ -78,6 +78,11 @@ impl App for Picker {
         if e.key == 27 { return Action::Finish(DialogResult::Cancel); }
         if e.key == 9 { self.focus_field = !self.focus_field; return Action::Redraw; }
         if e.key == b'\n' as u16 { return self.choose(); }
+        // Typing a name goes to the file-name field wherever the focus is.
+        if !self.focus_field && (32..127).contains(&e.key) && e.modifiers & (MOD_CTRL | MOD_ALT) == 0 {
+            self.focus_field = true;
+            self.field = TextField::new("");
+        }
         if !self.focus_field || matches!(e.key, KEY_UP | KEY_DOWN | KEY_PAGE_UP | KEY_PAGE_DOWN) {
             if self.list.key(e, Self::table_rect(area)) {
                 if let Some(s) = self.list.selected { self.field = TextField::new(&self.names[s]); }

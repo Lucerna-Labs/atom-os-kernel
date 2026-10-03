@@ -23,7 +23,8 @@ impl Monitor {
     }
     fn refresh(&mut self) {
         let selected = self.list.selected.and_then(|i| self.pids.get(i)).copied();
-        let processes = rt::processes();
+        let mut processes = rt::processes();
+        processes.sort_by_key(|p| p.pid);
         self.pids = processes.iter().map(|p| p.pid as u64).collect();
         self.list.set_rows(processes.iter().map(|p| alloc::vec![alloc::format!("{}", p.pid), alloc::format!("{}", p.parent),
             String::from(p.state_name()), String::from(p.name())]).collect());
