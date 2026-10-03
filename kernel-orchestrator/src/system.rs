@@ -1,6 +1,7 @@
 use crate::scheduler::Scheduler;
 use kernel_kit::context::TaskState;
 use kernel_kit::trap::TrapFrame;
+use kernel_kit::pipe::PipeEnd;
 
 pub struct System {
     pub scheduler: Scheduler,
@@ -13,12 +14,22 @@ impl System {
     pub const fn new(kernel_root: u64) -> Self {
         Self { scheduler: Scheduler::new(), kernel_root, next_pid: 1, display_owner: None }
     }
+    /// Starts `name` with the parent's standard input and output.
     pub fn spawn_program(&mut self, parent: usize, name: &str) -> Result<usize, ()> {
+        let (stdin, stdout) = self.scheduler.task(parent)
+            .map(|p| (p.stdin.clone(), p.stdout.clone())).unwrap_or((None, None));
+        self.spawn_with(parent, name, "", stdin, stdout)
+    }
+    pub fn spawn_with(&mut self, parent: usize, name: &str, args: &str,
+                      stdin: Option<PipeEnd>, stdout: Option<PipeEnd>) -> Result<usize, ()> {
         self.scheduler.collect();
         if !self.scheduler.has_slot() { return Err(()); }
         let pid = self.next_pid;
         let next = pid.checked_add(1).ok_or(())?;
-        let context = crate::process::create(pid, parent, name, self.kernel_root).map_err(|_| ())?;
+        let mut context = crate::process::create(pid, parent, name, self.kernel_root).map_err(|_| ())?;
+        context.args = alloc::string::String::from(args);
+        context.stdin = stdin;
+        context.stdout = stdout;
         if let Err(mut context) = self.scheduler.spawn(context) {
             context.release_resources();
             return Err(());

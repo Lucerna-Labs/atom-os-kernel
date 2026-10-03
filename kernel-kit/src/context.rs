@@ -32,8 +32,8 @@ pub struct Context {
     /// Standard input and output: None is the console.
     pub stdin: Option<PipeEnd>,
     pub stdout: Option<PipeEnd>,
-    /// Pipes created by this process, each holding both ends until closed.
-    pub pipes: [Option<(PipeEnd, PipeEnd)>; MAX_PIPES],
+    /// Pipes created by this process: (read end, write end), each closable.
+    pub pipes: [(Option<PipeEnd>, Option<PipeEnd>); MAX_PIPES],
 }
 
 /// Pipe handles one process may hold open at once.
@@ -46,7 +46,7 @@ impl Context {
             kernel_stack_phys: 0, kernel_stack_pages: 0, parent: 0,
             wait_for: None, sleep_until: 0, exit_code: 0, waited: false,
             mailbox: VecDeque::new(), name: String::new(), args: String::new(),
-            stdin: None, stdout: None, pipes: [const { None }; MAX_PIPES] }
+            stdin: None, stdout: None, pipes: [const { (None, None) }; MAX_PIPES] }
     }
     pub fn set_state(&mut self, state: TaskState) { self.state = state; }
 
@@ -64,6 +64,6 @@ impl Context {
         // a broken pipe.
         self.stdin = None;
         self.stdout = None;
-        self.pipes = [const { None }; MAX_PIPES];
+        self.pipes = [const { (None, None) }; MAX_PIPES];
     }
 }

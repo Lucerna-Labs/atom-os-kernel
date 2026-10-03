@@ -129,4 +129,22 @@ pub struct InputEvent {
     pub key: u16, pub dx: i16, pub dy: i16, pub wheel: i16,
 }
 
+/// rdi = buffer, rsi = record capacity; copies FILE_RECORD_BYTES records
+/// (name: 64 bytes NUL-padded, size: u32, flags: u32) and returns the count.
+pub const SYS_LIST_FILES: u64 = 47;
+pub const FILE_RECORD_BYTES: usize = 72;
+pub const FILE_BUILTIN: u32 = 1;
+/// Total physical frames managed by the kernel (4 KiB each).
+pub const SYS_MEMORY_TOTAL: u64 = 48;
+
+/// rdi = pipe handle, rsi = buffer, rdx = length. Read returns bytes read,
+/// 0 at end of input or WOULD_BLOCK; write returns bytes written,
+/// WOULD_BLOCK when full or ERROR when no reader remains.
+pub const SYS_PIPE_READ: u64 = 49;
+pub const SYS_PIPE_WRITE: u64 = 50;
+/// SYS_PIPE_CLOSE rsi: which end to close.
+pub const PIPE_BOTH: u64 = 0;
+pub const PIPE_READ_END: u64 = 1;
+pub const PIPE_WRITE_END: u64 = 2;
+
 pub const ERROR: u64 = u64::MAX;

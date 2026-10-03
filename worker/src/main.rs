@@ -5,6 +5,13 @@ use user_rt::{self as rt, abi::*};
 user_rt::entry!(main);
 
 fn main() {
+    // Child mode for the pipe check below: echo the arguments to stdout.
+    let args = rt::args();
+    if let Some(text) = args.strip_prefix("pipe-child ") {
+        rt::print(text);
+        rt::print("\n");
+        rt::exit(7);
+    }
     let pid = rt::call(SYS_GETPID, 0, 0);
     // Reject untrusted pointers without taking a kernel exception.
     assert_eq!(rt::call(SYS_OPEN, 0, 0), ERROR);
@@ -92,6 +99,24 @@ fn main() {
             out("rax") ticks, out("rcx") _, out("r12") _, out("xmm0") _, options(nostack));
     }
     assert!(ticks > 0); assert_eq!(&observed[..2], &pattern); assert_eq!(observed_mxcsr, mxcsr);
+    // Arguments and pipes: the child's stdout arrives here, then end of input.
+    let handle = rt::pipe().unwrap();
+    let child = rt::spawn_with("worker.elf", "pipe-child piped hello", STDIO_CONSOLE, handle);
+    assert_ne!(child, ERROR);
+    rt::pipe_close(handle, PIPE_WRITE_END);
+    let mut output = alloc::vec::Vec::new();
+    let mut buffer = [0u8; 64];
+    loop {
+        match rt::pipe_read(handle, &mut buffer) {
+            Some(0) => break,
+            Some(count) => output.extend_from_slice(&buffer[..count]),
+            None => rt::yield_now(),
+        }
+    }
+    assert_eq!(output, b"piped hello\n");
+    assert_eq!(rt::wait(child), 7);
+    rt::pipe_close(handle, PIPE_BOTH);
+    assert_eq!(rt::spawn_with("worker.elf", "", 99, STDIO_INHERIT), ERROR);
     let mut sent = false;
     for _ in 0..200 { if rt::send(2, "worker delivered") { sent = true; break; } rt::sleep(1); }
     assert!(sent);
