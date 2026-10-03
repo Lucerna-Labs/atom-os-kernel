@@ -1,0 +1,579 @@
+From e0565626fef409e1013294f2ee618950a30ea635 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 3 Oct 2026 22:25:48 +0000
+Subject: [PATCH] pmre-kit: span fast path, SDF outline shapes, optional
+ uxi/html
+
+Interactive surfaces redraw large solid areas every frame; the kit spent
+an SDF evaluation per pixel on them. Measured natively on a 1024x768
+u32 surface:
+
+  solid 600x470 rect           4.36 ms -> 0.125 ms
+  full-screen rect             11.8 ms -> 0.165 ms
+  1 px rounded window border   10.7 ms (path stroke) -> 0.123 ms
+  soft shadow 600x470           4.8 ms -> 2.4 ms
+
+- raster: for pure translations, each row's fully covered run is found
+  analytically (rect, rounded rect, circle; conservative epsilon) and
+  passed to Surface::fill_span; only edge pixels evaluate the SDF.
+  Output is bit-identical to the per-pixel path (new equivalence test
+  over shapes x paints x positions x soft).
+- Surface::fill_span with a per-pixel default, bulk overrides for
+  Framebuffer and BandView.
+- Shape::RoundedRectOutline and Shape::CircleOutline: borders as SDF
+  bands inside the edge; the hollow middle of each row is skipped.
+- Features `uxi` (ux + layout) and `html` (implies uxi), on by default,
+  so a draw-command renderer can leave the front ends out.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ ENGINE-INTEGRATION.md       |  14 ++
+ pmre-kit/Cargo.toml         |   6 +-
+ pmre-kit/src/framebuffer.rs |  36 +++++
+ pmre-kit/src/lib.rs         |  10 +-
+ pmre-kit/src/paint.rs       |  40 ++++-
+ pmre-kit/src/raster.rs      | 290 +++++++++++++++++++++++++++++++++++-
+ 6 files changed, 385 insertions(+), 11 deletions(-)
+
+diff --git a/ENGINE-INTEGRATION.md b/ENGINE-INTEGRATION.md
+index 707b2c0..32faa00 100644
+--- a/ENGINE-INTEGRATION.md
++++ b/ENGINE-INTEGRATION.md
+@@ -74,6 +74,20 @@ modules (`post`, `bloom_sweep`, `fair_queue`) are `std`-only; shapes, paths, gra
+ text, layout and HTML all work unchanged, rendering into any `Surface` you implement.
+ Atom OS uses this mode for its desktop.
+ 
++The `uxi` (intent tree + layout) and `html` features are also on by default. An app that
++drives the kit with draw commands directly can turn them off with the rest:
++`default-features = false` (add `features = ["uxi"]` or `["html"]` to keep them).
++
++### Fast paths for interactive surfaces
++
++For shapes placed by a pure translation, `raster::scan_convert` computes each row's fully
++covered run analytically and hands it to `Surface::fill_span` in one call; only pixels
++near the edges evaluate the SDF. The default `fill_span` blends pixel by pixel, so output
++is identical; a surface that overrides it with a bulk write (as `Framebuffer` does) makes
++large fills roughly as cheap as a memory fill. `Shape::RoundedRectOutline` and
++`Shape::CircleOutline` draw borders as SDF bands and skip the hollow middle, which is far
++cheaper than stroking a path for a 1 px window or button border.
++
+ ## 3. Render a first frame
+ 
+ The UXI path is the shortest route to a laid-out 2D interface:
+diff --git a/pmre-kit/Cargo.toml b/pmre-kit/Cargo.toml
+index 53e85d3..9278203 100644
+--- a/pmre-kit/Cargo.toml
++++ b/pmre-kit/Cargo.toml
+@@ -8,7 +8,11 @@ description = "The single primitive kit: all dumb rendering mechanism, wired fro
+ [dependencies]
+ 
+ [features]
+-default = ["std"]
++default = ["std", "uxi", "html"]
+ # System font discovery and the threaded post-processing modules. Disable for no_std
+ # targets (with alloc); fonts are then installed from bytes via `font::install`.
+ std = []
++# The UXI intent tree (`ux`) and its flex/box layout solver (`layout`).
++uxi = []
++# The reduced HTML/CSS front end, which lowers onto the UXI tree.
++html = ["uxi"]
+diff --git a/pmre-kit/src/framebuffer.rs b/pmre-kit/src/framebuffer.rs
+index f781538..b338a37 100644
+--- a/pmre-kit/src/framebuffer.rs
++++ b/pmre-kit/src/framebuffer.rs
+@@ -125,6 +125,14 @@ pub trait Surface {
+         (0, self.height())
+     }
+     fn blend_over(&mut self, x: u32, y: u32, src: Rgba);
++    /// Composite `src` over row `y` for `x` in `[x0, x1)`. The rasterizers call this for
++    /// runs of fully covered pixels; the default blends pixel by pixel, and a surface can
++    /// override it with a bulk write. Callers keep the run inside the surface.
++    fn fill_span(&mut self, y: u32, x0: u32, x1: u32, src: Rgba) {
++        for x in x0..x1 {
++            self.blend_over(x, y, src);
++        }
++    }
+ }
+ 
+ impl Surface for Framebuffer {
+@@ -137,6 +145,20 @@ impl Surface for Framebuffer {
+     fn blend_over(&mut self, x: u32, y: u32, src: Rgba) {
+         Framebuffer::blend_over(self, x, y, src);
+     }
++    fn fill_span(&mut self, y: u32, x0: u32, x1: u32, src: Rgba) {
++        if y >= self.height || x0 >= x1 {
++            return;
++        }
++        let row = (y * self.width) as usize;
++        let span = &mut self.pixels[row + x0 as usize..row + x1.min(self.width) as usize];
++        if src.a >= 1.0 {
++            span.fill(src);
++        } else {
++            for p in span {
++                *p = crate::paint::over(*p, src);
++            }
++        }
++    }
+ }
+ 
+ /// A view over one contiguous row-band of a frame — pixels for device rows
+@@ -183,4 +205,18 @@ impl Surface for BandView<'_> {
+         let i = ((y - self.y0) * self.width + x) as usize;
+         self.pixels[i] = crate::paint::over(self.pixels[i], src);
+     }
++    fn fill_span(&mut self, y: u32, x0: u32, x1: u32, src: Rgba) {
++        if y < self.y0 || y >= self.y0 + self.band_h || x0 >= x1 {
++            return;
++        }
++        let row = ((y - self.y0) * self.width) as usize;
++        let span = &mut self.pixels[row + x0 as usize..row + x1.min(self.width) as usize];
++        if src.a >= 1.0 {
++            span.fill(src);
++        } else {
++            for p in span {
++                *p = crate::paint::over(*p, src);
++            }
++        }
++    }
+ }
+diff --git a/pmre-kit/src/lib.rs b/pmre-kit/src/lib.rs
+index 2a56d57..2b67050 100644
+--- a/pmre-kit/src/lib.rs
++++ b/pmre-kit/src/lib.rs
+@@ -7,8 +7,10 @@
+ //! lives in `pmre-orchestrator`, never here. If a primitive in this crate grows an `if`
+ //! that makes a value judgement, that `if` belongs in the orchestrator.
+ //!
+-//! The `std` feature (on by default) adds system-font discovery and the threaded
+-//! post-processing modules. Without it the kit is `no_std` + `alloc`: install fonts from
++//! Features (all on by default): `std` adds system-font discovery and the threaded
++//! post-processing modules; `uxi` adds the intent tree and flex/box layout solver;
++//! `html` adds the reduced HTML/CSS front end. A renderer that drives the kit with
++//! draw commands directly (like a desktop compositor) needs none of them. Without it the kit is `no_std` + `alloc`: install fonts from
+ //! bytes with `font::install`, and every rasterization path works the same.
+ 
+ #![cfg_attr(not(feature = "std"), no_std)]
+@@ -36,7 +38,9 @@ pub mod fmath;
+ pub mod font;
+ pub mod framebuffer;
+ pub mod geom;
++#[cfg(feature = "html")]
+ pub mod html;
++#[cfg(feature = "uxi")]
+ pub mod layout;
+ pub mod paint;
+ pub mod path;
+@@ -45,12 +49,14 @@ pub mod post;
+ pub mod raster;
+ pub mod sync;
+ pub mod text;
++#[cfg(feature = "uxi")]
+ pub mod ux;
+ 
+ pub use framebuffer::{BandView, Framebuffer, Surface};
+ pub use geom::{Affine, Vec2};
+ pub use paint::{Bounds, DrawCmd, Paint, Rgba, Shape};
+ pub use path::PathCmd;
++#[cfg(feature = "uxi")]
+ pub use ux::{Align, Dim, Dir, Edges, Justify, Shadow, Span, Style, UxNode};
+ 
+ /// The eight root atoms — the canonical vocabulary the whole kit specializes from.
+diff --git a/pmre-kit/src/paint.rs b/pmre-kit/src/paint.rs
+index 138199c..caf9339 100644
+--- a/pmre-kit/src/paint.rs
++++ b/pmre-kit/src/paint.rs
+@@ -44,21 +44,45 @@ impl Bounds {
+ /// Local-space shapes (centered at the origin where natural); a `DrawCmd.transform` places them.
+ #[derive(Clone, Copy, Debug)]
+ pub enum Shape {
+-    Rect { half: Vec2 },
+-    RoundedRect { half: Vec2, radius: f32 },
+-    Circle { radius: f32 },
+-    Line { a: Vec2, b: Vec2, width: f32 },
++    Rect {
++        half: Vec2,
++    },
++    RoundedRect {
++        half: Vec2,
++        radius: f32,
++    },
++    Circle {
++        radius: f32,
++    },
++    Line {
++        a: Vec2,
++        b: Vec2,
++        width: f32,
++    },
++    /// A rounded-rectangle border `width` thick, lying just inside the shape's edge.
++    RoundedRectOutline {
++        half: Vec2,
++        radius: f32,
++        width: f32,
++    },
++    /// A ring `width` thick, lying just inside the circle's edge.
++    CircleOutline {
++        radius: f32,
++        width: f32,
++    },
+ }
+ 
+ impl Shape {
+     /// Local-space bounding box, before the command transform is applied.
+     pub fn local_bounds(&self) -> Bounds {
+         match *self {
+-            Shape::Rect { half } | Shape::RoundedRect { half, .. } => Bounds {
++            Shape::Rect { half }
++            | Shape::RoundedRect { half, .. }
++            | Shape::RoundedRectOutline { half, .. } => Bounds {
+                 min: Vec2::new(-half.x, -half.y),
+                 max: Vec2::new(half.x, half.y),
+             },
+-            Shape::Circle { radius } => Bounds {
++            Shape::Circle { radius } | Shape::CircleOutline { radius, .. } => Bounds {
+                 min: Vec2::new(-radius, -radius),
+                 max: Vec2::new(radius, radius),
+             },
+@@ -79,6 +103,10 @@ impl Shape {
+                 half.x <= 0.0 || half.y <= 0.0
+             }
+             Shape::Circle { radius } => radius <= 0.0,
++            Shape::RoundedRectOutline { half, width, .. } => {
++                half.x <= 0.0 || half.y <= 0.0 || width <= 0.0
++            }
++            Shape::CircleOutline { radius, width } => radius <= 0.0 || width <= 0.0,
+             Shape::Line { a, b, width } => width <= 0.0 || (a.x == b.x && a.y == b.y),
+         }
+     }
+diff --git a/pmre-kit/src/raster.rs b/pmre-kit/src/raster.rs
+index 3e142e0..113e728 100644
+--- a/pmre-kit/src/raster.rs
++++ b/pmre-kit/src/raster.rs
+@@ -10,7 +10,7 @@ use crate::prelude::*;
+ 
+ use crate::framebuffer::Surface;
+ use crate::geom::Vec2;
+-use crate::paint::{Bounds, DrawCmd, Shape};
++use crate::paint::{Bounds, DrawCmd, Paint, Shape};
+ 
+ /// Signed distance to the shape boundary in its local space: negative inside, positive outside.
+ pub fn signed_distance(shape: &Shape, p: Vec2) -> f32 {
+@@ -19,9 +19,62 @@ pub fn signed_distance(shape: &Shape, p: Vec2) -> f32 {
+         Shape::RoundedRect { half, radius } => sd_box(p, half - Vec2::new(radius, radius)) - radius,
+         Shape::Circle { radius } => p.length() - radius,
+         Shape::Line { a, b, width } => sd_segment(p, a, b) - width * 0.5,
++        Shape::RoundedRectOutline {
++            half,
++            radius,
++            width,
++        } => ring(sd_box(p, half - Vec2::new(radius, radius)) - radius, width),
++        Shape::CircleOutline { radius, width } => ring(p.length() - radius, width),
+     }
+ }
+ 
++/// A band `width` thick just inside the zero contour of the distance `d`.
++fn ring(d: f32, width: f32) -> f32 {
++    (d + width * 0.5).abs() - width * 0.5
++}
++
++/// For a horizontal row at local height `py`: the half-width `h` (centered on the local
++/// origin) within which the filled shape's distance is at most `-margin`. Analytic per
++/// shape, and conservative by a small epsilon, so every pixel it admits is one the
++/// per-pixel path would also find at that depth. `None` when no such run exists.
++fn inner_half(shape: &Shape, py: f32, margin: f32) -> Option<f32> {
++    const EPS: f32 = 1e-3;
++    let py = py.abs();
++    let h = match *shape {
++        Shape::Rect { half } => {
++            if py > half.y - margin {
++                return None;
++            }
++            half.x - margin
++        }
++        Shape::RoundedRect { half, radius } | Shape::RoundedRectOutline { half, radius, .. } => {
++            let (a, b) = (half.x - radius, half.y - radius);
++            if a < 0.0 || b < 0.0 || radius < 0.0 {
++                return None;
++            }
++            let dy = py - b;
++            let reach = radius - margin;
++            if dy > reach {
++                return None;
++            }
++            if dy <= 0.0 {
++                half.x - margin
++            } else {
++                a + (reach * reach - dy * dy).max(0.0).sqrt()
++            }
++        }
++        Shape::Circle { radius } | Shape::CircleOutline { radius, .. } => {
++            let reach = radius - margin;
++            if py > reach {
++                return None;
++            }
++            (reach * reach - py * py).max(0.0).sqrt()
++        }
++        Shape::Line { .. } => return None,
++    } - EPS;
++    (h >= 0.0).then_some(h)
++}
++
+ fn sd_box(p: Vec2, half: Vec2) -> f32 {
+     let d = p.abs() - half;
+     d.max_scalar(0.0).length() + d.x.max(d.y).min(0.0)
+@@ -58,7 +111,7 @@ pub fn scan_convert<S: Surface>(cmd: &DrawCmd, surf: &mut S, clip: Option<Bounds
+     let bounds = device_bounds(cmd, surf.width(), surf.height(), surf.row_range(), clip);
+     let t = cmd.transform;
+     if t.a == 1.0 && t.d == 1.0 && t.b == 0.0 && t.c == 0.0 {
+-        convert_rows(cmd, surf, bounds, aa, |x, y| Vec2::new(x - t.e, y - t.f));
++        convert_rows_spans(cmd, surf, bounds, aa, t.e, t.f);
+     } else {
+         let inv = t.inverse();
+         convert_rows(cmd, surf, bounds, aa, move |x, y| {
+@@ -67,6 +120,67 @@ pub fn scan_convert<S: Surface>(cmd: &DrawCmd, surf: &mut S, clip: Option<Bounds
+     }
+ }
+ 
++/// The pure-translation path. Per row, the analytic interior run is handled in bulk: for
++/// filled shapes it is fully covered (one `fill_span` for solid paint), for outlines it is
++/// the hollow middle and is skipped. Only the pixels near the edges evaluate the SDF.
++/// Output is identical to the per-pixel path.
++fn convert_rows_spans<S: Surface>(
++    cmd: &DrawCmd,
++    surf: &mut S,
++    (x0, y0, x1, y1): (u32, u32, u32, u32),
++    aa: f32,
++    tx: f32,
++    ty: f32,
++) {
++    let outline = match cmd.shape {
++        Shape::RoundedRectOutline { width, .. } | Shape::CircleOutline { width, .. } => Some(width),
++        _ => None,
++    };
++    let edge = |surf: &mut S, x: u32, y: u32, py: f32| {
++        let local = Vec2::new(x as f32 + 0.5 - tx, py);
++        let cov = coverage(signed_distance(&cmd.shape, local), aa);
++        if cov > 0.0 {
++            let col = cmd.paint.sample(local);
++            surf.blend_over(x, y, col.with_alpha(col.a * cov));
++        }
++    };
++    for y in y0..y1 {
++        let py = y as f32 + 0.5 - ty;
++        // Inside an outline the hollow lies deeper than the band; inside a fill, the full
++        // coverage starts one AA half-band in.
++        let margin = outline.map_or(aa, |w| w + aa);
++        let run = inner_half(&cmd.shape, py, margin).map(|h| {
++            // min/max rather than clamp: the run may lie wholly outside the clipped
++            // columns (a > x1), which must give an empty run, not a panic.
++            let a = ((tx - h - 0.5).ceil().max(x0 as f32) as u32).min(x1);
++            let b = (((tx + h - 0.5).floor() + 1.0).max(0.0) as u32).clamp(a, x1);
++            (a, b)
++        });
++        let Some((a, b)) = run.filter(|(a, b)| a < b) else {
++            for x in x0..x1 {
++                edge(surf, x, y, py);
++            }
++            continue;
++        };
++        for x in x0..a {
++            edge(surf, x, y, py);
++        }
++        if outline.is_none() {
++            match cmd.paint {
++                Paint::Solid(c) => surf.fill_span(y, a, b, c),
++                _ => {
++                    for x in a..b {
++                        surf.blend_over(x, y, cmd.paint.sample(Vec2::new(x as f32 + 0.5 - tx, py)));
++                    }
++                }
++            }
++        }
++        for x in b..x1 {
++            edge(surf, x, y, py);
++        }
++    }
++}
++
+ fn convert_rows<S: Surface, M: Fn(f32, f32) -> Vec2>(
+     cmd: &DrawCmd,
+     surf: &mut S,
+@@ -126,3 +240,175 @@ fn device_bounds(
+     let y1 = (maxy.ceil().max(0.0) as u32).min(h).min(rhi);
+     (x0, y0, x1, y1)
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::framebuffer::Framebuffer;
++    use crate::geom::Affine;
++    use crate::paint::{Paint, Rgba};
++
++    /// The original per-pixel path over the whole bounding box, as the reference.
++    fn reference(cmd: &DrawCmd, fb: &mut Framebuffer) {
++        reference_clipped(cmd, fb, None);
++    }
++
++    fn reference_clipped(cmd: &DrawCmd, fb: &mut Framebuffer, clip: Option<Bounds>) {
++        let aa = (1.0 / cmd.transform.scale_factor().max(1e-6))
++            .max(1e-4)
++            .max(cmd.soft);
++        let bounds = device_bounds(cmd, fb.width, fb.height, (0, fb.height), clip);
++        let t = cmd.transform;
++        convert_rows(cmd, fb, bounds, aa, |x, y| Vec2::new(x - t.e, y - t.f));
++    }
++
++    #[test]
++    fn span_fast_path_matches_per_pixel_rendering() {
++        let bg = Rgba::new(0.2, 0.3, 0.4, 1.0);
++        let solid = Paint::Solid(Rgba::new(0.9, 0.5, 0.1, 1.0));
++        let translucent = Paint::Solid(Rgba::new(0.1, 0.8, 0.3, 0.6));
++        let gradient = Paint::Linear {
++            from: Vec2::new(-20.0, 0.0),
++            to: Vec2::new(20.0, 0.0),
++            c0: Rgba::new(1.0, 0.0, 0.0, 1.0),
++            c1: Rgba::new(0.0, 0.0, 1.0, 0.8),
++        };
++        let shapes = [
++            Shape::Rect {
++                half: Vec2::new(23.3, 11.7),
++            },
++            Shape::RoundedRect {
++                half: Vec2::new(30.0, 18.0),
++                radius: 10.0,
++            },
++            Shape::RoundedRect {
++                half: Vec2::new(12.0, 12.0),
++                radius: 12.0,
++            },
++            Shape::RoundedRect {
++                half: Vec2::new(40.0, 9.0),
++                radius: 0.4,
++            },
++            Shape::Circle { radius: 17.25 },
++            Shape::Circle { radius: 0.8 },
++            Shape::RoundedRectOutline {
++                half: Vec2::new(30.0, 20.0),
++                radius: 10.0,
++                width: 1.0,
++            },
++            Shape::RoundedRectOutline {
++                half: Vec2::new(25.0, 25.0),
++                radius: 4.0,
++                width: 3.5,
++            },
++            Shape::CircleOutline {
++                radius: 16.0,
++                width: 2.0,
++            },
++            Shape::Line {
++                a: Vec2::new(-10.0, -5.0),
++                b: Vec2::new(12.0, 7.0),
++                width: 2.5,
++            },
++        ];
++        for shape in shapes {
++            for paint in [solid, translucent, gradient] {
++                for (tx, ty) in [(50.0, 40.0), (50.37, 40.81), (3.5, 2.25)] {
++                    for soft in [0.0, 6.0] {
++                        let cmd = DrawCmd {
++                            shape,
++                            paint,
++                            transform: Affine::translate(tx, ty),
++                            soft,
++                        };
++                        let mut fast = Framebuffer::new(100, 80, bg);
++                        let mut slow = Framebuffer::new(100, 80, bg);
++                        scan_convert(&cmd, &mut fast, None);
++                        reference(&cmd, &mut slow);
++                        for (i, (a, b)) in fast.pixels().iter().zip(slow.pixels()).enumerate() {
++                            assert!(
++                                a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a,
++                                "{shape:?} soft {soft} at ({tx},{ty}) pixel {i}: {a:?} != {b:?}"
++                            );
++                        }
++                    }
++                }
++            }
++        }
++    }
++
++    #[test]
++    fn span_fast_path_handles_clips_beside_the_interior() {
++        // A clip strip left or right of a shape's interior run (or narrower than it) must
++        // give an empty or partial run, never a panic, and match the per-pixel path.
++        let bg = Rgba::new(0.2, 0.3, 0.4, 1.0);
++        let paint = Paint::Solid(Rgba::new(0.9, 0.5, 0.1, 1.0));
++        let shapes = [
++            Shape::Rect {
++                half: Vec2::new(30.0, 20.0),
++            },
++            Shape::RoundedRect {
++                half: Vec2::new(30.0, 20.0),
++                radius: 8.0,
++            },
++            Shape::Circle { radius: 20.0 },
++            Shape::RoundedRectOutline {
++                half: Vec2::new(30.0, 20.0),
++                radius: 8.0,
++                width: 1.0,
++            },
++        ];
++        let strips = [
++            (0.0, 15.0),
++            (10.0, 22.0),
++            (40.0, 60.0),
++            (85.0, 100.0),
++            (45.0, 46.0),
++        ];
++        for shape in shapes {
++            for (sx0, sx1) in strips {
++                let clip = Bounds {
++                    min: Vec2::new(sx0, 0.0),
++                    max: Vec2::new(sx1, 80.0),
++                };
++                let cmd = DrawCmd {
++                    shape,
++                    paint,
++                    transform: Affine::translate(50.0, 40.0),
++                    soft: 0.0,
++                };
++                let mut fast = Framebuffer::new(100, 80, bg);
++                let mut slow = Framebuffer::new(100, 80, bg);
++                scan_convert(&cmd, &mut fast, Some(clip));
++                reference_clipped(&cmd, &mut slow, Some(clip));
++                for (i, (a, b)) in fast.pixels().iter().zip(slow.pixels()).enumerate() {
++                    assert!(
++                        a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a,
++                        "{shape:?} clipped to x {sx0}..{sx1}, pixel {i}: {a:?} != {b:?}"
++                    );
++                }
++            }
++        }
++    }
++
++    #[test]
++    fn outline_is_a_band_inside_the_edge() {
++        let shape = Shape::RoundedRectOutline {
++            half: Vec2::new(20.0, 10.0),
++            radius: 4.0,
++            width: 2.0,
++        };
++        assert!(
++            signed_distance(&shape, Vec2::new(0.0, 9.0)) < 0.0,
++            "inside the band"
++        );
++        assert!(
++            signed_distance(&shape, Vec2::new(0.0, 0.0)) > 0.0,
++            "hollow middle"
++        );
++        assert!(
++            signed_distance(&shape, Vec2::new(0.0, 11.0)) > 0.0,
++            "outside the edge"
++        );
++    }
++}
+-- 
+2.43.0
+

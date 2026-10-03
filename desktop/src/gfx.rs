@@ -5,7 +5,6 @@
 //! clip rectangle; it decides nothing about coverage.
 use alloc::vec;
 use alloc::vec::Vec;
-use pmre_kit::path::PathCmd;
 use pmre_kit::{Affine, Bounds, DrawCmd, Paint, Rgba, Shape, Surface, Vec2};
 use crate::font::{Font, Weight};
 
@@ -76,6 +75,30 @@ impl Surface for Canvas {
         };
         *p = channel(16, src.r) | channel(8, src.g) | channel(0, src.b);
     }
+    /// Fully covered interior runs: one colour computed once, then a bulk row write when
+    /// opaque, or the same lerp as `blend_over` without the per-pixel clip test.
+    fn fill_span(&mut self, y: u32, x0: u32, x1: u32, src: Rgba) {
+        let y = y as i32;
+        if y < self.clip.y || y >= self.clip.bottom() || src.a <= 0.0 { return; }
+        let x0 = (x0 as i32).max(self.clip.x);
+        let x1 = (x1 as i32).min(self.clip.right());
+        if x0 >= x1 { return; }
+        let row = (y * self.width) as usize;
+        let span = &mut self.pixels[row + x0 as usize..row + x1 as usize];
+        let a = src.a.min(1.0);
+        if a >= 1.0 {
+            let c = |s: f32| ((s * 255.0 + 0.5) as u32).min(255);
+            span.fill(c(src.r) << 16 | c(src.g) << 8 | c(src.b));
+            return;
+        }
+        for p in span {
+            let channel = |shift: u32, s: f32| {
+                let d = ((*p >> shift) & 255) as f32;
+                ((d + (s * 255.0 - d) * a + 0.5) as u32).min(255) << shift
+            };
+            *p = channel(16, src.r) | channel(8, src.g) | channel(0, src.b);
+        }
+    }
 }
 
 impl Canvas {
@@ -123,28 +146,12 @@ impl Canvas {
         let radius = radius.min(rect.w / 2).min(rect.h / 2).max(0) as f32;
         self.shape(Shape::RoundedRect { half: rect.half(), radius }, rect.center(), Paint::Solid(rgba(color, alpha)), 0.0);
     }
-    /// A one-pixel rounded outline: the kit strokes the rounded-rectangle path.
+    /// A one-pixel rounded outline: the kit's SDF outline shape, a band just inside the edge.
     pub fn round_outline(&mut self, rect: Rect, radius: i32, color: Color, alpha: u32) {
         if rect.is_empty() { return; }
-        let r = radius.min(rect.w / 2).min(rect.h / 2).max(0) as f32;
-        // Stroke along pixel centres so the line lands inside the rectangle.
-        let (x0, y0) = (rect.x as f32 + 0.5, rect.y as f32 + 0.5);
-        let (x1, y1) = (rect.right() as f32 - 0.5, rect.bottom() as f32 - 0.5);
-        let k = 0.552_284_8 * r; // Cubic Bézier circle constant.
-        let path = [
-            PathCmd::MoveTo(Vec2::new(x0 + r, y0)),
-            PathCmd::LineTo(Vec2::new(x1 - r, y0)),
-            PathCmd::Cubic(Vec2::new(x1 - r + k, y0), Vec2::new(x1, y0 + r - k), Vec2::new(x1, y0 + r)),
-            PathCmd::LineTo(Vec2::new(x1, y1 - r)),
-            PathCmd::Cubic(Vec2::new(x1, y1 - r + k), Vec2::new(x1 - r + k, y1), Vec2::new(x1 - r, y1)),
-            PathCmd::LineTo(Vec2::new(x0 + r, y1)),
-            PathCmd::Cubic(Vec2::new(x0 + r - k, y1), Vec2::new(x0, y1 - r + k), Vec2::new(x0, y1 - r)),
-            PathCmd::LineTo(Vec2::new(x0, y0 + r)),
-            PathCmd::Cubic(Vec2::new(x0, y0 + r - k), Vec2::new(x0 + r - k, y0), Vec2::new(x0 + r, y0)),
-            PathCmd::Close,
-        ];
-        let clip = self.clip.bounds();
-        pmre_kit::path::stroke_cmds(self, &path, 1.0, Paint::Solid(rgba(color, alpha)), Some(clip), true);
+        let radius = radius.min(rect.w / 2).min(rect.h / 2).max(0) as f32;
+        let shape = Shape::RoundedRectOutline { half: rect.half(), radius, width: 1.0 };
+        self.shape(shape, rect.center(), Paint::Solid(rgba(color, alpha)), 0.0);
     }
     /// A soft drop shadow: the kit's widened anti-aliasing band (`soft`) on a rounded rect.
     pub fn shadow(&mut self, rect: Rect, radius: i32, spread: i32, strength: u32) {

@@ -8,7 +8,11 @@ description = "The single primitive kit: all dumb rendering mechanism, wired fro
 [dependencies]
 
 [features]
-default = ["std"]
+default = ["std", "uxi", "html"]
 # System font discovery and the threaded post-processing modules. Disable for no_std
 # targets (with alloc); fonts are then installed from bytes via `font::install`.
 std = []
+# The UXI intent tree (`ux`) and its flex/box layout solver (`layout`).
+uxi = []
+# The reduced HTML/CSS front end, which lowers onto the UXI tree.
+html = ["uxi"]

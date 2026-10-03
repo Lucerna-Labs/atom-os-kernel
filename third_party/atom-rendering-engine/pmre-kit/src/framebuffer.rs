@@ -125,6 +125,14 @@ pub trait Surface {
         (0, self.height())
     }
     fn blend_over(&mut self, x: u32, y: u32, src: Rgba);
+    /// Composite `src` over row `y` for `x` in `[x0, x1)`. The rasterizers call this for
+    /// runs of fully covered pixels; the default blends pixel by pixel, and a surface can
+    /// override it with a bulk write. Callers keep the run inside the surface.
+    fn fill_span(&mut self, y: u32, x0: u32, x1: u32, src: Rgba) {
+        for x in x0..x1 {
+            self.blend_over(x, y, src);
+        }
+    }
 }
 
 impl Surface for Framebuffer {
@@ -136,6 +144,20 @@ impl Surface for Framebuffer {
     }
     fn blend_over(&mut self, x: u32, y: u32, src: Rgba) {
         Framebuffer::blend_over(self, x, y, src);
+    }
+    fn fill_span(&mut self, y: u32, x0: u32, x1: u32, src: Rgba) {
+        if y >= self.height || x0 >= x1 {
+            return;
+        }
+        let row = (y * self.width) as usize;
+        let span = &mut self.pixels[row + x0 as usize..row + x1.min(self.width) as usize];
+        if src.a >= 1.0 {
+            span.fill(src);
+        } else {
+            for p in span {
+                *p = crate::paint::over(*p, src);
+            }
+        }
     }
 }
 
@@ -182,5 +204,19 @@ impl Surface for BandView<'_> {
         }
         let i = ((y - self.y0) * self.width + x) as usize;
         self.pixels[i] = crate::paint::over(self.pixels[i], src);
+    }
+    fn fill_span(&mut self, y: u32, x0: u32, x1: u32, src: Rgba) {
+        if y < self.y0 || y >= self.y0 + self.band_h || x0 >= x1 {
+            return;
+        }
+        let row = ((y - self.y0) * self.width) as usize;
+        let span = &mut self.pixels[row + x0 as usize..row + x1.min(self.width) as usize];
+        if src.a >= 1.0 {
+            span.fill(src);
+        } else {
+            for p in span {
+                *p = crate::paint::over(*p, src);
+            }
+        }
     }
 }

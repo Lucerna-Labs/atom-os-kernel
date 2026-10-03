@@ -7,8 +7,10 @@
 //! lives in `pmre-orchestrator`, never here. If a primitive in this crate grows an `if`
 //! that makes a value judgement, that `if` belongs in the orchestrator.
 //!
-//! The `std` feature (on by default) adds system-font discovery and the threaded
-//! post-processing modules. Without it the kit is `no_std` + `alloc`: install fonts from
+//! Features (all on by default): `std` adds system-font discovery and the threaded
+//! post-processing modules; `uxi` adds the intent tree and flex/box layout solver;
+//! `html` adds the reduced HTML/CSS front end. A renderer that drives the kit with
+//! draw commands directly (like a desktop compositor) needs none of them. Without it the kit is `no_std` + `alloc`: install fonts from
 //! bytes with `font::install`, and every rasterization path works the same.
 
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -36,7 +38,9 @@ pub mod fmath;
 pub mod font;
 pub mod framebuffer;
 pub mod geom;
+#[cfg(feature = "html")]
 pub mod html;
+#[cfg(feature = "uxi")]
 pub mod layout;
 pub mod paint;
 pub mod path;
@@ -45,12 +49,14 @@ pub mod post;
 pub mod raster;
 pub mod sync;
 pub mod text;
+#[cfg(feature = "uxi")]
 pub mod ux;
 
 pub use framebuffer::{BandView, Framebuffer, Surface};
 pub use geom::{Affine, Vec2};
 pub use paint::{Bounds, DrawCmd, Paint, Rgba, Shape};
 pub use path::PathCmd;
+#[cfg(feature = "uxi")]
 pub use ux::{Align, Dim, Dir, Edges, Justify, Shadow, Span, Style, UxNode};
 
 /// The eight root atoms — the canonical vocabulary the whole kit specializes from.

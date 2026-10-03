@@ -44,21 +44,45 @@ impl Bounds {
 /// Local-space shapes (centered at the origin where natural); a `DrawCmd.transform` places them.
 #[derive(Clone, Copy, Debug)]
 pub enum Shape {
-    Rect { half: Vec2 },
-    RoundedRect { half: Vec2, radius: f32 },
-    Circle { radius: f32 },
-    Line { a: Vec2, b: Vec2, width: f32 },
+    Rect {
+        half: Vec2,
+    },
+    RoundedRect {
+        half: Vec2,
+        radius: f32,
+    },
+    Circle {
+        radius: f32,
+    },
+    Line {
+        a: Vec2,
+        b: Vec2,
+        width: f32,
+    },
+    /// A rounded-rectangle border `width` thick, lying just inside the shape's edge.
+    RoundedRectOutline {
+        half: Vec2,
+        radius: f32,
+        width: f32,
+    },
+    /// A ring `width` thick, lying just inside the circle's edge.
+    CircleOutline {
+        radius: f32,
+        width: f32,
+    },
 }
 
 impl Shape {
     /// Local-space bounding box, before the command transform is applied.
     pub fn local_bounds(&self) -> Bounds {
         match *self {
-            Shape::Rect { half } | Shape::RoundedRect { half, .. } => Bounds {
+            Shape::Rect { half }
+            | Shape::RoundedRect { half, .. }
+            | Shape::RoundedRectOutline { half, .. } => Bounds {
                 min: Vec2::new(-half.x, -half.y),
                 max: Vec2::new(half.x, half.y),
             },
-            Shape::Circle { radius } => Bounds {
+            Shape::Circle { radius } | Shape::CircleOutline { radius, .. } => Bounds {
                 min: Vec2::new(-radius, -radius),
                 max: Vec2::new(radius, radius),
             },
@@ -79,6 +103,10 @@ impl Shape {
                 half.x <= 0.0 || half.y <= 0.0
             }
             Shape::Circle { radius } => radius <= 0.0,
+            Shape::RoundedRectOutline { half, width, .. } => {
+                half.x <= 0.0 || half.y <= 0.0 || width <= 0.0
+            }
+            Shape::CircleOutline { radius, width } => radius <= 0.0 || width <= 0.0,
             Shape::Line { a, b, width } => width <= 0.0 || (a.x == b.x && a.y == b.y),
         }
     }

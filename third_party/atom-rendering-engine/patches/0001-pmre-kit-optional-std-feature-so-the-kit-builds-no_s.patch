@@ -1,7 +1,7 @@
 From 27149d3989b61aea0cab2aa0676b2756d858584f Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Sat, 3 Oct 2026 21:03:02 +0000
-Subject: [PATCH] pmre-kit: optional std feature so the kit builds no_std +
+Subject: [PATCH 1/2] pmre-kit: optional std feature so the kit builds no_std +
  alloc
 
 The kit's mechanism needs nothing from std, so make std an opt-out

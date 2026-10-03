@@ -223,10 +223,12 @@ Engine, copied into [`third_party/atom-rendering-engine`](third_party/atom-rende
 so the build is self-contained (no git pins, no symlinks, no paths outside this
 repository). The kit does all rasterization on the CPU:
 
-- shapes (rectangles, rounded rectangles, circles, lines) are signed-distance fields
-  with analytic anti-aliasing, and soft shadows and glows use its widened AA band;
-- outlines, icon curves and the pointer are filled and stroked by its scanline path
-  rasterizer;
+- shapes (rectangles, rounded rectangles, circles, lines, and one-pixel rounded
+  outlines) are signed-distance fields with analytic anti-aliasing, and soft shadows
+  and glows use its widened AA band;
+- only edge pixels evaluate the distance field: the fully covered interior of each row
+  is a single span, which the back buffer fills as a bulk row write;
+- icon curves and the pointer are filled and stroked by its scanline path rasterizer;
 - text is rasterized from TrueType outlines by its built-in parser, using the DejaVu
   subsets in [`desktop/fonts`](desktop/fonts).
 
@@ -235,8 +237,11 @@ and draws into a back buffer that implements the kit's `Surface`. Only the chang
 region is re-rendered, and each window is clipped to the parts not covered by
 windows above it. The finished region is copied to the linear framebuffer.
 
-The kit builds without the standard library through a small `std` feature added by
-the patch in `third_party/atom-rendering-engine/patches`.
+The two patches in `third_party/atom-rendering-engine/patches` add a `std` feature so
+the kit builds without the standard library, the span fast path and outline shapes,
+and opt-out `uxi`/`html` features; the desktop turns all three off, so it compiles only
+the drawing primitives, not the engine's widget layer or HTML pipeline. With the span
+path, a desktop frame under QEMU software emulation dropped from 210–730 ms to 10–50 ms.
 [`update-engine.sh`](scripts/update-engine.sh) refreshes the copy from the engine
 repository when you want its latest improvements.
 
