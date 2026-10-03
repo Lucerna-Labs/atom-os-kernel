@@ -669,38 +669,46 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
         );
     }
 
-    // Set up the physical frame allocator by scanning the bootloader's memory
-    // map for the largest Usable region. Frames from this region are in genuine
-    // free RAM covered by the bootloader's physical_memory_offset mapping, so
-    // paging::phys_to_virt() works on them. This is required for duplicate_pml4
+    // Set up the physical frame allocator from every Usable region in the
+    // bootloader's memory map (RAM is split around holes such as QEMU's PCI
+    // hole below 4 GiB). These frames are genuine free RAM covered by the
+    // bootloader's physical_memory_offset mapping, so
+    // paging::phys_to_virt() works on them. The first 1 MiB is left alone:
+    // physical address 0 doubles as "none" in several places, and the BIOS
+    // area is reserved for firmware and future AP start-up code. This is required for duplicate_pml4
     // to write valid PML4 copies that CR3 can load (the prior triple-fault
     // blocker): without a real USABLE region, PML4 copies were written through
     // addresses that resolved to wrong RAM, corrupting every page-table entry.
     unsafe {
         use bootloader::bootinfo::MemoryRegionType;
-        let mut best_start: u64 = 0;
-        let mut best_len: u64 = 0;
+        const LOW_MEMORY_FRAMES: u64 = 256;
+        let (obj, sif_7) = kernel_kit::memory::FRAME_ALLOCATOR.lock();
         for region in boot_info.memory_map.iter() {
             if matches!(region.region_type, MemoryRegionType::Usable) {
-                let s = region.range.start_frame_number;
+                let s = region.range.start_frame_number.max(LOW_MEMORY_FRAMES);
                 let e = region.range.end_frame_number;
-                if e > s {
-                    let len = e - s;
-                    if len > best_len && len >= 256 {
-                        best_len = len;
-                        best_start = s;
-                    }
-                }
+                if e > s { obj.add_region((s * 4096) as usize, (e - s) as usize); }
             }
         }
-        if best_len == 0 {
+        let (total, regions) = (obj.total_count(), obj.region_count());
+        // Prove the physical-memory mapping reaches the top of every region
+        // (including RAM above 4 GiB) before any of it is handed out.
+        let mut highest = 0;
+        for (_, end) in obj.regions() {
+            let probe = kernel_kit::paging::phys_to_virt(end - 8) as *mut u64;
+            core::ptr::write_volatile(probe, 0xa70a_5eed_0000_0000 | end);
+            if core::ptr::read_volatile(probe) != 0xa70a_5eed_0000_0000 | end {
+                panic!("physical memory probe failed at {:#x}", end - 8);
+            }
+            core::ptr::write_volatile(probe, 0);
+            highest = highest.max(end);
+        }
+        kernel_kit::memory::FRAME_ALLOCATOR.unlock(sif_7);
+        if total < 256 {
             panic!("No usable memory region found for frame allocator");
         }
-        let base_phys = (best_start * 4096) as usize;
-        let num_frames = (best_len as usize).min(kernel_kit::memory::FRAMES_MAX);
-        let (obj, sif_7) = kernel_kit::memory::FRAME_ALLOCATOR.lock();
-        obj.init(base_phys, num_frames);
-        kernel_kit::memory::FRAME_ALLOCATOR.unlock(sif_7);
+        use core::fmt::Write;
+        let _ = writeln!(EmergencySerial, "MEMORY_READY frames={} mib={} regions={} top={:#x} probe=ok", total, total / 256, regions, highest);
     }
     let (obj, sif_3) = kernel_kit::serial::SERIAL1.lock();
     obj.send(b'B');

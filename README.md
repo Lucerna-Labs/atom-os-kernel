@@ -25,6 +25,8 @@ been validated.
 - **Process lifecycle:** `spawn`, parent-owned `wait`, exit status, sleeping,
   orphan cleanup, and resource reclamation after a process stops using its
   address space and kernel stack.
+- **Physical memory:** every usable RAM region from the boot memory map,
+  including RAM above QEMU's 4 GiB PCI hole; the test VM boots with 8 GiB.
 - **Memory allocation:** a kernel slab allocator with reusable large/aligned
   allocations, plus a Rust userspace allocator backed by mapped private pages.
 - **Scheduling and syscalls:** round-robin preemption, `int 0x80` and fast
@@ -126,8 +128,9 @@ target/x86_64-os/release/bootimage-x86_64-kernel.bin
 
 Use [`test-native.sh`](scripts/test-native.sh) for native checks and
 [`boot-test.py`](scripts/boot-test.py) for OS acceptance. The acceptance run is
-headless, injects keyboard input through QMP, and records serial output and
-machine-readable results. Each run requires a **new output directory**, creates
+headless, boots the guest with 8 GiB of RAM (`--memory` changes this), injects
+keyboard input through QMP, and records serial output and machine-readable
+results. Each run requires a **new output directory**, creates
 an isolated **8 MiB test disk**, and stops its QEMU instances when finished.
 
 For hardware acceleration on a machine with KVM available:
@@ -255,7 +258,7 @@ with `virtio-blk-pci,disable-modern=on`; the storage contracts follow the
 | User stack | 32 KiB per process, with a guard page |
 | Heap address window | 16 MiB per process |
 | Individual user allocation | Up to 1 MiB |
-| Physical frame pool | Capped at 64 MiB |
+| Physical memory | All usable RAM below 16 GiB physical; tests run with 8 GiB |
 | Open file descriptors | 16 per process |
 | IPC queue | 4 messages per recipient; up to 255 message bytes |
 | RAM directory | 256 entries, including embedded programs |

@@ -318,6 +318,37 @@ fn scheduler_uses_idle_when_all_tasks_are_blocked() {
 }
 
 #[test]
+fn frame_allocator_spans_multiple_regions_up_to_8_gib() {
+    let mut frames = Box::new(memory::FrameAllocator::new());
+    // QEMU with 8 GiB: about 3 GiB below the PCI hole, 5 GiB above 4 GiB.
+    let low = frames.add_region(0x100000, (3 << 30) / 4096 - 256);
+    let high = frames.add_region(4 << 30, (5 << 30) / 4096);
+    assert_eq!(frames.region_count(), 2);
+    assert_eq!(frames.total_count(), low + high);
+    assert!(frames.total_count() * 4096 >= (8u64 << 30) as usize - (1 << 20));
+    assert_eq!(frames.add_region(0x200000, 4), 0, "overlapping region accepted");
+    // Never hand out frames from the hole between the regions.
+    frames.free_frame(3 << 30);
+    assert_eq!(frames.free_count(), low + high);
+    // Drain the low region and confirm allocation continues above 4 GiB.
+    let run = frames.alloc_contiguous(low).unwrap();
+    assert_eq!(run, 0x100000);
+    let above = frames.alloc_frame().unwrap();
+    assert_eq!(above, 4 << 30);
+    let big = frames.alloc_contiguous(512).unwrap();
+    assert!(big > 4 << 30);
+    assert_eq!(frames.free_count(), high - 513);
+    frames.free_frame(above);
+    frames.free_frame(above);
+    assert_eq!(frames.free_count(), high - 512, "double free counted twice");
+    for page in 0..512 { frames.free_frame(big + page * 4096); }
+    for page in 0..low as u64 { frames.free_frame(run + page * 4096); }
+    assert_eq!(frames.free_count(), low + high);
+    // A region past the 16 GiB tracking limit is clipped, not misindexed.
+    assert_eq!(frames.add_region((16 << 30) - 4096, 8), 1);
+}
+
+#[test]
 fn ramfs_remove_and_rename_keep_other_handles_stable() {
     let mut root = fs::AtomNode::Directory(Vec::new());
     let kept = root.get_or_create_file("kept.txt").unwrap();

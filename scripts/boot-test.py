@@ -13,11 +13,11 @@ import uuid
 
 
 class Guest:
-    def __init__(self, source, output, disk, accel):
+    def __init__(self, source, output, disk, accel, memory):
         self.output = output
         output.mkdir()
         image = source / "target/x86_64-os/release/bootimage-x86_64-kernel.bin"
-        command = ["qemu-system-x86_64", "-accel", accel, "-m", "128M", "-smp", "1",
+        command = ["qemu-system-x86_64", "-accel", accel, "-m", memory, "-smp", "1",
                    "-drive", f"format=raw,file={image},snapshot=on",
                    "-drive", f"if=none,format=raw,file={disk},id=atomdata,cache=writeback",
                    "-device", "virtio-blk-pci,drive=atomdata,disable-modern=on",
@@ -119,6 +119,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--accel", choices=["kvm", "tcg"], default="tcg")
     parser.add_argument("--rounds", type=int, default=48)
+    parser.add_argument("--memory", default="8G", help="guest RAM, in QEMU -m syntax (default 8G)")
     args = parser.parse_args()
     output = args.output.resolve(); output.mkdir(parents=True, exist_ok=False)
     source = args.source.resolve()
@@ -126,7 +127,7 @@ def main():
     with disk.open("xb") as stream: stream.truncate(8 * 1024 * 1024)
     image = source / "target/x86_64-os/release/bootimage-x86_64-kernel.bin"
     token = "persist-" + uuid.uuid4().hex[:16]
-    result = {"acceleration": args.accel, "image_sha256": hashlib.sha256(image.read_bytes()).hexdigest(),
+    result = {"acceleration": args.accel, "memory": args.memory, "image_sha256": hashlib.sha256(image.read_bytes()).hexdigest(),
               "nonce": token, "checks": {}, "disk": str(disk)}
     started = time.monotonic()
     guest = None
@@ -136,9 +137,15 @@ def main():
         print(name + " PASS", flush=True)
 
     try:
-        guest = Guest(source, output / "first", disk, args.accel)
+        guest = Guest(source, output / "first", disk, args.accel, args.memory)
         result["qmp_kvm"] = guest.kvm
         guest.ready(); passed("BOOT_HEAP_BENCH")
+        match = guest.wait(r"MEMORY_READY frames=(\d+) mib=(\d+) regions=(\d+) top=(0x[0-9a-f]+) probe=ok")
+        guest_mib = guest.qmp("query-memory-size-summary")["base-memory"] >> 20
+        result["memory_ready"] = {"frames": int(match[1]), "mib": int(match[2]), "regions": int(match[3]), "top": match[4], "guest_mib": guest_mib}
+        # All but firmware, the first 1 MiB and the boot image's own frames.
+        assert int(match[2]) >= guest_mib - 64, match[0]
+        passed("PHYSICAL_MEMORY_DISCOVERED")
         guest.command("help", "commands:"); passed("KEYBOARD")
         guest.command("ls", r"shell\.elf.*daemon\.elf"); passed("RAMFS_LIST")
         guest.command(f"echo {token} > durable.txt", "> ")
@@ -195,7 +202,7 @@ def main():
         guest.command("sync", "SYNC_OK")
         guest.close(); guest = None
         result["disk_sha256_after_save"] = hashlib.sha256(disk.read_bytes()).hexdigest()
-        guest = Guest(source, output / "cold", disk, args.accel)
+        guest = Guest(source, output / "cold", disk, args.accel, args.memory)
         guest.ready()
         guest.command("cat durable.txt", re.escape(token + "\n" + second + "\n")); passed("COLD_BOOT_EXACT_CONTENT")
         offset = len(guest.serial())
