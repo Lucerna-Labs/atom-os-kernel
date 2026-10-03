@@ -28,7 +28,7 @@ fn main() {
     let fd = rt::open(&held); assert_ne!(fd, ERROR);
     assert_eq!(rt::call(SYS_TRUNCATE, fd, 0), 0);
     for i in 0..32 {
-        let name = alloc::format!("growth{}.txt", i);
+        let name = alloc::format!("growth{}-{}.txt", pid % 16, i);
         let temporary = rt::open(&name); assert_ne!(temporary, ERROR); rt::close(temporary);
     }
     assert!(rt::write(fd, b"stable handle")); rt::close(fd);
@@ -47,7 +47,7 @@ fn main() {
     for &expected in b"stable handle" { assert_eq!(rt::read(fd), Some(expected)); }
     rt::close(fd);
     assert!(rt::remove(&moved) && !rt::remove(&moved));
-    for i in 0..32 { assert!(rt::remove(&alloc::format!("growth{}.txt", i))); }
+    for i in 0..32 { assert!(rt::remove(&alloc::format!("growth{}-{}.txt", pid % 16, i))); }
     let mut ours = false;
     for process in rt::processes() { if process.pid as u64 == pid && process.name() == "worker.elf" { ours = true; } }
     assert!(ours);
