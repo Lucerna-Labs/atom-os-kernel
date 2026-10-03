@@ -4,10 +4,29 @@ use kernel_kit::elf::Image;
 use kernel_kit::paging::phys_to_virt;
 use kernel_kit::trap::TrapFrame;
 
+/// Finds a program: a path with a `/` as given, otherwise `/bin/<name>` and then
+/// `/<name>`.
+pub fn find_program(fs: &kernel_kit::fs::Fs, name: &str) -> Option<kernel_kit::fs::Ino> {
+    if name.contains('/') { return fs.resolve(name).ok(); }
+    let bin = alloc::format!("/{}/{}", kernel_kit::fs::BIN, name);
+    fs.resolve(&bin).or_else(|_| fs.resolve(name)).ok()
+}
+
+/// Largest program image read from a saved file.
+const PROGRAM_MAX: u64 = 64 << 20;
+
 pub fn load_image(name: &str, kernel_root: u64) -> Result<(AddressSpace, u64), MapError> {
     let fs = kernel_kit::fs::ROOT_FS.lock();
     let result = (|| {
-        let bytes = fs.file(name).ok_or(MapError::Address)?;
+        let ino = find_program(fs, name).ok_or(MapError::Address)?;
+        kernel_kit::storage::ensure_loaded(fs, ino).map_err(|_| MapError::Address)?;
+        let file = fs.node(ino).and_then(|n| n.file()).ok_or(MapError::Address)?;
+        let owned;
+        let bytes: &[u8] = match &file.content {
+            kernel_kit::fs::Content::Builtin(bytes) => bytes,
+            kernel_kit::fs::Content::Data(data) if data.len() <= PROGRAM_MAX => { owned = data.to_vec(); &owned }
+            _ => return Err(MapError::Address),
+        };
         let image = Image::parse(bytes).map_err(|_| MapError::Address)?;
         let mut space = AddressSpace::new(kernel_root)?;
         let pages = ((image.end - image.start) / 4096) as usize;

@@ -82,7 +82,7 @@ class Guest:
         raise RuntimeError(f"missing {expression!r}; serial tail: {self.serial()[-2500:]}")
 
     def keys(self, text):
-        mapping = {" ": "spc", "\n": "ret", ".": "dot", ">": "kp_add", "-": "minus"}
+        mapping = {" ": "spc", "\n": "ret", ".": "dot", ">": "kp_add", "-": "minus", "/": "slash"}
         for character in text:
             self.qmp("send-key", {"keys": [{"type": "qcode", "data": mapping.get(character, character)}], "hold-time": 20})
             time.sleep(0.04)
@@ -124,7 +124,7 @@ def main():
     output = args.output.resolve(); output.mkdir(parents=True, exist_ok=False)
     source = args.source.resolve()
     disk = output / "data.img"
-    with disk.open("xb") as stream: stream.truncate(8 * 1024 * 1024)
+    with disk.open("xb") as stream: stream.truncate(64 * 1024 * 1024)
     image = source / "target/x86_64-os/release/bootimage-x86_64-kernel.bin"
     token = "persist-" + uuid.uuid4().hex[:16]
     result = {"acceleration": args.accel, "memory": args.memory, "image_sha256": hashlib.sha256(image.read_bytes()).hexdigest(),
@@ -147,7 +147,7 @@ def main():
         assert int(match[2]) >= guest_mib - 64, match[0]
         passed("PHYSICAL_MEMORY_DISCOVERED")
         guest.command("help", "commands:"); passed("KEYBOARD")
-        guest.command("ls", r"shell\.elf.*daemon\.elf"); passed("RAMFS_LIST")
+        guest.command("ls /bin", r"daemon\.elf[\s\S]*shell\.elf"); passed("RAMFS_LIST")
         guest.command(f"echo {token} > durable.txt", "> ")
         guest.command("cat durable.txt", re.escape(token) + r"\n"); passed("RAMFS_WRITE_READ")
         guest.command("msg acceptance ipc", r"Received IPC: acceptance ipc"); passed("IPC_DELIVERY")
@@ -178,25 +178,53 @@ def main():
         passed("PS_KILL_REAP")
         guest.command("echo doomed > doomed.txt", "> ")
         guest.command("mv doomed.txt kept.txt", "renamed")
-        listing = guest.command("ls", r"shell\.elf[^\n]*\n")
+        listing = guest.command("ls", r"bin/\n[\s\S]*?\n> ")
         assert "kept.txt" in listing[0] and "doomed.txt" not in listing[0], listing[0]
         guest.command("cat kept.txt", r"doomed\n")
         guest.command("echo spare > spare.txt", "> ")
         guest.command("mv kept.txt spare.txt", "mv failed")
         guest.command("rm spare.txt", "removed")
         guest.command("rm worker.elf", "rm failed")
+        guest.command("rm bin/worker.elf", "rm failed: read-only")
         guest.command("mv shell.elf x.elf", "mv failed")
+        guest.command("mv bin/shell.elf x.elf", "mv failed: read-only")
         passed("FILE_REMOVE_RENAME")
+        guest.command("mkdir docs", "folder created")
+        guest.command("cd docs", "> ")
+        guest.command("pwd", r"\n/docs\n")
+        guest.command("echo inner > note.txt", "> ")
+        guest.command("cd /", "> ")
+        guest.command("cat docs/note.txt", r"inner\n")
+        guest.command("mkdir docs/deep", "folder created")
+        guest.command("mv docs/note.txt docs/deep", "renamed")
+        guest.command("ls docs/deep", r"note\.txt")
+        guest.command("rmdir docs", "rmdir failed: folder is not empty")
+        guest.command("cd docs/missing", "cd: not found")
+        passed("FOLDERS")
+        # 3 MB through the bulk read/write calls: far past the old 64 KiB file limit.
+        match = guest.command("fill docs/big.bin 3000000", r"FILL_OK bytes=3000000 sum=([0-9a-f]{16})", 60)
+        big_sum = match[1]
+        guest.command("sum docs/big.bin", rf"SUM bytes=3000000 sum={big_sum}", 60)
+        guest.command("cp docs/big.bin copy.bin", r"copied 2\.8 MB", 60)
+        guest.command("sum copy.bin", rf"SUM bytes=3000000 sum={big_sum}", 60)
+        guest.command("df", r"Unsaved changes")
+        result["large_file_sum"] = big_sum
+        passed("LARGE_FILE_BULK_IO")
         guest.command("faulttest", "FAULT_ISOLATION_OK status=142"); passed("USER_FAULT_CONTAINED")
-        guest.command("sync", "SYNC_OK"); passed("VIRTIO_FLUSH_COMMIT")
+        guest.command("sync", "SYNC_OK", 120)
+        guest.command("df", r"Everything is saved"); passed("VIRTIO_FLUSH_COMMIT")
         offset = len(guest.serial())
         guest.keys("reboot\n")
         guest.ready(offset)
         guest.command("cat durable.txt", re.escape(token) + r"\n"); passed("OS_REBOOT_PERSISTENCE")
         guest.command("cat kept.txt", r"doomed\n")
-        listing = guest.command("ls", r"shell\.elf[^\n]*\n")
+        listing = guest.command("ls", r"bin/\n[\s\S]*?\n> ")
         assert "spare.txt" not in listing[0] and "doomed.txt" not in listing[0], listing[0]
         passed("REMOVE_RENAME_PERSISTENCE")
+        guest.command("cat docs/deep/note.txt", r"inner\n")
+        guest.command("sum docs/big.bin", rf"SUM bytes=3000000 sum={big_sum}", 60)
+        guest.command("sum copy.bin", rf"SUM bytes=3000000 sum={big_sum}", 60)
+        passed("FOLDERS_AND_LARGE_FILES_PERSIST")
         second = "second-" + token
         guest.command(f"echo {second} > durable.txt", "> ")
         guest.command("sync", "SYNC_OK")

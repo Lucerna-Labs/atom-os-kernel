@@ -95,15 +95,121 @@ fn format_with(arguments: core::fmt::Arguments<'_>, sink: fn(&str)) {
 pub fn path_call(number: u64, path: &str) -> u64 {
     match path_buffer(path) { Some(buffer) => call(number, buffer.as_ptr() as u64, 0), None => ERROR }
 }
-fn path_buffer(path: &str) -> Option<[u8; 64]> {
-    if path.is_empty() || path.len() > 63 || path.as_bytes().contains(&0) { return None; }
-    let mut buffer = [0; 64]; buffer[..path.len()].copy_from_slice(path.as_bytes());
+fn path_buffer(path: &str) -> Option<alloc::vec::Vec<u8>> {
+    if path.is_empty() || path.len() > PATH_MAX || path.as_bytes().contains(&0) { return None; }
+    let mut buffer = alloc::vec::Vec::with_capacity(path.len() + 1);
+    buffer.extend_from_slice(path.as_bytes());
+    buffer.push(0);
     Some(buffer)
 }
-pub fn remove(path: &str) -> bool { path_call(SYS_REMOVE, path) == 0 }
-pub fn rename(from: &str, to: &str) -> bool {
-    let (Some(from), Some(to)) = (path_buffer(from), path_buffer(to)) else { return false; };
-    call(SYS_RENAME, from.as_ptr() as u64, to.as_ptr() as u64) == 0
+pub fn remove(path: &str) -> bool { remove_path(path).is_ok() }
+pub fn rename(from: &str, to: &str) -> bool { move_path(from, to).is_ok() }
+
+/// Why a file operation failed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FsError { NotFound, Exists, NotDir, IsDir, NotEmpty, Invalid, ReadOnly, Busy, NoSpace, Io, Other }
+impl FsError {
+    pub fn from_code(code: u64) -> Self {
+        match code {
+            ERR_NOT_FOUND => Self::NotFound, ERR_EXISTS => Self::Exists, ERR_NOT_DIR => Self::NotDir,
+            ERR_IS_DIR => Self::IsDir, ERR_NOT_EMPTY => Self::NotEmpty, ERR_INVALID => Self::Invalid,
+            ERR_READ_ONLY => Self::ReadOnly, ERR_BUSY => Self::Busy, ERR_NO_SPACE => Self::NoSpace,
+            ERR_IO => Self::Io, _ => Self::Other,
+        }
+    }
+    pub fn message(self) -> &'static str {
+        match self {
+            Self::NotFound => "not found", Self::Exists => "already exists", Self::NotDir => "not a folder",
+            Self::IsDir => "is a folder", Self::NotEmpty => "folder is not empty", Self::Invalid => "invalid name",
+            Self::ReadOnly => "read-only", Self::Busy => "in use", Self::NoSpace => "not enough space",
+            Self::Io => "disk error", Self::Other => "failed",
+        }
+    }
+}
+fn status(code: u64) -> Result<(), FsError> { if code == 0 { Ok(()) } else { Err(FsError::from_code(code)) } }
+fn path_status(number: u64, path: &str) -> Result<(), FsError> {
+    let buffer = path_buffer(path).ok_or(FsError::Invalid)?;
+    status(call(number, buffer.as_ptr() as u64, 0))
+}
+/// Removes a file or an empty folder.
+pub fn remove_path(path: &str) -> Result<(), FsError> { path_status(SYS_REMOVE, path) }
+/// Renames or moves a file or folder; the destination must not exist.
+pub fn move_path(from: &str, to: &str) -> Result<(), FsError> {
+    let (Some(from), Some(to)) = (path_buffer(from), path_buffer(to)) else { return Err(FsError::Invalid) };
+    status(call(SYS_RENAME, from.as_ptr() as u64, to.as_ptr() as u64))
+}
+pub fn mkdir(path: &str) -> Result<(), FsError> { path_status(SYS_MKDIR, path) }
+
+/// A file or folder as a listing reports it.
+#[derive(Clone, Debug)]
+pub struct Entry {
+    pub name: alloc::string::String,
+    /// Bytes for a file; number of entries for a folder.
+    pub size: u64,
+    pub modified: u64,
+    pub dir: bool, pub builtin: bool, pub unsaved: bool,
+}
+impl Entry {
+    fn from(raw: &DirEntry) -> Self {
+        let len = (raw.name_len as usize).min(raw.name.len());
+        Entry { name: alloc::string::String::from_utf8_lossy(&raw.name[..len]).into_owned(), size: raw.size,
+                modified: raw.modified, dir: raw.flags & ENTRY_DIR != 0, builtin: raw.flags & ENTRY_BUILTIN != 0,
+                unsaved: raw.flags & ENTRY_UNSAVED != 0 }
+    }
+}
+pub fn stat(path: &str) -> Result<Entry, FsError> {
+    let buffer = path_buffer(path).ok_or(FsError::Invalid)?;
+    let mut raw = DirEntry::default();
+    status(call(SYS_STAT, buffer.as_ptr() as u64, &mut raw as *mut DirEntry as u64))?;
+    Ok(Entry::from(&raw))
+}
+/// The entries of a folder, folders first, then by name.
+pub fn read_dir(path: &str) -> Result<alloc::vec::Vec<Entry>, FsError> {
+    let buffer = path_buffer(path).ok_or(FsError::Invalid)?;
+    let mut capacity = 64usize;
+    loop {
+        let mut raw = alloc::vec![DirEntry::default(); capacity];
+        let count = call3(SYS_READ_DIR, buffer.as_ptr() as u64, raw.as_mut_ptr() as u64, capacity as u64);
+        if count >= ERR_IO { return Err(FsError::from_code(count)); }
+        if count as usize > capacity && capacity < 4096 { capacity = (count as usize).min(4096); continue; }
+        let mut entries: alloc::vec::Vec<Entry> = raw.iter().take(count as usize).map(Entry::from).collect();
+        entries.sort_by(|a, b| b.dir.cmp(&a.dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+        return Ok(entries);
+    }
+}
+pub fn fs_info() -> FsInfo {
+    let mut info = FsInfo::default();
+    call(SYS_FS_INFO, &mut info as *mut FsInfo as u64, 0);
+    info
+}
+
+/// Path helpers. Paths are absolute; `join` resolves `.` and `..` against a folder.
+pub mod path {
+    use alloc::string::String;
+    use alloc::vec::Vec;
+    /// `relative` (or an absolute path) resolved against the folder `base`.
+    pub fn join(base: &str, relative: &str) -> String {
+        let mut parts: Vec<&str> = Vec::new();
+        let start = if relative.starts_with('/') { "" } else { base };
+        for part in start.split('/').chain(relative.split('/')) {
+            match part { "" | "." => {} ".." => { parts.pop(); } p => parts.push(p) }
+        }
+        let mut out = String::new();
+        for p in &parts { out.push('/'); out.push_str(p); }
+        if out.is_empty() { out.push('/'); }
+        out
+    }
+    /// The folder containing `path` ("/" for the root's children and the root).
+    pub fn parent(path: &str) -> String {
+        match path.trim_end_matches('/').rfind('/') { Some(0) | None => String::from("/"), Some(i) => String::from(&path[..i]) }
+    }
+    /// `parent` without allocating, with a trailing `/` so it names the folder itself
+    /// when joined ("/docs/a.txt" gives "/docs/").
+    pub fn parent_str(path: &str) -> &str {
+        match path.rfind('/') { Some(i) => &path[..=i], None => "/" }
+    }
+    /// The last component of `path`.
+    pub fn name(path: &str) -> &str { path.trim_end_matches('/').rsplit('/').next().unwrap_or("") }
 }
 pub fn kill(pid: u64) -> bool { call(SYS_KILL, pid, 0) == 0 }
 pub struct Process { pub pid: u32, pub parent: u32, pub state: u8, name: [u8; PROCESS_NAME_BYTES], name_len: u8 }
@@ -139,31 +245,60 @@ pub fn list_files() -> alloc::vec::Vec<FileEntry> {
             builtin: u32::from_le_bytes(record[68..72].try_into().unwrap()) & FILE_BUILTIN != 0 }
     }).collect()
 }
-/// Reads a whole file (up to 64 KiB).
+/// Reads a whole file (an existing one: a missing file is not created).
 pub fn read_file(path: &str) -> Option<alloc::vec::Vec<u8>> {
+    let entry = stat(path).ok().filter(|e| !e.dir)?;
     let fd = open(path);
     if fd == ERROR { return None; }
-    let mut bytes = alloc::vec::Vec::new();
-    while let Some(byte) = read(fd) { bytes.push(byte); if bytes.len() > 65536 { break; } }
+    let mut bytes = alloc::vec![0u8; entry.size as usize];
+    let mut done = 0;
+    while done < bytes.len() {
+        match file_read(fd, &mut bytes[done..]) { Ok(0) | Err(_) => break, Ok(n) => done += n }
+    }
+    bytes.truncate(done);
     close(fd);
     Some(bytes)
 }
-/// Replaces a file's contents.
-pub fn write_file(path: &str, bytes: &[u8]) -> bool {
+/// Replaces a file's contents, creating it if needed.
+pub fn write_file(path: &str, bytes: &[u8]) -> bool { write_file_status(path, bytes).is_ok() }
+pub fn write_file_status(path: &str, bytes: &[u8]) -> Result<(), FsError> {
     let fd = open(path);
-    if fd == ERROR { return false; }
-    let ok = call(SYS_TRUNCATE, fd, 0) == 0 && write(fd, bytes);
+    if fd == ERROR { return Err(stat(path).err().unwrap_or(FsError::IsDir)); }
+    let result = status(call(SYS_TRUNCATE, fd, 0)).and_then(|_| file_write_all(fd, bytes));
     close(fd);
-    ok
+    result
 }
-pub fn sync() -> bool { call(SYS_SYNC, 0, 0) == 0 }
+/// Reads at the descriptor's position; Ok(0) at the end of the file.
+pub fn file_read(fd: u64, buffer: &mut [u8]) -> Result<usize, FsError> {
+    let n = call3(SYS_FILE_READ, fd, buffer.as_mut_ptr() as u64, buffer.len().min(FILE_IO_MAX) as u64);
+    if n >= ERR_IO { Err(FsError::from_code(n)) } else { Ok(n as usize) }
+}
+/// Writes at the descriptor's position.
+pub fn file_write(fd: u64, bytes: &[u8]) -> Result<usize, FsError> {
+    let n = call3(SYS_FILE_WRITE, fd, bytes.as_ptr() as u64, bytes.len().min(FILE_IO_MAX) as u64);
+    if n >= ERR_IO { Err(FsError::from_code(n)) } else { Ok(n as usize) }
+}
+pub fn file_write_all(fd: u64, mut bytes: &[u8]) -> Result<(), FsError> {
+    while !bytes.is_empty() {
+        let n = file_write(fd, bytes)?;
+        if n == 0 { return Err(FsError::Other); }
+        bytes = &bytes[n..];
+    }
+    Ok(())
+}
+/// Moves the descriptor's position (clamped to the file size); returns it.
+pub fn seek(fd: u64, position: u64) -> u64 { call(SYS_SEEK, fd, position) }
+/// Saves every change to the data disk.
+pub fn sync() -> bool { sync_status().is_ok() }
+pub fn sync_status() -> Result<(), FsError> { status(call(SYS_SYNC, 0, 0)) }
 pub fn time() -> u64 { call(SYS_TIME, 0, 0) }
 pub fn ticks() -> u64 { call(SYS_TICKS, 0, 0) }
 pub fn open(path: &str) -> u64 { path_call(SYS_OPEN, path) }
 pub fn close(fd: u64) { call(SYS_CLOSE, fd, 0); }
 pub fn read(fd: u64) -> Option<u8> { let byte = call(SYS_READ_FILE, fd, 0); if byte == ERROR { None } else { Some(byte as u8) } }
+/// Appends to the end of the file.
 pub fn write(fd: u64, bytes: &[u8]) -> bool {
-    bytes.iter().all(|&byte| call(SYS_WRITE_FILE, fd, byte as u64) == 1)
+    seek(fd, u64::MAX) != ERROR && file_write_all(fd, bytes).is_ok()
 }
 pub fn spawn(path: &str) -> u64 { path_call(SYS_SPAWN, path) }
 pub fn wait(pid: u64) -> u64 { call(SYS_WAIT, pid, 0) }

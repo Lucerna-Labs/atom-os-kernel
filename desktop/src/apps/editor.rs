@@ -14,7 +14,8 @@ const TOOLBAR: [&str; 4] = ["New", "Open...", "Save", "Save As..."];
 const OPEN: u32 = 1;
 const SAVE_AS: u32 = 2;
 const DISCARD_THEN_OPEN: u32 = 3;
-const MAX_BYTES: usize = 65536;
+/// Largest document the editor holds (it keeps the text in memory as lines).
+const MAX_BYTES: usize = 16 << 20;
 
 static mut CLIPBOARD: String = String::new();
 fn clipboard() -> &'static mut String { unsafe { &mut *(&raw mut CLIPBOARD) } }
@@ -45,14 +46,21 @@ impl Editor {
         self.anchor = None; self.scroll = 0; self.hscroll = 0; self.modified = false;
     }
     fn text(&self) -> String { self.lines.join("\n") }
-    fn save_to(&mut self, name: &str) -> Action {
+    /// Writes the file and saves it to the data disk, so Save means saved.
+    fn save_to(&mut self, path: &str) -> Action {
         let text = self.text();
-        if text.len() > MAX_BYTES { return Action::Toast("Files are limited to 64 KiB".to_string()); }
-        if rt::write_file(name, text.as_bytes()) {
-            self.name = Some(name.to_string());
-            self.modified = false;
-            Action::Toast(alloc::format!("Saved {} (use Save to disk in Files to make it permanent)", name))
-        } else { Action::Toast(alloc::format!("Could not save {}", name)) }
+        let short = rt::path::name(path).to_string();
+        if text.len() > MAX_BYTES { return Action::Toast("The editor handles files up to 16 MB".to_string()); }
+        if let Err(e) = rt::write_file_status(path, text.as_bytes()) {
+            return Action::Toast(alloc::format!("Could not save {}: {}", short, e.message()));
+        }
+        self.name = Some(path.to_string());
+        self.modified = false;
+        Action::Toast(match rt::sync_status() {
+            Ok(()) => alloc::format!("Saved {}", short),
+            Err(rt::FsError::NotFound) => alloc::format!("Saved {} (no data disk: kept until restart)", short),
+            Err(e) => alloc::format!("Saved {}, but writing to disk failed: {}", short, e.message()),
+        })
     }
     fn save(&mut self) -> Action {
         match self.name.clone() {
@@ -121,7 +129,7 @@ impl Editor {
         if self.modified {
             return Action::Dialog(Box::new(Dialog::confirm("Unsaved Changes", "Discard your unsaved changes and open another file?", "Discard", true)), DISCARD_THEN_OPEN);
         }
-        Action::Dialog(Box::new(Picker::new(Mode::Open, "")), OPEN)
+        Action::Dialog(Box::new(Picker::new(Mode::Open, self.name.as_deref().map_or("", rt::path::parent_str))), OPEN)
     }
     fn command(&mut self, index: usize) -> Action {
         match index {
@@ -136,7 +144,7 @@ impl Editor {
 
 impl App for Editor {
     fn title(&self) -> String {
-        alloc::format!("{}{} - Text Editor", if self.modified { "* " } else { "" }, self.name.as_deref().unwrap_or("Untitled"))
+        alloc::format!("{}{} - Text Editor", if self.modified { "* " } else { "" }, self.name.as_deref().map_or("Untitled", rt::path::name))
     }
     fn icon(&self) -> Icon { Icon::Document }
     fn size(&self) -> (i32, i32) { (680, 480) }

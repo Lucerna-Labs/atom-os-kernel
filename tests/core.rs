@@ -134,18 +134,6 @@ fn scheduler_reuses_terminated_slots() {
             "a terminated task permanently occupies its slot");
 }
 
-#[test]
-fn ramfs_file_handle_survives_directory_growth() {
-    let mut root = fs::AtomNode::Directory(Vec::with_capacity(1));
-    let original = root.get_or_create_file("held.txt").unwrap() as usize;
-    for index in 0..64 {
-        root.get_or_create_file(&format!("new-{index}.txt")).unwrap();
-        let current = root.get_or_create_file("held.txt").unwrap() as usize;
-        assert_eq!(original, current,
-            "creating file {index} relocated the Vec object referenced by the existing FD");
-    }
-}
-
 fn elf_header() -> elf::Elf64_Ehdr {
     let mut header: elf::Elf64_Ehdr = unsafe { std::mem::zeroed() };
     header.e_ident[..7].copy_from_slice(&[0x7f, b'E', b'L', b'F', 2, 1, 1]);
@@ -231,79 +219,6 @@ fn elf_loader_checks_offsets_lengths_and_permissions() {
     assert!(elf::Image::parse(&wx).is_err());
 }
 
-use kernel_kit::virtio_blk::{BlockDevice, DiskError};
-use kernel_kit::storage::{Journal, Files, REQUIRED_SECTORS, PAYLOAD_SECTORS};
-
-// A fault-injection fixture for the production journal codec. Real virtio and
-// reboot acceptance are separate VM tests; this fixture models volatile cache.
-#[derive(Clone)]
-struct FaultDisk { live: Vec<[u8; 512]>, durable: Vec<[u8; 512]>, operations: usize, fail_at: Option<usize> }
-impl FaultDisk {
-    fn new() -> Self {
-        let data = vec![[0; 512]; REQUIRED_SECTORS as usize];
-        Self { live: data.clone(), durable: data, operations: 0, fail_at: None }
-    }
-    fn operation(&mut self) -> Result<(), DiskError> {
-        let at = self.operations; self.operations += 1;
-        if self.fail_at == Some(at) { Err(DiskError::Io) } else { Ok(()) }
-    }
-    fn power_cut(&mut self) { self.live = self.durable.clone(); self.fail_at = None; }
-}
-impl BlockDevice for FaultDisk {
-    fn sectors(&self) -> u64 { self.live.len() as u64 }
-    fn read_sector(&mut self, sector: u64, bytes: &mut [u8; 512]) -> Result<(), DiskError> { *bytes = self.live[sector as usize]; Ok(()) }
-    fn write_sector(&mut self, sector: u64, bytes: &[u8; 512]) -> Result<(), DiskError> { self.operation()?; self.live[sector as usize] = *bytes; Ok(()) }
-    fn flush(&mut self) -> Result<(), DiskError> { self.operation()?; self.durable = self.live.clone(); Ok(()) }
-}
-
-#[test]
-fn journal_preserves_exact_binary_data_across_power_cycle() {
-    let (mut journal, initial) = Journal::open(FaultDisk::new()).unwrap(); assert!(initial.is_empty());
-    let files: Files = vec![("binary.dat".into(), (0..4096).map(|n| (n % 251) as u8).collect())];
-    journal.commit(&files).unwrap(); journal.device.power_cut();
-    let (restored, read) = Journal::open(journal.device).unwrap();
-    assert_eq!(restored.generation, 1); assert_eq!(read, files);
-}
-
-#[test]
-fn interrupted_commit_retains_the_previous_generation() {
-    let original: Files = vec![("saved.txt".into(), b"original".to_vec())];
-    let replacement: Files = vec![("saved.txt".into(), vec![0x7e; 1100])];
-    let (mut base, _) = Journal::open(FaultDisk::new()).unwrap(); base.commit(&original).unwrap();
-    // Three payload sectors, flush, header sector, final flush: fail each step.
-    for failure in 0..6 {
-        let mut disk = base.device.clone(); disk.operations = 0; disk.fail_at = Some(failure);
-        let (mut journal, _) = Journal::open(disk).unwrap();
-        assert!(journal.commit(&replacement).is_err()); journal.device.power_cut();
-        let (restored, read) = Journal::open(journal.device).unwrap();
-        assert_eq!(restored.generation, 1, "failure={failure}"); assert_eq!(read, original);
-    }
-}
-
-#[test]
-fn journal_recovers_from_corrupt_newest_header() {
-    let (mut journal, _) = Journal::open(FaultDisk::new()).unwrap();
-    let old: Files = vec![("keep.txt".into(), b"old".to_vec())];
-    journal.commit(&old).unwrap();
-    journal.commit(&vec![("keep.txt".into(), b"new".to_vec())]).unwrap();
-    journal.device.live[0][40] ^= 1;
-    let (restored, files) = Journal::open(journal.device).unwrap();
-    assert_eq!(restored.generation, 1); assert_eq!(files, old);
-}
-
-#[test]
-fn journal_rejects_unknown_disk_and_invalid_file_metadata() {
-    let mut disk = FaultDisk::new(); disk.live[0][0] = 42;
-    assert!(matches!(Journal::open(disk), Err(DiskError::Corrupt)));
-    for files in [vec![("shell.elf".into(), vec![1])], vec![("../bad".into(), vec![])],
-                  vec![("a".into(), vec![]), ("a".into(), vec![])], vec![("huge".into(), vec![0; 65537])]] {
-        assert!(kernel_kit::storage::encode(&files).is_err());
-    }
-    let mut payload = vec![0; PAYLOAD_SECTORS as usize * 512 + 1];
-    assert!(kernel_kit::storage::decode(&payload).is_err());
-    payload.truncate(4); payload[..4].copy_from_slice(&129u32.to_le_bytes());
-    assert!(kernel_kit::storage::decode(&payload).is_err());
-}
 
 #[test]
 fn scheduler_uses_idle_when_all_tasks_are_blocked() {
@@ -346,40 +261,6 @@ fn frame_allocator_spans_multiple_regions_up_to_8_gib() {
     assert_eq!(frames.free_count(), low + high);
     // A region past the 16 GiB tracking limit is clipped, not misindexed.
     assert_eq!(frames.add_region((16 << 30) - 4096, 8), 1);
-}
-
-#[test]
-fn ramfs_remove_and_rename_keep_other_handles_stable() {
-    let mut root = fs::AtomNode::Directory(Vec::new());
-    let kept = root.get_or_create_file("kept.txt").unwrap();
-    unsafe { (*kept).extend_from_slice(b"kept"); }
-    let moved = root.get_or_create_file("old.txt").unwrap();
-    unsafe { (*moved).extend_from_slice(b"moved"); }
-    root.get_or_create_file("gone.txt").unwrap();
-
-    assert!(root.remove("gone.txt"));
-    assert!(!root.remove("gone.txt"));
-    assert!(root.file("gone.txt").is_none());
-    assert_eq!(root.file_address("kept.txt"), Some(kept as u64));
-
-    assert!(!root.rename("old.txt", "kept.txt"), "rename must not replace an existing file");
-    assert!(!root.rename("old.txt", ""));
-    assert!(!root.rename("old.txt", "a/b"));
-    assert!(!root.rename("missing.txt", "new.txt"));
-    assert!(root.rename("old.txt", "new.txt"));
-    assert!(root.file("old.txt").is_none());
-    assert_eq!(root.file_address("new.txt"), Some(moved as u64), "rename relocated the data object");
-    assert_eq!(root.file("new.txt").unwrap().as_slice(), b"moved");
-    assert_eq!(unsafe { (*kept).as_slice() }, b"kept");
-}
-
-#[test]
-fn builtin_programs_are_excluded_from_snapshots() {
-    for name in fs::BUILTINS {
-        assert!(kernel_kit::storage::builtin(name));
-        assert!(kernel_kit::storage::encode(&vec![(name.to_string(), Vec::new())]).is_err());
-    }
-    assert!(!fs::builtin("notes.txt"));
 }
 
 #[test]
@@ -517,4 +398,325 @@ fn display_mode_follows_edid_and_video_memory() {
     // An unusual preferred mode comes first, then standard modes below it.
     let list = candidates(Some((1280, 800)), (16000, 12000, mib(16)));
     assert_eq!(&list[..3], &[(1280, 800), (1280, 720), (1024, 768)]);
+}
+
+// ---- File system and storage -------------------------------------------------
+//
+// File contents live in "physical" frames. Natively, a fixed low mapping stands in
+// for physical memory (the kernel's physical-memory offset is 0 here), handed once to
+// the real frame allocator, so the production FileData and Store code run unchanged.
+
+use kernel_kit::fs::{Content, Fs, FsError, ROOT};
+use kernel_kit::storage::{legacy, Store, BLOCK};
+use kernel_kit::virtio_blk::{BlockDevice, DiskError};
+
+extern "C" { fn mmap(addr: *mut u8, len: usize, prot: i32, flags: i32, fd: i32, offset: i64) -> *mut u8; }
+
+fn host_frames() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        const BASE: usize = 0x1_0000_0000; // Inside the allocator's 16 GiB range.
+        const BYTES: usize = 512 << 20;
+        // PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE.
+        let at = unsafe { mmap(BASE as *mut u8, BYTES, 3, 0x02 | 0x20 | 0x100000, -1, 0) };
+        assert_eq!(at as usize, BASE, "could not map the stand-in physical memory");
+        let (frames, flags) = memory::FRAME_ALLOCATOR.lock();
+        frames.add_region(BASE, BYTES / 4096);
+        memory::FRAME_ALLOCATOR.unlock(flags);
+    });
+}
+fn free_frames() -> usize {
+    let (frames, flags) = memory::FRAME_ALLOCATOR.lock();
+    let n = frames.free_count();
+    memory::FRAME_ALLOCATOR.unlock(flags);
+    n
+}
+/// Tests touching the shared frame pool or counting it run one at a time.
+static FRAMES: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+// A fault-injection disk modelling a volatile write cache: `power_cut` drops every
+// write since the last flush, and `fail_at` makes the n-th write or flush fail.
+#[derive(Clone)]
+struct FaultDisk { live: Vec<[u8; 512]>, durable: Vec<[u8; 512]>, operations: usize, fail_at: Option<usize>, written: usize }
+impl FaultDisk {
+    fn new(bytes: usize) -> Self {
+        let data = vec![[0; 512]; bytes / 512];
+        Self { live: data.clone(), durable: data, operations: 0, fail_at: None, written: 0 }
+    }
+    fn operation(&mut self) -> Result<(), DiskError> {
+        let at = self.operations; self.operations += 1;
+        if self.fail_at == Some(at) { Err(DiskError::Io) } else { Ok(()) }
+    }
+    fn power_cut(&mut self) { self.live = self.durable.clone(); self.fail_at = None; self.operations = 0; }
+}
+impl BlockDevice for FaultDisk {
+    fn sectors(&self) -> u64 { self.live.len() as u64 }
+    fn read_sector(&mut self, sector: u64, bytes: &mut [u8; 512]) -> Result<(), DiskError> { *bytes = self.live[sector as usize]; Ok(()) }
+    fn write_sector(&mut self, sector: u64, bytes: &[u8; 512]) -> Result<(), DiskError> {
+        self.operation()?; self.written += 1; self.live[sector as usize] = *bytes; Ok(())
+    }
+    fn flush(&mut self) -> Result<(), DiskError> { self.operation()?; self.durable = self.live.clone(); Ok(()) }
+}
+
+fn pattern(len: usize, seed: u64) -> Vec<u8> { (0..len).map(|i| ((i as u64 * 31 + seed) % 251) as u8).collect() }
+fn write_file(fs: &mut Fs, path: &str, bytes: &[u8]) {
+    let ino = fs.open_or_create(path, 7).unwrap();
+    fs.truncate(ino, 0, 7).unwrap();
+    assert_eq!(fs.write(ino, 0, bytes, 7), Ok(bytes.len()));
+}
+fn read_file<D: BlockDevice>(fs: &mut Fs, store: &mut Store<D>, path: &str) -> Vec<u8> {
+    let ino = fs.resolve(path).unwrap();
+    store.load(fs.file_mut(ino).unwrap()).unwrap();
+    let mut out = vec![0; fs.node(ino).unwrap().size() as usize];
+    assert_eq!(fs.read(ino, 0, &mut out), Ok(out.len()));
+    out
+}
+
+#[test]
+fn fs_tree_creates_moves_and_removes_by_path() {
+    let _guard = FRAMES.lock().unwrap_or_else(|e| e.into_inner());
+    host_frames();
+    let mut fs = Fs::new();
+    fs.mkdir("/docs", 1).unwrap();
+    fs.mkdir("/docs/work", 1).unwrap();
+    assert_eq!(fs.mkdir("/docs", 1), Err(FsError::Exists));
+    assert_eq!(fs.mkdir("/missing/x", 1), Err(FsError::NotFound));
+    write_file(&mut fs, "/docs/work/plan.txt", b"plan");
+    write_file(&mut fs, "notes.txt", b"top");                       // No leading slash: the root.
+    assert_eq!(fs.resolve("/notes.txt"), fs.resolve("notes.txt"));
+    assert_eq!(fs.open_or_create("/docs/work/plan.txt/x", 1), Err(FsError::NotDir));
+    assert_eq!(fs.open_or_create("/docs", 1), Err(FsError::IsDir));
+    for bad in ["/a/../b", "/./x", "/bad\u{7}name", &"n".repeat(256)] { assert_eq!(fs.open_or_create(bad, 1), Err(FsError::Invalid)); }
+
+    let plan = fs.resolve("/docs/work/plan.txt").unwrap();
+    assert_eq!(fs.path_of(plan), "/docs/work/plan.txt");
+    // Moving a folder carries its contents and keeps inode numbers (open files stay valid).
+    fs.rename("/docs/work", "/archive", 2).unwrap();
+    assert_eq!(fs.resolve("/archive/plan.txt"), Ok(plan));
+    assert_eq!(fs.rename("/docs", "/docs/inner", 2), Err(FsError::Invalid), "a folder cannot move into itself");
+    fs.rename("/archive", "/docs/archive", 2).unwrap();
+    assert_eq!(fs.rename("/docs", "/docs/archive/deeper", 2), Err(FsError::Invalid));
+    assert_eq!(fs.rename("/notes.txt", "/docs/archive/plan.txt", 2), Err(FsError::Exists));
+    assert_eq!(fs.remove("/docs", |_| false), Err(FsError::NotEmpty));
+    assert_eq!(fs.remove("/docs/archive/plan.txt", |ino| ino == plan), Err(FsError::Busy));
+    fs.remove("/docs/archive/plan.txt", |_| false).unwrap();
+    fs.remove("/docs/archive", |_| false).unwrap();
+    fs.remove("/docs", |_| false).unwrap();
+    assert_eq!(fs.resolve("/docs"), Err(FsError::NotFound));
+
+    // Boot-image programs: in /bin, read-only, never removed, renamed or moved.
+    static PROGRAM: [u8; 5] = *b"\x7fELF!";
+    let shell = fs.install_builtin("shell.elf", &PROGRAM).unwrap();
+    assert_eq!(fs.resolve("/bin/shell.elf"), Ok(shell));
+    assert!(fs.is_builtin(shell));
+    assert_eq!(fs.write(shell, 0, b"x", 3), Err(FsError::ReadOnly));
+    assert_eq!(fs.remove("/bin/shell.elf", |_| false), Err(FsError::ReadOnly));
+    assert_eq!(fs.rename("/bin", "/programs", 3), Err(FsError::ReadOnly));
+    assert_eq!(fs.rename("/bin/shell.elf", "/x.elf", 3), Err(FsError::ReadOnly));
+    let mut head = [0u8; 4];
+    assert_eq!(fs.read(shell, 1, &mut head), Ok(4));
+    assert_eq!(&head, b"ELF!");
+}
+
+#[test]
+fn file_data_handles_large_sparse_and_truncated_files_without_leaking_frames() {
+    let _guard = FRAMES.lock().unwrap_or_else(|e| e.into_inner());
+    host_frames();
+    let before = free_frames();
+    {
+        let mut fs = Fs::new();
+        let ino = fs.open_or_create("/big.bin", 1).unwrap();
+        // 5 MiB in uneven pieces crosses index frames (2 MiB each) and page boundaries.
+        let data = pattern(5 << 20, 3);
+        for chunk in data.chunks(100_003).enumerate() {
+            assert_eq!(fs.write(ino, (chunk.0 * 100_003) as u64, chunk.1, 1), Ok(chunk.1.len()));
+        }
+        let mut back = vec![0; data.len()];
+        assert_eq!(fs.read(ino, 0, &mut back), Ok(data.len()));
+        assert!(back == data);
+        // A write past the end leaves a gap that reads as zeros.
+        fs.write(ino, (6 << 20) + 5, b"tail", 1).unwrap();
+        let mut gap = vec![1u8; 4096];
+        fs.read(ino, (5 << 20) + 100, &mut gap).unwrap();
+        assert!(gap.iter().all(|&b| b == 0));
+        // Shrink to an odd length, then grow: the old bytes must not reappear.
+        fs.truncate(ino, 10_000, 1).unwrap();
+        fs.truncate(ino, 20_000, 1).unwrap();
+        let mut tail = vec![1u8; 10_000];
+        assert_eq!(fs.read(ino, 10_000, &mut tail), Ok(10_000));
+        assert!(tail.iter().all(|&b| b == 0), "bytes past a truncation came back");
+        assert_eq!(fs.write(ino, kernel_kit::fs::FILE_MAX, b"x", 1), Err(FsError::NoSpace));
+        // Capacity: with room for 4 blocks in total, a 5th block is refused.
+        let mut small = Fs::new();
+        small.capacity = Some(4);
+        let f = small.open_or_create("/f", 1).unwrap();
+        assert_eq!(small.write(f, 0, &vec![1; 4 * 4096], 1), Ok(4 * 4096));
+        assert_eq!(small.write(f, 4 * 4096, b"x", 1), Err(FsError::NoSpace));
+        small.truncate(f, 4096, 1).unwrap();
+        assert_eq!(small.blocks, 1);
+    }
+    assert_eq!(free_frames(), before, "file frames were not all returned");
+}
+
+fn sample_tree(fs: &mut Fs) {
+    fs.mkdir("/docs", 10).unwrap();
+    fs.mkdir("/docs/photos", 11).unwrap();
+    fs.mkdir("/empty", 12).unwrap();
+    write_file(fs, "/docs/report.txt", b"quarterly numbers\n");
+    write_file(fs, "/docs/photos/raw.bin", &pattern(3 << 20, 9)); // 3 MiB: far past the old 64 KiB limit.
+    write_file(fs, "/empty.txt", b"");
+    static PROGRAM: [u8; 4] = *b"prog";
+    fs.install_builtin("shell.elf", &PROGRAM).unwrap();
+}
+
+#[test]
+fn store_saves_folders_and_large_files_and_loads_them_lazily() {
+    let _guard = FRAMES.lock().unwrap_or_else(|e| e.into_inner());
+    host_frames();
+    let mut fs = Fs::new();
+    let mut store = Store::open(FaultDisk::new(32 << 20), &mut fs).unwrap();
+    assert_eq!(store.generation, 0);
+    sample_tree(&mut fs);
+    assert!(fs.unsaved());
+    store.commit(&mut fs).unwrap();
+    assert!(!fs.unsaved());
+    store.device.power_cut();
+
+    let mut fs = Fs::new();
+    let mut store = Store::open(store.device, &mut fs).unwrap();
+    assert_eq!(store.generation, 1);
+    assert!(fs.node(fs.resolve("/empty").unwrap()).unwrap().is_dir());
+    assert!(fs.resolve("/bin/shell.elf").is_err(), "a boot-image program was saved");
+    let raw = fs.resolve("/docs/photos/raw.bin").unwrap();
+    assert!(matches!(fs.node(raw).unwrap().file().unwrap().content, Content::Unloaded), "contents load on first open");
+    assert_eq!(fs.node(raw).unwrap().modified, 7);
+    assert!(read_file(&mut fs, &mut store, "/docs/photos/raw.bin") == pattern(3 << 20, 9));
+    assert_eq!(read_file(&mut fs, &mut store, "/docs/report.txt"), b"quarterly numbers\n");
+    assert_eq!(read_file(&mut fs, &mut store, "/empty.txt"), b"");
+
+    // A second save writes only what changed: one small file, not the 3 MiB one.
+    write_file(&mut fs, "/docs/report.txt", b"revised\n");
+    fs.rename("/empty.txt", "/docs/empty.txt", 20).unwrap();
+    store.device.written = 0;
+    store.commit(&mut fs).unwrap();
+    assert!(store.device.written < 64, "rewrote {} sectors for a small change", store.device.written);
+    store.device.power_cut();
+    let mut fs = Fs::new();
+    let mut store = Store::open(store.device, &mut fs).unwrap();
+    assert_eq!(store.generation, 2);
+    assert_eq!(read_file(&mut fs, &mut store, "/docs/report.txt"), b"revised\n");
+    assert!(fs.resolve("/docs/empty.txt").is_ok() && fs.resolve("/empty.txt").is_err());
+    assert!(read_file(&mut fs, &mut store, "/docs/photos/raw.bin") == pattern(3 << 20, 9));
+    // Saving with nothing changed writes nothing.
+    store.device.written = 0;
+    store.commit(&mut fs).unwrap();
+    assert_eq!((store.generation, store.device.written), (2, 0));
+}
+
+#[test]
+fn interrupted_save_keeps_the_previous_generation_at_every_step() {
+    let _guard = FRAMES.lock().unwrap_or_else(|e| e.into_inner());
+    host_frames();
+    let mut fs = Fs::new();
+    let mut store = Store::open(FaultDisk::new(1 << 20), &mut fs).unwrap();
+    fs.mkdir("/keep", 1).unwrap();
+    write_file(&mut fs, "/keep/a.txt", b"original");
+    store.commit(&mut fs).unwrap();
+    let saved = store.device.clone();
+    // Count the operations of the replacement save, then fail each one in turn.
+    let change = |fs: &mut Fs| {
+        write_file(fs, "/keep/a.txt", &pattern(9000, 4));
+        fs.mkdir("/new", 2).unwrap();
+    };
+    let steps = {
+        let mut fs = Fs::new();
+        let mut trial = Store::open(saved.clone(), &mut fs).unwrap();
+        trial.load(fs.file_mut(fs.resolve("/keep/a.txt").unwrap()).unwrap()).unwrap();
+        trial.device.operations = 0;
+        change(&mut fs);
+        trial.commit(&mut fs).unwrap();
+        trial.device.operations
+    };
+    assert!(steps > 10);
+    for failure in 0..steps {
+        let mut fs = Fs::new();
+        let mut disk = saved.clone();
+        disk.fail_at = Some(failure);
+        let mut store = Store::open(disk, &mut fs).unwrap();
+        store.load(fs.file_mut(fs.resolve("/keep/a.txt").unwrap()).unwrap()).unwrap();
+        store.device.operations = 0;
+        store.device.fail_at = Some(failure);
+        change(&mut fs);
+        assert!(store.commit(&mut fs).is_err(), "failure={failure}");
+        assert!(fs.unsaved(), "a failed save marked changes as saved");
+        store.device.power_cut();
+        let mut fs = Fs::new();
+        let mut store = Store::open(store.device, &mut fs).unwrap();
+        assert_eq!(store.generation, 1, "failure={failure}");
+        assert_eq!(read_file(&mut fs, &mut store, "/keep/a.txt"), b"original", "failure={failure}");
+        assert!(fs.resolve("/new").is_err());
+    }
+}
+
+#[test]
+fn store_falls_back_from_a_damaged_superblock_and_detects_damaged_contents() {
+    let _guard = FRAMES.lock().unwrap_or_else(|e| e.into_inner());
+    host_frames();
+    let mut fs = Fs::new();
+    let mut store = Store::open(FaultDisk::new(1 << 20), &mut fs).unwrap();
+    write_file(&mut fs, "/a.txt", b"first");
+    store.commit(&mut fs).unwrap();
+    write_file(&mut fs, "/a.txt", b"second");
+    store.commit(&mut fs).unwrap();
+    // Generation 2 lives in superblock slot 0 (block 0): damage it.
+    let mut disk = store.device.clone();
+    disk.live[0][20] ^= 1;
+    let mut fs = Fs::new();
+    let mut store2 = Store::open(disk, &mut fs).unwrap();
+    assert_eq!(store2.generation, 1);
+    assert_eq!(read_file(&mut fs, &mut store2, "/a.txt"), b"first");
+
+    // Damage the saved contents of a file: loading reports it instead of returning bad data.
+    let mut fs = Fs::new();
+    let mut disk = store.device.clone();
+    let mut probe = Store::open(disk.clone(), &mut Fs::new()).unwrap();
+    let mut fs_probe = Fs::new();
+    probe = Store::open(probe.device, &mut fs_probe).unwrap();
+    let ino = fs_probe.resolve("/a.txt").unwrap();
+    let block = fs_probe.node(ino).unwrap().file().unwrap().extents[0].start;
+    disk.live[(block * 8) as usize][0] ^= 0xff;
+    let mut store3 = Store::open(disk, &mut fs).unwrap();
+    let ino = fs.resolve("/a.txt").unwrap();
+    assert!(matches!(store3.load(fs.file_mut(ino).unwrap()), Err(DiskError::Corrupt)));
+
+    // A disk that is neither blank nor a known format is refused.
+    let mut junk = FaultDisk::new(1 << 20);
+    junk.live[3][7] = 42;
+    assert!(matches!(Store::open(junk, &mut Fs::new()), Err(DiskError::Corrupt)));
+    let mut tiny = Fs::new();
+    assert!(matches!(Store::open(FaultDisk::new(64 << 10), &mut tiny), Err(DiskError::Bounds)));
+}
+
+#[test]
+fn store_imports_a_disk_in_the_earlier_format() {
+    let _guard = FRAMES.lock().unwrap_or_else(|e| e.into_inner());
+    host_frames();
+    let (mut old, _) = legacy::Journal::open(FaultDisk::new(8 << 20)).unwrap();
+    let files: legacy::Files = vec![("notes.txt".into(), b"from the old format".to_vec()), ("data.bin".into(), pattern(60_000, 1))];
+    old.commit(&files).unwrap();
+    old.device.power_cut();
+    let mut fs = Fs::new();
+    let mut store = Store::open(old.device, &mut fs).unwrap();
+    assert_eq!(store.generation, 0);
+    assert!(fs.unsaved(), "imported files must be saved in the new format");
+    assert_eq!(read_file(&mut fs, &mut store, "/notes.txt"), b"from the old format");
+    // Until the first new-format save, the old area stays intact and readable.
+    let (still, again) = legacy::Journal::open(store.device.clone()).unwrap();
+    assert_eq!((still.generation, again), (1, files.clone()));
+    store.commit(&mut fs).unwrap();
+    store.device.power_cut();
+    let mut fs = Fs::new();
+    let mut store = Store::open(store.device, &mut fs).unwrap();
+    assert_eq!(store.generation, 1);
+    assert!(read_file(&mut fs, &mut store, "/data.bin") == pattern(60_000, 1));
 }

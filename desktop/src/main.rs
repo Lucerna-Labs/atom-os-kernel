@@ -25,9 +25,7 @@ user_rt::entry!(main);
 /// How far a window's shadow reaches beyond its frame.
 const SHADOW_MARGIN: i32 = 24;
 
-pub fn is_builtin(name: &str) -> bool {
-    rt::list_files().iter().any(|f| f.builtin && f.name == name)
-}
+pub fn is_builtin(path: &str) -> bool { rt::stat(path).is_ok_and(|e| e.builtin) }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Launch { Files, Editor, Terminal, Monitor, About }

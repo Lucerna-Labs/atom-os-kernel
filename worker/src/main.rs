@@ -48,8 +48,9 @@ fn main() {
     let moved = alloc::format!("moved{}.txt", pid % 16);
     rt::remove(&moved);
     assert!(rt::rename(&held, &moved));
-    assert!(!rt::rename(&moved, "worker.elf"));
-    assert!(!rt::remove("worker.elf") && !rt::rename("worker.elf", "renamed.elf"));
+    assert!(!rt::rename(&moved, "/bin/worker.elf"));
+    assert!(!rt::remove("/bin/worker.elf") && !rt::rename("/bin/worker.elf", "renamed.elf"));
+    assert!(!rt::rename("/bin", "/programs"));
     let fd = rt::open(&moved);
     for &expected in b"stable handle" { assert_eq!(rt::read(fd), Some(expected)); }
     rt::close(fd);

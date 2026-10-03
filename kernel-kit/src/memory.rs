@@ -99,7 +99,17 @@ pub fn read_if() -> u8 {
 /// Atomically disable maskable interrupts. Pair with restore_if(saved_if).
 #[inline]
 pub fn disable_irq() {
+    if user_mode() { return; }
     unsafe { asm!("cli", options(nomem, nostack, preserves_flags)); }
+}
+
+/// True outside ring 0: the native test build runs this code as a normal process,
+/// where `cli`/`sti` would fault. The kernel always runs in ring 0.
+#[inline]
+fn user_mode() -> bool {
+    let cs: u16;
+    unsafe { asm!("mov {0:x}, cs", out(reg) cs, options(nomem, nostack, preserves_flags)); }
+    cs & 3 != 0
 }
 
 /// Conditionally re-enable maskable interrupts iff `saved_if != 0`.
@@ -107,7 +117,7 @@ pub fn disable_irq() {
 /// was already IRQ-disabled is not re-enabled by us.
 #[inline]
 pub fn restore_if(saved_if: u8) {
-    if saved_if != 0 {
+    if saved_if != 0 && !user_mode() {
         unsafe { asm!("sti", options(nomem, nostack, preserves_flags)); }
     }
 }

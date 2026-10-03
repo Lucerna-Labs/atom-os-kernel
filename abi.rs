@@ -136,6 +136,7 @@ pub struct InputEvent {
 pub const SYS_LIST_FILES: u64 = 47;
 pub const FILE_RECORD_BYTES: usize = 72;
 pub const FILE_BUILTIN: u32 = 1;
+pub const FILE_DIR: u32 = 2;
 /// Total physical frames managed by the kernel (4 KiB each).
 pub const SYS_MEMORY_TOTAL: u64 = 48;
 
@@ -148,5 +149,67 @@ pub const SYS_PIPE_WRITE: u64 = 50;
 pub const PIPE_BOTH: u64 = 0;
 pub const PIPE_READ_END: u64 = 1;
 pub const PIPE_WRITE_END: u64 = 2;
+
+/// Files and folders. Paths are absolute ("/docs/notes.txt"; a missing leading "/"
+/// means the same), at most PATH_MAX bytes, names at most 255 bytes.
+/// rdi = fd, rsi = buffer, rdx = length: bytes read at the descriptor's position
+/// (0 at the end of the file).
+pub const SYS_FILE_READ: u64 = 51;
+/// rdi = fd, rsi = buffer, rdx = length: bytes written at the descriptor's position.
+pub const SYS_FILE_WRITE: u64 = 52;
+/// rdi = fd, rsi = position (clamped to the file size): returns the new position.
+pub const SYS_SEEK: u64 = 53;
+/// rdi = path, rsi = DirEntry to fill.
+pub const SYS_STAT: u64 = 54;
+/// rdi = path: creates a folder.
+pub const SYS_MKDIR: u64 = 55;
+/// rdi = folder path, rsi = DirEntry buffer, rdx = capacity in entries: fills up to
+/// `capacity` entries and returns how many the folder holds.
+pub const SYS_READ_DIR: u64 = 56;
+/// rdi = FsInfo to fill.
+pub const SYS_FS_INFO: u64 = 57;
+pub const PATH_MAX: usize = 1024;
+/// Largest file (1 GiB).
+pub const FILE_MAX: u64 = 1 << 30;
+/// Most bytes one SYS_FILE_READ / SYS_FILE_WRITE moves.
+pub const FILE_IO_MAX: usize = 1 << 20;
+
+pub const ENTRY_BUILTIN: u32 = 1;
+pub const ENTRY_DIR: u32 = 2;
+/// Changed since the last save to disk.
+pub const ENTRY_UNSAVED: u32 = 4;
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct DirEntry {
+    pub name: [u8; 256], pub name_len: u32, pub flags: u32,
+    /// Bytes for a file; number of entries for a folder.
+    pub size: u64,
+    /// Seconds since 1970-01-01 (UTC); 0 when unknown.
+    pub modified: u64,
+}
+impl Default for DirEntry { fn default() -> Self { Self { name: [0; 256], name_len: 0, flags: 0, size: 0, modified: 0 } } }
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FsInfo {
+    /// Data disk size, and the bytes the last save uses on it (0 without a disk).
+    pub disk_bytes: u64, pub saved_bytes: u64,
+    /// What all files need when saved, and the most they may need.
+    pub needed_bytes: u64, pub capacity_bytes: u64,
+    /// Non-zero when there are changes not yet saved; non-zero when a disk is present.
+    pub unsaved: u32, pub disk: u32,
+}
+
+/// Error results of the file calls above and of SYS_REMOVE, SYS_RENAME and SYS_SYNC.
+pub const ERR_NOT_FOUND: u64 = u64::MAX - 16;
+pub const ERR_EXISTS: u64 = u64::MAX - 17;
+pub const ERR_NOT_DIR: u64 = u64::MAX - 18;
+pub const ERR_IS_DIR: u64 = u64::MAX - 19;
+pub const ERR_NOT_EMPTY: u64 = u64::MAX - 20;
+pub const ERR_INVALID: u64 = u64::MAX - 21;
+pub const ERR_READ_ONLY: u64 = u64::MAX - 22;
+pub const ERR_BUSY: u64 = u64::MAX - 23;
+pub const ERR_NO_SPACE: u64 = u64::MAX - 24;
+pub const ERR_IO: u64 = u64::MAX - 25;
 
 pub const ERROR: u64 = u64::MAX;

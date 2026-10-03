@@ -176,8 +176,9 @@ impl ListView {
     }
 }
 
-pub fn format_size(bytes: u32) -> String {
+pub fn format_size(bytes: u64) -> String {
     if bytes < 1024 { alloc::format!("{} B", bytes) }
-    else if bytes < 1024 * 1024 { alloc::format!("{}.{} KB", bytes / 1024, bytes % 1024 * 10 / 1024) }
-    else { alloc::format!("{}.{} MB", bytes / 1048576, bytes % 1048576 * 10 / 1048576) }
+    else if bytes < 1 << 20 { alloc::format!("{}.{} KB", bytes >> 10, (bytes & 1023) * 10 >> 10) }
+    else if bytes < 1 << 30 { alloc::format!("{}.{} MB", bytes >> 20, (bytes & 0xfffff) * 10 >> 20) }
+    else { alloc::format!("{}.{} GB", bytes >> 30, (bytes & 0x3fff_ffff) * 10 >> 30) }
 }

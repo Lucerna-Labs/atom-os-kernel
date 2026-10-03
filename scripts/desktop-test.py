@@ -262,7 +262,7 @@ def main():
         time.sleep(1)
         vm.shot("open-picker")
         vm.keys("notes.txt\n")
-        match = vm.wait(r"EDITOR_OPEN notes\.txt (\d+) bytes")
+        match = vm.wait(r"EDITOR_OPEN /notes\.txt (\d+) bytes")
         assert int(match[1]) == len(note), match[0]
         vm.shot("editor")
         passed("FILE_PICKER_OPEN")
@@ -273,6 +273,8 @@ def main():
         time.sleep(6)
         vm.keys("echo hello-from-terminal > term.txt\n")
         time.sleep(2)
+        vm.keys("mkdir docs\n")
+        time.sleep(2)
         vm.keys("spawn sleeper.elf\n")
         time.sleep(3)
         vm.shot("terminal")
@@ -281,9 +283,30 @@ def main():
         vm.combo("ctrl", "o")
         vm.wait(r"WINDOW_OPEN Open File[\s\S]*WINDOW_OPEN Open File")
         vm.keys("term.txt\n")
-        match = vm.wait(r"EDITOR_OPEN term\.txt (\d+) bytes")
+        match = vm.wait(r"EDITOR_OPEN /term\.txt (\d+) bytes")
         assert int(match[1]) == len("hello-from-terminal\n"), match[0]
         passed("TERMINAL_SHELL_OVER_PIPES")
+
+        # Folders in the picker: save into the folder the terminal made, then browse
+        # back up and into it by typing folder names, and open the file from there.
+        offset = len(vm.serial())
+        vm.combo("ctrl", "shift", "s")
+        vm.wait(r"WINDOW_OPEN Save As", offset)
+        time.sleep(1)
+        vm.keys("docs/report.txt\n")
+        vm.wait(r"TOAST Saved report\.txt", offset)
+        vm.combo("ctrl", "o")
+        vm.wait(r"WINDOW_OPEN Open File", offset)
+        time.sleep(1)
+        vm.shot("picker-in-folder")
+        vm.keys("..\n")
+        vm.wait(r"PICKER_DIR /\n", offset)
+        vm.keys("docs\n")
+        vm.wait(r"PICKER_DIR /docs\n", offset)
+        vm.keys("report.txt\n")
+        match = vm.wait(r"EDITOR_OPEN /docs/report\.txt (\d+) bytes", offset)
+        assert int(match[1]) == len("hello-from-terminal\n"), match[0]
+        passed("PICKER_FOLDERS")
 
         # System monitor: the newest process is the sleeper; end it.
         vm.menu("monitor")
@@ -346,7 +369,7 @@ def main():
         vm.combo("ctrl", "o")
         vm.wait(r"WINDOW_OPEN Open File", offset)
         vm.keys("notes.txt\n")
-        match = vm.wait(r"EDITOR_OPEN notes\.txt (\d+) bytes", offset)
+        match = vm.wait(r"EDITOR_OPEN /notes\.txt (\d+) bytes", offset)
         assert int(match[1]) == len(note), match[0]
         vm.shot("after-restart")
         passed("RESTART_PERSISTENCE")

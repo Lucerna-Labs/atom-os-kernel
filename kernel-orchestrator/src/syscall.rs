@@ -24,7 +24,45 @@ pub fn user_string(context: &Context, address: u64, limit: usize) -> Result<Stri
     Err(())
 }
 
-pub use kernel_kit::fs::builtin;
+use kernel_kit::fs::{Fs, FsError, Ino, ROOT_FS};
+
+fn fs_code(error: FsError) -> u64 {
+    match error {
+        FsError::NotFound => ERR_NOT_FOUND, FsError::Exists => ERR_EXISTS, FsError::NotDir => ERR_NOT_DIR,
+        FsError::IsDir => ERR_IS_DIR, FsError::NotEmpty => ERR_NOT_EMPTY, FsError::Invalid => ERR_INVALID,
+        FsError::ReadOnly => ERR_READ_ONLY, FsError::Busy => ERR_BUSY, FsError::NoSpace => ERR_NO_SPACE,
+        FsError::Io => ERR_IO,
+    }
+}
+fn disk_code(error: kernel_kit::virtio_blk::DiskError) -> u64 {
+    use kernel_kit::virtio_blk::DiskError;
+    match error { DiskError::Full => ERR_NO_SPACE, DiskError::Missing => ERR_NOT_FOUND, _ => ERR_IO }
+}
+fn result_code(result: Result<(), FsError>) -> u64 { result.map_or_else(fs_code, |_| 0) }
+
+fn path_arg(context: &Context, address: u64) -> Result<String, ()> { user_string(context, address, kernel_kit::fs::PATH_MAX + 1) }
+
+/// A descriptor's file: entries hold the inode number plus one (0 = free slot).
+fn descriptor(context: &Context, fd: u64) -> Option<(Ino, u64)> {
+    let (slot, cursor) = *context.open_files.get(fd as usize)?;
+    (slot != 0).then_some(((slot - 1) as Ino, cursor as u64))
+}
+
+fn dir_entry(fs: &Fs, ino: Ino) -> DirEntry {
+    let mut entry = DirEntry::default();
+    if let Some(node) = fs.node(ino) {
+        let name = node.name.as_bytes();
+        entry.name[..name.len()].copy_from_slice(name);
+        entry.name_len = name.len() as u32;
+        entry.size = node.size();
+        entry.modified = node.modified;
+        if node.is_dir() { entry.flags |= ENTRY_DIR; }
+        if fs.is_builtin(ino) { entry.flags |= ENTRY_BUILTIN; }
+        if node.file().is_some_and(|f| f.dirty) { entry.flags |= ENTRY_UNSAVED; }
+    }
+    entry
+}
+fn as_bytes<T>(value: &T) -> &[u8] { unsafe { core::slice::from_raw_parts(value as *const T as *const u8, core::mem::size_of::<T>()) } }
 
 /// Copies kernel bytes into the current process through its own page tables,
 /// after checking the whole destination is mapped, user-accessible and writable.
@@ -90,8 +128,8 @@ fn nul_string(bytes: &[u8]) -> Option<String> {
 }
 
 /// True when any live descriptor in any process references this file object.
-fn file_open(system: &System, address: u64) -> bool {
-    system.scheduler.tasks.iter().flatten().any(|task| task.open_files.iter().any(|entry| entry.0 == address))
+fn file_open(system: &System, ino: Ino) -> bool {
+    system.scheduler.tasks.iter().flatten().any(|task| task.open_files.iter().any(|entry| entry.0 == ino as u64 + 1))
 }
 
 /// Called with interrupts disabled and the actual interrupted frame registered
@@ -155,38 +193,133 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             if let Some(bytes) = copy_from_user(context, arg, arg1 as usize) { frame.rax = stdout_write(context, &bytes); }
         }
     } else if is(number, SYS_OPEN) {
-        if let Ok(name) = user_string(context, arg, 64) {
+        if let Ok(path) = path_arg(context, arg) {
             if let Some(fd) = context.open_files.iter().position(|entry| entry.0 == 0) {
-                let fs = kernel_kit::fs::ROOT_FS.lock();
-                if let Some(data) = fs.get_or_create_file(&name) {
-                    context.open_files[fd] = (data as u64, 0);
-                    if builtin(&name) { context.readonly_files |= 1 << fd; } else { context.readonly_files &= !(1 << fd); }
+                let fs = ROOT_FS.lock();
+                let opened = fs.open_or_create(&path, kernel_kit::rtc::now())
+                    .and_then(|ino| kernel_kit::storage::ensure_loaded(fs, ino).map(|_| ino));
+                if let Ok(ino) = opened {
+                    context.open_files[fd] = (ino as u64 + 1, 0);
+                    if fs.is_builtin(ino) { context.readonly_files |= 1 << fd; } else { context.readonly_files &= !(1 << fd); }
                     frame.rax = fd as u64;
                 }
-                kernel_kit::fs::ROOT_FS.unlock();
+                ROOT_FS.unlock();
             }
         }
     } else if is(number, SYS_READ_FILE) || is(number, SYS_WRITE_FILE) || is(number, SYS_TRUNCATE) {
-        if arg < 16 && context.open_files[arg as usize].0 != 0 {
-            let (pointer, cursor) = context.open_files[arg as usize];
-            let data = unsafe { &mut *(pointer as *mut Vec<u8>) };
+        if let Some((ino, cursor)) = descriptor(context, arg) {
+            let fs = ROOT_FS.lock();
             if is(number, SYS_READ_FILE) {
-                if let Some(&byte) = data.get(cursor) { context.open_files[arg as usize].1 += 1; frame.rax = byte as u64; }
+                let mut byte = [0u8];
+                if fs.read(ino, cursor, &mut byte) == Ok(1) { context.open_files[arg as usize].1 += 1; frame.rax = byte[0] as u64; }
             } else if context.readonly_files & (1 << arg) == 0 {
-                if is(number, SYS_TRUNCATE) { data.clear(); context.open_files[arg as usize].1 = 0; frame.rax = 0; }
-                else if data.len() < 65536 { data.push(arg1 as u8); frame.rax = 1; }
+                let now = kernel_kit::rtc::now();
+                if is(number, SYS_TRUNCATE) {
+                    if fs.truncate(ino, 0, now).is_ok() { context.open_files[arg as usize].1 = 0; frame.rax = 0; }
+                } else {
+                    // The byte call appends (its original contract).
+                    let end = fs.node(ino).map_or(0, |n| n.size());
+                    if fs.write(ino, end, &[arg1 as u8], now) == Ok(1) { frame.rax = 1; }
+                }
             }
+            ROOT_FS.unlock();
+        }
+    } else if is(number, SYS_FILE_READ) || is(number, SYS_FILE_WRITE) {
+        let len = (frame.rdx as usize).min(FILE_IO_MAX);
+        if let Some((ino, cursor)) = descriptor(context, arg) {
+            let reading = is(number, SYS_FILE_READ);
+            let writable = context.readonly_files & (1 << arg) == 0;
+            if context.space.as_ref().unwrap().valid_user_range(arg1, len, reading) && (reading || writable) {
+                let fs = ROOT_FS.lock();
+                let now = kernel_kit::rtc::now();
+                let mut done = 0usize;
+                let mut failure = None;
+                // Page-sized steps between the file's frames and the caller's pages.
+                let mut buffer = alloc::vec![0u8; 4096];
+                while done < len {
+                    let n = (len - done).min(4096);
+                    let at = cursor + done as u64;
+                    if reading {
+                        match fs.read(ino, at, &mut buffer[..n]) {
+                            Ok(0) => break,
+                            Ok(got) => { if !copy_to_user(context, arg1 + done as u64, &buffer[..got]) { failure = Some(ERROR); break; } done += got; }
+                            Err(e) => { failure = Some(fs_code(e)); break; }
+                        }
+                    } else {
+                        let Some(bytes) = copy_from_user(context, arg1 + done as u64, n) else { failure = Some(ERROR); break };
+                        match fs.write(ino, at, &bytes, now) { Ok(w) => done += w, Err(e) => { failure = Some(fs_code(e)); break; } }
+                    }
+                }
+                ROOT_FS.unlock();
+                context.open_files[arg as usize].1 += done;
+                frame.rax = match failure { Some(code) if done == 0 => code, _ => done as u64 };
+            }
+        }
+    } else if is(number, SYS_SEEK) {
+        if let Some((ino, _)) = descriptor(context, arg) {
+            let fs = ROOT_FS.lock();
+            let size = fs.node(ino).map_or(0, |n| n.size());
+            ROOT_FS.unlock();
+            let position = arg1.min(size);
+            context.open_files[arg as usize].1 = position as usize;
+            frame.rax = position;
         }
     } else if is(number, SYS_CLOSE) {
         if arg < 16 { context.open_files[arg as usize] = (0, 0); context.readonly_files &= !(1 << arg); frame.rax = 0; }
+    } else if is(number, SYS_STAT) {
+        if let Ok(path) = path_arg(context, arg) {
+            let fs = ROOT_FS.lock();
+            let entry = fs.resolve(&path).map(|ino| dir_entry(fs, ino));
+            ROOT_FS.unlock();
+            frame.rax = match entry {
+                Ok(entry) => if copy_to_user(context, arg1, as_bytes(&entry)) { 0 } else { ERROR },
+                Err(e) => fs_code(e),
+            };
+        }
+    } else if is(number, SYS_MKDIR) {
+        if let Ok(path) = path_arg(context, arg) {
+            let fs = ROOT_FS.lock();
+            frame.rax = result_code(fs.mkdir(&path, kernel_kit::rtc::now()).map(|_| ()));
+            ROOT_FS.unlock();
+        }
+    } else if is(number, SYS_READ_DIR) {
+        let capacity = (frame.rdx as usize).min(4096);
+        if let Ok(path) = path_arg(context, arg) {
+            let fs = ROOT_FS.lock();
+            let listing = fs.resolve(&path).and_then(|dir| {
+                let children = fs.children(dir)?;
+                let mut bytes = Vec::new();
+                for &child in children.iter().take(capacity) { bytes.extend_from_slice(as_bytes(&dir_entry(fs, child))); }
+                Ok((children.len(), bytes))
+            });
+            ROOT_FS.unlock();
+            frame.rax = match listing {
+                Ok((count, bytes)) => if copy_to_user(context, arg1, &bytes) { count as u64 } else { ERROR },
+                Err(e) => fs_code(e),
+            };
+        }
+    } else if is(number, SYS_FS_INFO) {
+        let fs = ROOT_FS.lock();
+        let mut info = FsInfo { needed_bytes: fs.blocks * 4096, capacity_bytes: fs.capacity.unwrap_or(0) * 4096,
+                                unsaved: fs.unsaved() as u32, ..FsInfo::default() };
+        ROOT_FS.unlock();
+        if let Some((total, used)) = kernel_kit::storage::info() {
+            info.disk = 1; info.disk_bytes = total * 4096; info.saved_bytes = used * 4096;
+        }
+        if copy_to_user(context, arg, as_bytes(&info)) { frame.rax = 0; }
     } else if is(number, SYS_LIST_DIR) {
-        let fs = kernel_kit::fs::ROOT_FS.lock();
+        let fs = ROOT_FS.lock();
         let mut listing = String::new();
-        if let kernel_kit::fs::AtomNode::Directory(children) = fs {
-            for (name, _) in children { listing.push_str(name); listing.push_str("  "); }
+        if let Ok(children) = fs.children(kernel_kit::fs::ROOT) {
+            for &child in children {
+                let Some(node) = fs.node(child) else { continue };
+                listing.push_str(&node.name);
+                if node.is_dir() { listing.push('/'); }
+                listing.push_str("  ");
+            }
         }
         listing.push('\n');
-        kernel_kit::fs::ROOT_FS.unlock();
+        ROOT_FS.unlock();
         stdout_write(context, listing.as_bytes()); frame.rax = 0;
     } else if is(number, SYS_CLEAR) {
         // A terminal on the other end of a pipe clears on form feed.
@@ -245,7 +378,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         }
     } else if is(number, SYS_EXEC) {
         let args = if arg1 == 0 { Ok(String::new()) } else { user_string(context, arg1, ARGS_MAX + 1) };
-        if let (Ok(name), Ok(args)) = (user_string(context, arg, 64), args) {
+        if let (Ok(name), Ok(args)) = (path_arg(context, arg), args) {
             if let Ok((space, entry)) = crate::process::load_image(&name, system.kernel_root) {
                 let context = system.scheduler.current_task_mut().unwrap();
                 // The new root keeps the same kernel mappings and stack. Switch
@@ -261,7 +394,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             }
         }
     } else if is(number, SYS_SPAWN) {
-        if let Ok(name) = user_string(context, arg, 64) {
+        if let Ok(name) = path_arg(context, arg) {
             frame.rax = system.spawn_program(pid, &name).map(|n| n as u64).unwrap_or(ERROR);
         }
     } else if is(number, SYS_WAIT) {
@@ -296,22 +429,16 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             frame.rax = RECV_BASE;
         }
     } else if is(number, SYS_REMOVE) {
-        if let Ok(name) = user_string(context, arg, 64) {
-            let fs = kernel_kit::fs::ROOT_FS.lock();
-            if !builtin(&name) {
-                if let Some(address) = fs.file_address(&name) {
-                    if !file_open(system, address) && fs.remove(&name) { frame.rax = 0; }
-                }
-            }
-            kernel_kit::fs::ROOT_FS.unlock();
+        if let Ok(path) = path_arg(context, arg) {
+            let fs = ROOT_FS.lock();
+            frame.rax = result_code(fs.remove(&path, |ino| file_open(system, ino)));
+            ROOT_FS.unlock();
         }
     } else if is(number, SYS_RENAME) {
-        if let (Ok(from), Ok(to)) = (user_string(context, arg, 64), user_string(context, arg1, 64)) {
-            if !builtin(&from) && !builtin(&to) {
-                let fs = kernel_kit::fs::ROOT_FS.lock();
-                if fs.rename(&from, &to) { frame.rax = 0; }
-                kernel_kit::fs::ROOT_FS.unlock();
-            }
+        if let (Ok(from), Ok(to)) = (path_arg(context, arg), path_arg(context, arg1)) {
+            let fs = ROOT_FS.lock();
+            frame.rax = result_code(fs.rename(&from, &to, kernel_kit::rtc::now()));
+            ROOT_FS.unlock();
         }
     } else if is(number, SYS_PROCESSES) {
         let capacity = (arg1 as usize).min(crate::scheduler::MAX_TASKS);
@@ -379,20 +506,23 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             }
         }
     } else if is(number, SYS_LIST_FILES) {
+        // The original flat listing: the root folder only.
         let capacity = (arg1 as usize).min(256);
         let mut records = Vec::new();
-        let fs = kernel_kit::fs::ROOT_FS.lock();
-        if let kernel_kit::fs::AtomNode::Directory(children) = fs {
-            for (name, node) in children.iter().take(capacity) {
-                let kernel_kit::fs::AtomNode::File(data) = node else { continue };
+        let fs = ROOT_FS.lock();
+        if let Ok(children) = fs.children(kernel_kit::fs::ROOT) {
+            for &child in children.iter().take(capacity) {
+                let Some(node) = fs.node(child) else { continue };
                 let mut record = [0u8; FILE_RECORD_BYTES];
-                record[..name.len().min(63)].copy_from_slice(&name.as_bytes()[..name.len().min(63)]);
-                record[64..68].copy_from_slice(&(data.len() as u32).to_le_bytes());
-                record[68..72].copy_from_slice(&(if builtin(name) { FILE_BUILTIN } else { 0 }).to_le_bytes());
+                let name = &node.name.as_bytes()[..node.name.len().min(63)];
+                record[..name.len()].copy_from_slice(name);
+                record[64..68].copy_from_slice(&(node.size().min(u32::MAX as u64) as u32).to_le_bytes());
+                let flags = if fs.is_builtin(child) { FILE_BUILTIN } else { 0 } | if node.is_dir() { FILE_DIR } else { 0 };
+                record[68..72].copy_from_slice(&flags.to_le_bytes());
                 records.extend_from_slice(&record);
             }
         }
-        kernel_kit::fs::ROOT_FS.unlock();
+        ROOT_FS.unlock();
         let context = system.scheduler.current_task().unwrap();
         if copy_to_user(context, arg, &records) { frame.rax = (records.len() / FILE_RECORD_BYTES) as u64; }
     } else if is(number, SYS_MEMORY_TOTAL) {
@@ -402,7 +532,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
     } else if is(number, SYS_TIME) {
         frame.rax = kernel_kit::rtc::now();
     } else if is(number, SYS_SYNC) {
-        if kernel_kit::storage::sync().is_ok() { frame.rax = 0; }
+        frame.rax = kernel_kit::storage::sync().map_or_else(disk_code, |_| 0);
     } else if is(number, SYS_FREE_FRAMES) {
         let (pool, flags) = kernel_kit::memory::FRAME_ALLOCATOR.lock();
         frame.rax = pool.free_count() as u64;

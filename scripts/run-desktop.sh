@@ -9,7 +9,7 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 image="$root/target/x86_64-os/release/bootimage-x86_64-kernel.bin"
 disk=${1:-"$root/target/atom-data.img"}
 if [ ! -f "$image" ]; then echo "No boot image; build first: bash scripts/build.sh" >&2; exit 1; fi
-if [ ! -f "$disk" ]; then truncate -s 8M "$disk"; fi
+if [ ! -f "$disk" ]; then truncate -s 1G "$disk"; fi  # Sparse: uses host space only as files are saved.
 resolution=${ATOM_RESOLUTION:-1920x1080}
 xres=${resolution%x*}; yres=${resolution#*x}
 # Video memory: the smallest power of two (MiB, at least 16) that holds one 32-bit frame.

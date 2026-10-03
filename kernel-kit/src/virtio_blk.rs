@@ -14,14 +14,31 @@ pub trait BlockDevice {
     fn read_sector(&mut self, sector: u64, bytes: &mut [u8; 512]) -> Result<(), DiskError>;
     fn write_sector(&mut self, sector: u64, bytes: &[u8; 512]) -> Result<(), DiskError>;
     fn flush(&mut self) -> Result<(), DiskError>;
+    /// Reads whole 4 KiB blocks starting at `block` (`bytes.len()` a multiple of 4096).
+    fn read_blocks(&mut self, block: u64, bytes: &mut [u8]) -> Result<(), DiskError> {
+        for (i, chunk) in bytes.chunks_exact_mut(512).enumerate() {
+            self.read_sector(block * 8 + i as u64, chunk.try_into().unwrap())?;
+        }
+        Ok(())
+    }
+    /// Writes whole 4 KiB blocks starting at `block`.
+    fn write_blocks(&mut self, block: u64, bytes: &[u8]) -> Result<(), DiskError> {
+        for (i, chunk) in bytes.chunks_exact(512).enumerate() {
+            self.write_sector(block * 8 + i as u64, chunk.try_into().unwrap())?;
+        }
+        Ok(())
+    }
 }
+
+/// Bytes moved per virtio request by the block transfers (a contiguous bounce buffer).
+const BOUNCE_PAGES: usize = 32;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct Descriptor { address: u64, length: u32, flags: u16, next: u16 }
 
 pub struct VirtioBlock {
-    io: u16, size: u16, queue: u64, used_offset: usize, request: u64,
+    io: u16, size: u16, queue: u64, used_offset: usize, request: u64, bounce: u64,
     available: u16, consumed: u16, capacity: u64, online: bool,
 }
 
@@ -65,12 +82,15 @@ impl VirtioBlock {
                     let request = match frames_allocate(1) { Ok(p) => p, Err(_) => {
                         frames_free(queue, pages); return Err(DiskError::Memory);
                     }};
+                    let bounce = match frames_allocate(BOUNCE_PAGES) { Ok(p) => p, Err(_) => {
+                        frames_free(queue, pages); frames_free(request, 1); return Err(DiskError::Memory);
+                    }};
                     // No queue interrupts: the one outstanding request is polled.
                     unsafe { write_volatile((phys_to_virt(queue) + size as u64 * 16) as *mut u16, 1); }
                     Port::new(io + 8).write32((queue / 4096) as u32);
                     let capacity = Port::new(io + 20).read32() as u64 | (Port::new(io + 24).read32() as u64) << 32;
                     Port::new(io + 18).write(7);
-                    return Ok(Self { io, size, queue, used_offset, request, available: 0, consumed: 0, capacity, online: true });
+                    return Ok(Self { io, size, queue, used_offset, request, bounce, available: 0, consumed: 0, capacity, online: true });
                 }
             }
         }
@@ -78,18 +98,26 @@ impl VirtioBlock {
     }
 
     fn submit(&mut self, kind: u32, sector: u64, bytes: &mut [u8; 512]) -> Result<(), DiskError> {
+        if kind == 1 { unsafe { core::ptr::copy_nonoverlapping(bytes.as_ptr(), (phys_to_virt(self.request) as *mut u8).add(512), 512); } }
+        self.transfer(kind, sector, self.request + 512, 512)?;
+        if kind == 0 { unsafe { core::ptr::copy_nonoverlapping((phys_to_virt(self.request) as *const u8).add(512), bytes.as_mut_ptr(), 512); } }
+        Ok(())
+    }
+
+    /// One request: `kind` 0 = read, 1 = write, 4 = flush, moving `len` bytes at
+    /// physical `data` (contiguous) from or to `sector`.
+    fn transfer(&mut self, kind: u32, sector: u64, data: u64, len: u32) -> Result<(), DiskError> {
         if !self.online { return Err(DiskError::Io); }
-        if kind != 4 && sector >= self.capacity { return Err(DiskError::Bounds); }
+        if kind != 4 && sector.checked_add(len as u64 / 512).is_none_or(|end| end > self.capacity) { return Err(DiskError::Bounds); }
         unsafe {
             let request = phys_to_virt(self.request) as *mut u8;
             write_volatile(request as *mut u32, kind);
             write_volatile(request.add(4) as *mut u32, 0);
             write_volatile(request.add(8) as *mut u64, sector);
-            if kind == 1 { core::ptr::copy_nonoverlapping(bytes.as_ptr(), request.add(512), 512); }
             write_volatile(request.add(1024), 0xff);
             let descriptors = phys_to_virt(self.queue) as *mut Descriptor;
             write_volatile(descriptors, Descriptor { address: self.request, length: 16, flags: 1, next: if kind == 4 { 2 } else { 1 } });
-            write_volatile(descriptors.add(1), Descriptor { address: self.request + 512, length: 512, flags: 1 | if kind == 0 { 2 } else { 0 }, next: 2 });
+            write_volatile(descriptors.add(1), Descriptor { address: data, length: len, flags: 1 | if kind == 0 { 2 } else { 0 }, next: 2 });
             write_volatile(descriptors.add(2), Descriptor { address: self.request + 1024, length: 1, flags: 2, next: 0 });
             let avail = (phys_to_virt(self.queue) + self.size as u64 * 16) as *mut u16;
             write_volatile(avail.add(2 + (self.available % self.size) as usize), 0);
@@ -110,7 +138,6 @@ impl VirtioBlock {
             self.consumed = self.consumed.wrapping_add(1);
             let _ = Port::new(self.io + 19).read();
             if head != 0 || read_volatile(request.add(1024)) != 0 { self.online = false; return Err(DiskError::Io); }
-            if kind == 0 { core::ptr::copy_nonoverlapping(request.add(512), bytes.as_mut_ptr(), 512); }
         }
         Ok(())
     }
@@ -123,5 +150,21 @@ impl BlockDevice for VirtioBlock {
         let mut copy = *bytes;
         self.submit(1, sector, &mut copy)
     }
-    fn flush(&mut self) -> Result<(), DiskError> { self.submit(4, 0, &mut [0; 512]) }
+    fn flush(&mut self) -> Result<(), DiskError> { self.transfer(4, 0, self.request + 512, 0) }
+    fn read_blocks(&mut self, block: u64, bytes: &mut [u8]) -> Result<(), DiskError> {
+        let bounce = phys_to_virt(self.bounce) as *const u8;
+        for (i, chunk) in bytes.chunks_mut(BOUNCE_PAGES * 4096).enumerate() {
+            self.transfer(0, (block + (i * BOUNCE_PAGES) as u64) * 8, self.bounce, chunk.len() as u32)?;
+            unsafe { core::ptr::copy_nonoverlapping(bounce, chunk.as_mut_ptr(), chunk.len()); }
+        }
+        Ok(())
+    }
+    fn write_blocks(&mut self, block: u64, bytes: &[u8]) -> Result<(), DiskError> {
+        let bounce = phys_to_virt(self.bounce) as *mut u8;
+        for (i, chunk) in bytes.chunks(BOUNCE_PAGES * 4096).enumerate() {
+            unsafe { core::ptr::copy_nonoverlapping(chunk.as_ptr(), bounce, chunk.len()); }
+            self.transfer(1, (block + (i * BOUNCE_PAGES) as u64) * 8, self.bounce, chunk.len() as u32)?;
+        }
+        Ok(())
+    }
 }

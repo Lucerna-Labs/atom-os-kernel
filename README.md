@@ -41,9 +41,10 @@ been validated.
   over mapped private pages.
 - **Scheduling and syscalls:** round-robin preemption, `int 0x80` and fast
   `syscall/sysret` paths, and saved integer/x87/SSE/MXCSR context.
-- **Files and IPC:** a flat in-memory filesystem with stable open-file objects,
-  file removal and rename that refuse to touch open or built-in files,
-  read-only embedded executables, and bounded per-process message queues.
+- **Files and IPC:** a filesystem with folders and paths, files up to 1 GiB held in
+  page frames (not the kernel heap), bulk read/write/seek calls, removal and moves
+  that refuse to touch open or built-in files, read-only embedded programs in
+  `/bin`, and bounded per-process message queues.
 - **Process control:** `ps` lists live and exited processes with their parent,
   state and program name; `kill` ends a process, whose parent then collects
   status **137**.
@@ -51,8 +52,10 @@ been validated.
   standard input and output (the console or a pipe). The kernel redirects
   output, `ls` and `clear` into pipes, so the unmodified shell runs inside the
   desktop terminal. Writers to a pipe without readers exit with status **141**.
-- **Persistent storage:** a legacy/transitional virtio-blk PCI driver with
-  FLUSH support and two checksummed snapshot slots.
+- **Persistent storage:** a copy-on-write disk format: a save writes only the files
+  that changed, never overwrites the saved generation, and survives a power cut at
+  any step. Files load from disk when first opened and are checked against their
+  saved checksum. The virtio-blk driver moves up to 128 KiB per request.
 - **Diagnostics:** serial crash reports and containment of user faults, with a
   dedicated fault probe that verifies the shell survives.
 
@@ -77,6 +80,12 @@ native suite recorded **28 passed, 0 failed**, the text acceptance suite
 recorded **20 checks passed**, and the new desktop acceptance suite recorded
 **10 checks passed**, all under QEMU 8.2.2 with TCG (KVM was not available).
 Those logs were not committed; GitHub Actions runs both suites on every push.
+
+**Filesystem update (same day):** with folders, large files and the copy-on-write
+disk format, the native suite recorded **28 passed** (including a power cut at every
+write step of a save), the text suite **23 checks passed** (folders, a 3 MB file
+written, copied, checksummed and read back after a reboot) and the desktop suite
+**11 checks passed** (saving into a folder and browsing folders in the picker).
 
 
 The acceptance suite also exercises keyboard input, file reads/writes, exact IPC
@@ -218,9 +227,9 @@ menu returns to the text shell, and the `desktop` command re-enters it.
 | Windows | Move by the title bar, resize from the corner grip, maximise (or double-click the title), minimise and close. Dialogs are modal. |
 | Taskbar | Start button, one button per window (click to focus or minimise), and a UTC clock read from the CMOS clock. |
 | Start menu | Launch apps, **Save all to disk**, **Exit to console** and **Restart**. The Super key also opens it. |
-| Files | List files with sizes and types. New, Open, Rename, Delete, Refresh and **Save to disk**. Double-click opens documents in the editor and runs programs in a terminal window. |
-| Text Editor | Line numbers, selection with Shift or the mouse, Ctrl+A/C/X/V, Ctrl+S, Ctrl+Shift+S, Ctrl+O, Ctrl+N and auto-indent. |
-| File picker | Modal **Open** and **Save As** dialogs with a file list and a name field. |
+| Files | Browse folders (Up, Backspace or Alt+Up goes up), with sizes, types and unsaved changes. New file, New folder, Open, Rename, Delete and **Save to disk**; the status bar shows disk use. Double-click enters folders, opens documents in the editor and runs programs in a terminal window. |
+| Text Editor | Line numbers, selection with Shift or the mouse, Ctrl+A/C/X/V, Ctrl+S, Ctrl+Shift+S, Ctrl+O, Ctrl+N and auto-indent. **Save writes to the data disk.** Files up to 16 MB. |
+| File picker | Modal **Open** and **Save As** dialogs that browse folders: Up, double-click a folder, or type a folder name or a path such as `docs/report.txt` or `..`. Save As can make a new folder. |
 | Terminal | Runs `shell.elf` (or a program opened from Files) over pipes, with 2,000 lines of scrollback. |
 | System Monitor | Memory use, uptime and the process table, with **End process**. |
 
@@ -260,12 +269,16 @@ repository when you want its latest improvements.
 
 | Command | Behavior |
 |---|---|
-| `help`, `ls`, `clear` | List commands/files or clear the screen |
+| `help`, `clear` | List commands or clear the screen |
+| `ls [folder]`, `cd [folder]`, `pwd` | List a folder (sizes, unsaved files), change or show the current folder |
+| `mkdir folder`, `rmdir folder` | Create a folder, or remove an empty one |
 | `cat file` | Read a file |
-| `rm file` | Remove a writable file that no process has open |
-| `mv old new` | Rename a writable file; fails if `new` exists |
+| `cp from to`, `mv from to` | Copy, or rename/move a file or folder; a folder as `to` means "into it" |
+| `rm path` | Remove a file no process has open, or an empty folder |
 | `echo text > file` | Append text and a newline |
-| `edit file` | Edit up to 64 KiB; Esc saves the RAM copy |
+| `edit file` | Edit up to 64 KiB on the console; Esc saves |
+| `df` | Disk size, space used, and whether anything is unsaved |
+| `fill file bytes`, `sum file` | Write a large test file / print a file's size and checksum |
 | `msg text` | Send a message to the daemon; a full mailbox returns an error |
 | `bench`, `heaptest`, `stats` | Exercise yields/heap or show free frames and live tasks |
 | `spawn worker.elf` | Start a child while the shell continues; print its PID |
@@ -277,15 +290,16 @@ repository when you want its latest improvements.
 | `churn 48` | Exercise repeated process creation/reaping and compare free-frame counts |
 | `faulttest` | Confirm a user page fault terminates that worker while the shell survives |
 | `desktop` | Start the graphical desktop and wait until it exits |
-| `sync` | Commit writable files to the data disk |
+| `sync` | Save every change to the data disk |
 | `reboot` | Sync successfully, then reboot the OS |
 
 The [keyboard decoder](kernel-kit/src/input.rs) handles Shift, so `>` and `|`
 are typed normally. The numpad `+` key still enters `>`, as before.
 
-`rm` and `mv` change RAM files only; use `sync` to make the change durable.
-Built-in programs cannot be removed or renamed, and a file held open by any
-process cannot be removed.
+Paths are relative to the current folder; `..` goes up. Changes made in the shell are
+saved to disk by `sync` (the desktop editor saves on Save). Built-in programs live
+read-only in `/bin` and run by bare name (`spawn worker.elf`); a file held open by
+any process cannot be removed.
 
 The kernel embeds six read-only programs: `shell.elf`, `daemon.elf`,
 `worker.elf`, `fault.elf`, `sleeper.elf` and `desktop.elf`. The diagnostic
@@ -337,11 +351,17 @@ current source and verification evidence.
 
 ## Persistent storage and current limits
 
-The filesystem uses stable boxed file objects in RAM. A successful `sync`
-serializes writable files into an inactive disk slot, flushes the payload,
-writes a checksummed header, and flushes again. Mount selects the newest
-complete valid generation. Embedded executables come from the boot image and
-are excluded from disk snapshots.
+Folders and names live in the kernel; file contents live in 4 KiB page frames, so
+files can be large without touching the kernel's small heap. The data disk uses the
+copy-on-write format in [`storage.rs`](kernel-kit/src/storage.rs) ("ATOMFS02"): 4 KiB
+blocks, two superblocks, and checksummed metadata describing the folder tree and
+each file's extents and content checksum. A `sync` writes the changed files to free
+blocks, flushes, writes new metadata to free blocks, flushes, then writes the other
+superblock and flushes. Until that last write lands, the previous generation is the
+one that mounts, so an interrupted save never loses saved data. Files load when
+first opened. A disk in the earlier snapshot format is imported on mount and
+converted by the next save. Embedded programs come from the boot image and are
+never written to disk.
 
 The driver uses the legacy/transitional virtio-blk PCI interface with one polled
 queue and negotiated FLUSH support. The test harness attaches the data disk
@@ -359,26 +379,24 @@ with `virtio-blk-pci,disable-modern=on`; the storage contracts follow the
 | Physical memory | All usable RAM below 16 GiB physical; tests run with 8 GiB |
 | Open file descriptors | 16 per process |
 | IPC queue | 4 messages per recipient; up to 255 message bytes |
-| RAM directory | 256 entries, including embedded programs |
-| Persistent writable files | 128 |
-| Filename | 63 bytes; flat names |
-| File contents | Up to 64 KiB per writable file |
-| Serialized snapshot | 512 KiB total, including filenames and metadata |
+| Files and folders | No fixed count; names up to 255 bytes, paths up to 1,024 bytes |
+| File size | Up to 1 GiB per file; files in use stay in RAM |
+| Disk space | The data disk, less a 1/16 reserve that lets a save rewrite changed files |
+| Data disk | Up to the virtio disk size (tested at 8–64 MiB; `run-desktop.sh` creates 1 GiB) |
 
-**RAM edits are durable only after `sync` succeeds.** The RAM directory and disk
-format have different capacity limits, so a RAM write may succeed even when a
-later `sync` cannot save everything; `rm` can free space before retrying. Capacity reporting is a
-planned improvement. Without a compatible disk, the kernel reports
-`STORAGE_UNAVAILABLE` and continues with RAM files. The disk format is specific
-to Atom OS.
+**Changes are durable after `sync` (or Save in the editor) succeeds.** A write that
+would make the files larger than the disk can hold is refused up front, and `df` or
+the Files status bar shows space used and whether anything is unsaved. Without a
+compatible disk, the kernel reports `STORAGE_UNAVAILABLE` and keeps files in RAM.
+The disk format is specific to Atom OS.
 
 ## Next milestones
 
 These are proposed work, not currently implemented features:
 
-- Directories and larger files in the filesystem, with the file picker
-  browsing folders.
-- Consistent durable-capacity enforcement and clear saved/unsaved status.
+- Real-hardware reach: UEFI boot with the firmware framebuffer, AHCI/NVMe disks and
+  USB keyboard and mouse (today the desktop, disk and mouse need QEMU's devices).
+- Programs as separate windowed processes, and loading installed programs from disk folders.
 - Recovery tests that interrupt actual virtio writes and flushes in the VM.
 - Kernel hardening (SMEP/SMAP, user permissions) and multiprocessor support.
 
