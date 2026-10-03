@@ -1,4 +1,5 @@
 use alloc::collections::VecDeque;
+use alloc::string::String;
 use alloc::vec::Vec;
 use crate::address_space::AddressSpace;
 
@@ -23,6 +24,8 @@ pub struct Context {
     pub exit_code: u64,
     pub waited: bool,
     pub mailbox: VecDeque<Vec<u8>>,
+    /// Name of the executable image, for process listings.
+    pub name: String,
 }
 
 impl Context {
@@ -31,7 +34,7 @@ impl Context {
             open_files: [(0, 0); 16], readonly_files: 0, space: None,
             kernel_stack_phys: 0, kernel_stack_pages: 0, parent: 0,
             wait_for: None, sleep_until: 0, exit_code: 0, waited: false,
-            mailbox: VecDeque::new() }
+            mailbox: VecDeque::new(), name: String::new() }
     }
     pub fn set_state(&mut self, state: TaskState) { self.state = state; }
 

@@ -316,3 +316,37 @@ fn scheduler_uses_idle_when_all_tasks_are_blocked() {
     assert_eq!(s.timer_tick(0x9100), 0x9100);
     assert_eq!(s.timer_tick(0x9200), 0x1100);
 }
+
+#[test]
+fn ramfs_remove_and_rename_keep_other_handles_stable() {
+    let mut root = fs::AtomNode::Directory(Vec::new());
+    let kept = root.get_or_create_file("kept.txt").unwrap();
+    unsafe { (*kept).extend_from_slice(b"kept"); }
+    let moved = root.get_or_create_file("old.txt").unwrap();
+    unsafe { (*moved).extend_from_slice(b"moved"); }
+    root.get_or_create_file("gone.txt").unwrap();
+
+    assert!(root.remove("gone.txt"));
+    assert!(!root.remove("gone.txt"));
+    assert!(root.file("gone.txt").is_none());
+    assert_eq!(root.file_address("kept.txt"), Some(kept as u64));
+
+    assert!(!root.rename("old.txt", "kept.txt"), "rename must not replace an existing file");
+    assert!(!root.rename("old.txt", ""));
+    assert!(!root.rename("old.txt", "a/b"));
+    assert!(!root.rename("missing.txt", "new.txt"));
+    assert!(root.rename("old.txt", "new.txt"));
+    assert!(root.file("old.txt").is_none());
+    assert_eq!(root.file_address("new.txt"), Some(moved as u64), "rename relocated the data object");
+    assert_eq!(root.file("new.txt").unwrap().as_slice(), b"moved");
+    assert_eq!(unsafe { (*kept).as_slice() }, b"kept");
+}
+
+#[test]
+fn builtin_programs_are_excluded_from_snapshots() {
+    for name in fs::BUILTINS {
+        assert!(kernel_kit::storage::builtin(name));
+        assert!(kernel_kit::storage::encode(&vec![(name.to_string(), Vec::new())]).is_err());
+    }
+    assert!(!fs::builtin("notes.txt"));
+}

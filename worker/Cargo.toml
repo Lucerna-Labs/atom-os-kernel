@@ -13,3 +13,7 @@ path = "src/main.rs"
 [[bin]]
 name = "fault-probe"
 path = "src/fault.rs"
+
+[[bin]]
+name = "sleeper"
+path = "src/sleeper.rs"

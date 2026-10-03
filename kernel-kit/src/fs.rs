@@ -4,6 +4,14 @@ use alloc::boxed::Box;
 use alloc::string::String;
 use crate::memory::Spinlock;
 
+/// Read-only programs embedded in the boot image. They are never removed,
+/// renamed or written to disk snapshots.
+pub const BUILTINS: [&str; 5] = ["shell.elf", "daemon.elf", "worker.elf", "fault.elf", "sleeper.elf"];
+pub fn builtin(name: &str) -> bool { BUILTINS.contains(&name) }
+pub fn valid_name(name: &str) -> bool {
+    !name.is_empty() && name.len() <= 63 && !name.bytes().any(|b| b < 32 || b == b'/')
+}
+
 /// An abstract mathematical node representing data or a branch in the file system tree.
 pub enum AtomNode {
     File(Box<Vec<u8>>),
@@ -28,9 +36,7 @@ impl AtomNode {
     /// Searches for a file and returns its data buffer as a mutable reference.
     /// In a real OS, paths would be split by '/'. For this proof of concept, we support flat filenames in the root.
     pub fn get_or_create_file(&mut self, filename: &str) -> Option<*mut Vec<u8>> {
-        if filename.is_empty() || filename.len() > 63 || filename.bytes().any(|b| b < 32 || b == b'/') {
-            return None;
-        }
+        if !valid_name(filename) { return None; }
         match self {
             AtomNode::Directory(children) => {
                 // Find existing
@@ -54,6 +60,35 @@ impl AtomNode {
                 }
             },
             AtomNode::File(_) => None, // Cannot search inside a file
+        }
+    }
+}
+
+impl AtomNode {
+    /// Address of a file's stable data object, as held by open descriptors.
+    pub fn file_address(&self, filename: &str) -> Option<u64> {
+        self.file(filename).map(|data| data as *const Vec<u8> as u64)
+    }
+
+    /// Removes a file. Callers must first confirm no descriptor holds it,
+    /// because descriptors reference the boxed data object directly.
+    pub fn remove(&mut self, filename: &str) -> bool {
+        let Self::Directory(children) = self else { return false; };
+        match children.iter().position(|(name, node)| name == filename && matches!(node, Self::File(_))) {
+            Some(index) => { children.remove(index); true }
+            None => false,
+        }
+    }
+
+    /// Renames a file in place. The boxed data object does not move, so open
+    /// descriptors stay valid. Fails if the target name exists or is invalid.
+    pub fn rename(&mut self, from: &str, to: &str) -> bool {
+        if !valid_name(to) { return false; }
+        let Self::Directory(children) = self else { return false; };
+        if children.iter().any(|(name, _)| name == to) { return false; }
+        match children.iter_mut().find(|(name, node)| name == from && matches!(node, Self::File(_))) {
+            Some((name, _)) => { *name = String::from(to); true }
+            None => false,
         }
     }
 }

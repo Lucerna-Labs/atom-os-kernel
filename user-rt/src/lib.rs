@@ -34,9 +34,38 @@ pub fn print_args(arguments: core::fmt::Arguments<'_>) {
     } else { print("message too long\n"); }
 }
 pub fn path_call(number: u64, path: &str) -> u64 {
-    if path.is_empty() || path.len() > 63 || path.as_bytes().contains(&0) { return ERROR; }
+    match path_buffer(path) { Some(buffer) => call(number, buffer.as_ptr() as u64, 0), None => ERROR }
+}
+fn path_buffer(path: &str) -> Option<[u8; 64]> {
+    if path.is_empty() || path.len() > 63 || path.as_bytes().contains(&0) { return None; }
     let mut buffer = [0; 64]; buffer[..path.len()].copy_from_slice(path.as_bytes());
-    call(number, buffer.as_ptr() as u64, 0)
+    Some(buffer)
+}
+pub fn remove(path: &str) -> bool { path_call(SYS_REMOVE, path) == 0 }
+pub fn rename(from: &str, to: &str) -> bool {
+    let (Some(from), Some(to)) = (path_buffer(from), path_buffer(to)) else { return false; };
+    call(SYS_RENAME, from.as_ptr() as u64, to.as_ptr() as u64) == 0
+}
+pub fn kill(pid: u64) -> bool { call(SYS_KILL, pid, 0) == 0 }
+pub struct Process { pub pid: u32, pub parent: u32, pub state: u8, name: [u8; PROCESS_NAME_BYTES], name_len: u8 }
+impl Process {
+    pub fn name(&self) -> &str { core::str::from_utf8(&self.name[..self.name_len as usize]).unwrap_or("?") }
+    pub fn state_name(&self) -> &'static str {
+        match self.state { STATE_READY => "ready", STATE_RUNNING => "running", STATE_BLOCKED => "blocked", STATE_EXITED => "exited", _ => "?" }
+    }
+}
+pub fn processes() -> alloc::vec::Vec<Process> {
+    const MAX: usize = 16;
+    let mut buffer = [0u8; MAX * PROCESS_RECORD_BYTES];
+    let count = call(SYS_PROCESSES, buffer.as_mut_ptr() as u64, MAX as u64);
+    if count == ERROR { return alloc::vec::Vec::new(); }
+    buffer.chunks(PROCESS_RECORD_BYTES).take(count as usize).map(|record| {
+        let mut name = [0; PROCESS_NAME_BYTES];
+        name.copy_from_slice(&record[16..16 + PROCESS_NAME_BYTES]);
+        Process { pid: u32::from_le_bytes(record[0..4].try_into().unwrap()),
+            parent: u32::from_le_bytes(record[4..8].try_into().unwrap()),
+            state: record[8], name, name_len: record[9].min(PROCESS_NAME_BYTES as u8) }
+    }).collect()
 }
 pub fn open(path: &str) -> u64 { path_call(SYS_OPEN, path) }
 pub fn close(fd: u64) { call(SYS_CLOSE, fd, 0); }

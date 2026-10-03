@@ -34,7 +34,24 @@ fn main() {
     assert!(rt::write(fd, b"stable handle")); rt::close(fd);
     let fd = rt::open(&held);
     for &expected in b"stable handle" { assert_eq!(rt::read(fd), Some(expected)); }
-    assert_eq!(rt::read(fd), None); rt::close(fd);
+    assert_eq!(rt::read(fd), None);
+    // An open descriptor pins its file; built-ins can never be removed or renamed.
+    assert!(!rt::remove(&held));
+    rt::close(fd);
+    let moved = alloc::format!("moved{}.txt", pid % 16);
+    rt::remove(&moved);
+    assert!(rt::rename(&held, &moved));
+    assert!(!rt::rename(&moved, "worker.elf"));
+    assert!(!rt::remove("worker.elf") && !rt::rename("worker.elf", "renamed.elf"));
+    let fd = rt::open(&moved);
+    for &expected in b"stable handle" { assert_eq!(rt::read(fd), Some(expected)); }
+    rt::close(fd);
+    assert!(rt::remove(&moved) && !rt::remove(&moved));
+    for i in 0..32 { assert!(rt::remove(&alloc::format!("growth{}.txt", i))); }
+    let mut ours = false;
+    for process in rt::processes() { if process.pid as u64 == pid && process.name() == "worker.elf" { ours = true; } }
+    assert!(ours);
+    assert!(!rt::kill(0));
 
     let fast_pid: u64;
     unsafe {

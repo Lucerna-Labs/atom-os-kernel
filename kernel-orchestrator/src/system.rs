@@ -29,10 +29,21 @@ impl System {
         self.scheduler.timer_tick(rsp)
     }
     pub fn exit_current(&mut self, code: u64) {
-        let Some(current) = self.scheduler.current_task_mut() else { return; };
-        let pid = current.id;
-        current.exit_code = code;
-        current.state = TaskState::Terminated;
+        if let Some(pid) = self.scheduler.current_task().map(|task| task.id) { self.terminate(pid, code); }
+    }
+    /// Ends another live process. Its resources are reclaimed by `collect`
+    /// once it is not the running task; its parent can still `wait` for it.
+    pub fn kill(&mut self, pid: usize) -> Result<(), ()> {
+        let target = self.scheduler.task(pid).ok_or(())?;
+        if target.state == TaskState::Terminated { return Err(()); }
+        self.terminate(pid, crate::abi::KILLED_STATUS);
+        Ok(())
+    }
+    fn terminate(&mut self, pid: usize, code: u64) {
+        let Some(task) = self.scheduler.task_mut(pid) else { return; };
+        task.exit_code = code;
+        task.state = TaskState::Terminated;
+        task.wait_for = None;
         let mut waited = false;
         for task in self.scheduler.tasks.iter_mut().flatten() {
             if task.id != pid && task.wait_for == Some(pid) {

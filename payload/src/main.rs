@@ -86,7 +86,7 @@ fn execute(command: &str) {
     let argument = argument.trim();
     match verb {
         "" => {}
-        "help" => rt::print("commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run selftest pairtest churn faulttest sync reboot\n"),
+        "help" => rt::print("commands: help ls clear cat edit echo rm mv msg bench heaptest stats spawn wait ps kill run selftest pairtest churn faulttest sync reboot\n"),
         "ls" => { rt::call(SYS_LIST_DIR, 0, 0); }
         "clear" => { rt::call(SYS_CLEAR, 0, 0); }
         "bench" => bench(),
@@ -101,6 +101,22 @@ fn execute(command: &str) {
             if fd == ERROR || !rt::write(fd, text.as_bytes()) || !rt::write(fd, b"\n") { rt::print("write failed\n"); }
             rt::close(fd);
         } else { rt::print("usage: echo text > file\n"); },
+        "rm" => rt::print(if rt::remove(argument) { "removed (sync to save)\n" } else { "rm failed (missing, built-in or open)\n" }),
+        "mv" => match argument.split_once(' ') {
+            Some((from, to)) => rt::print(if rt::rename(from.trim(), to.trim()) { "renamed (sync to save)\n" }
+                else { "mv failed (missing, built-in or target exists)\n" }),
+            None => rt::print("usage: mv old new\n"),
+        },
+        "ps" => {
+            rt::print("PID PARENT STATE    NAME\n");
+            for process in rt::processes() {
+                rt::print(&format!("{:<3} {:<6} {:<8} {}\n", process.pid, process.parent, process.state_name(), process.name()));
+            }
+        }
+        "kill" => match argument.parse::<u64>() {
+            Ok(pid) => rt::print(&if rt::kill(pid) { format!("killed pid {}\n", pid) } else { String::from("kill failed\n") }),
+            Err(_) => rt::print("usage: kill pid\n"),
+        },
         "msg" => rt::print(if rt::send(2, argument) { "Message sent to Daemon\n" } else { "message rejected or mailbox full\n" }),
         "spawn" => { let pid = rt::spawn(argument); if pid == ERROR { rt::print("spawn failed\n"); }
             else { rt::print(&format!("spawned pid {}\n", pid)); } }

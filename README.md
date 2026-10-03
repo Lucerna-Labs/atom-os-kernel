@@ -30,7 +30,11 @@ been validated.
 - **Scheduling and syscalls:** round-robin preemption, `int 0x80` and fast
   `syscall/sysret` paths, and saved integer/x87/SSE/MXCSR context.
 - **Files and IPC:** a flat in-memory filesystem with stable open-file objects,
+  file removal and rename that refuse to touch open or built-in files,
   read-only embedded executables, and bounded per-process message queues.
+- **Process control:** `ps` lists live and exited processes with their parent,
+  state and program name; `kill` ends a process, whose parent then collects
+  status **137**.
 - **Persistent storage:** a legacy/transitional virtio-blk PCI driver with
   FLUSH support and two checksummed snapshot slots.
 - **Diagnostics:** serial crash reports and containment of user faults, with a
@@ -51,6 +55,12 @@ run has passed.
 | Free frames after those cycles | **16,326 before → 16,326 after** on both backends |
 | Persistent files | Exact generated text survived a warm OS reboot and a fresh QEMU cold boot |
 | Executable replacement | Worker replaced the shell, exited, and left the daemon running |
+
+**October 3, 2026 update:** after adding `rm`, `mv`, `ps` and `kill`, the
+native suite recorded **23 passed, 0 failed** and the TCG acceptance run recorded
+**19 checks passed**, including the new `PS_KILL_REAP`, `FILE_REMOVE_RENAME` and
+`REMOVE_RENAME_PERSISTENCE` checks. That run used QEMU 8.2.2 (TCG only; KVM was
+not available) and the pinned toolchain; its logs were not committed.
 
 The acceptance suite also exercises keyboard input, file reads/writes, exact IPC
 delivery, concurrent processes, invalid-pointer/ELF rejection, fast syscalls,
@@ -163,12 +173,16 @@ disk is planned separately from this acceptance harness.
 |---|---|
 | `help`, `ls`, `clear` | List commands/files or clear the screen |
 | `cat file` | Read a file |
+| `rm file` | Remove a writable file that no process has open |
+| `mv old new` | Rename a writable file; fails if `new` exists |
 | `echo text > file` | Append text and a newline |
 | `edit file` | Edit up to 64 KiB; Esc saves the RAM copy |
 | `msg text` | Send a message to the daemon; a full mailbox returns an error |
 | `bench`, `heaptest`, `stats` | Exercise yields/heap or show free frames and live tasks |
 | `spawn worker.elf` | Start a child while the shell continues; print its PID |
 | `wait PID` | Wait for a child of this shell and collect its exit status |
+| `ps` | List processes: PID, parent, state and program name |
+| `kill PID` | End a process; its parent's `wait` returns status 137 |
 | `run worker.elf` | Replace the shell process with the executable |
 | `selftest`, `pairtest` | Run one worker or two concurrent workers and check their exits |
 | `churn 48` | Exercise repeated process creation/reaping and compare free-frame counts |
@@ -179,15 +193,23 @@ disk is planned separately from this acceptance harness.
 The current [PS/2 keyboard mapping](kernel-kit/src/keyboard.rs) uses the numpad
 `+` key to enter `>` for redirection.
 
-The kernel embeds four read-only programs: `shell.elf`, `daemon.elf`,
-`worker.elf`, and `fault.elf`. The diagnostic worker checks heap contents,
+`rm` and `mv` change RAM files only; use `sync` to make the change durable.
+Built-in programs cannot be removed or renamed, and a file held open by any
+process cannot be removed.
+
+The kernel embeds five read-only programs: `shell.elf`, `daemon.elf`,
+`worker.elf`, `fault.elf` and `sleeper.elf`. The diagnostic worker checks heap contents,
 untrusted pointers, file handles, fast syscalls, SIMD context and IPC, then exits
-with status **37**. The fault probe touches a stack guard page and produces
+with status **37**. The worker also checks remove/rename rules and its own
+process-list entry. `sleeper.elf` sleeps until killed, for `ps`/`kill` tests. The fault probe touches a stack guard page and produces
 status **142**, which its parent checks.
 
 The shared syscall definitions are in [`abi.rs`](abi.rs). Existing byte-I/O and
 IPC calls remain available alongside the newer process and memory operations.
 `SYS_ALLOC` returns mapped process-private memory; `SYS_FREE` releases it.
+`SYS_REMOVE` and `SYS_RENAME` take NUL-terminated names. `SYS_PROCESSES` copies
+fixed 64-byte records into a checked, writable user buffer, and `SYS_KILL`
+terminates a process by PID.
 
 ## Architecture
 
@@ -199,7 +221,7 @@ IPC calls remain available alongside the newer process and memory operations.
 | [`user-rt/`](user-rt) | Userspace entry, syscall wrappers, console helpers and allocator |
 | [`payload/`](payload) | Command shell |
 | [`daemon/`](daemon) | IPC receiver and heartbeat process |
-| [`worker/`](worker) | Diagnostic worker and fault-probe executables |
+| [`worker/`](worker) | Diagnostic worker, fault-probe and sleeper executables |
 | [`tests/`](tests) and [`scripts/`](scripts) | Native regression tests, builds and VM acceptance |
 
 Each process owns its image, stacks, heap allocations, receive page and copied
@@ -244,8 +266,8 @@ with `virtio-blk-pci,disable-modern=on`; the storage contracts follow the
 
 **RAM edits are durable only after `sync` succeeds.** The RAM directory and disk
 format have different capacity limits, so a RAM write may succeed even when a
-later `sync` cannot save everything. Capacity reporting and file removal are
-planned improvements. Without a compatible disk, the kernel reports
+later `sync` cannot save everything; `rm` can free space before retrying. Capacity reporting is a
+planned improvement. Without a compatible disk, the kernel reports
 `STORAGE_UNAVAILABLE` and continues with RAM files. The disk format is specific
 to Atom OS.
 
@@ -253,12 +275,10 @@ to Atom OS.
 
 These are proposed work, not currently implemented features:
 
-- Safe file removal/rename, consistent durable-capacity enforcement, and clear
-  saved/unsaved status.
+- Consistent durable-capacity enforcement and clear saved/unsaved status.
 - Recovery tests that interrupt actual virtio writes and flushes in the VM.
 - An interactive launcher that reuses a persistent development disk.
-- Program arguments and process inspection/control commands such as `ps` and
-  `kill`.
+- Program arguments for spawned processes.
 
 ## CI and preserved history
 

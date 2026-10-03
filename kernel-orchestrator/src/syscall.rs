@@ -24,7 +24,28 @@ pub fn user_string(context: &Context, address: u64, limit: usize) -> Result<Stri
     Err(())
 }
 
-pub fn builtin(name: &str) -> bool { matches!(name, "shell.elf" | "daemon.elf" | "worker.elf" | "fault.elf") }
+pub use kernel_kit::fs::builtin;
+
+/// Copies kernel bytes into the current process through its own page tables,
+/// after checking the whole destination is mapped, user-accessible and writable.
+fn copy_to_user(context: &Context, address: u64, bytes: &[u8]) -> bool {
+    let Some(space) = context.space.as_ref() else { return false; };
+    if !space.valid_user_range(address, bytes.len(), true) { return false; }
+    let mut done = 0;
+    while done < bytes.len() {
+        let virt = address + done as u64;
+        let count = (4096 - (virt & 4095) as usize).min(bytes.len() - done);
+        let Some(phys) = space.translate_user(virt, true) else { return false; };
+        unsafe { core::ptr::copy_nonoverlapping(bytes[done..].as_ptr(), phys_to_virt(phys) as *mut u8, count); }
+        done += count;
+    }
+    true
+}
+
+/// True when any live descriptor in any process references this file object.
+fn file_open(system: &System, address: u64) -> bool {
+    system.scheduler.tasks.iter().flatten().any(|task| task.open_files.iter().any(|entry| entry.0 == address))
+}
 
 /// Called with interrupts disabled and the actual interrupted frame registered
 /// in the current context. Never dispatch through an earlier saved frame.
@@ -110,6 +131,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                 unsafe { Cr3::load(space.root); }
                 context.page_table_root = space.root;
                 context.space = Some(space);
+                context.name = name;
                 context.open_files = [(0, 0); 16]; context.readonly_files = 0;
                 *frame = TrapFrame::new_user(entry, STACK_TOP);
                 unsafe { crate::process::reset_fpu(rsp); }
@@ -149,6 +171,49 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                 core::ptr::copy_nonoverlapping(message.as_ptr(), target, message.len());
             }
             frame.rax = RECV_BASE;
+        }
+    } else if is(number, SYS_REMOVE) {
+        if let Ok(name) = user_string(context, arg, 64) {
+            let fs = kernel_kit::fs::ROOT_FS.lock();
+            if !builtin(&name) {
+                if let Some(address) = fs.file_address(&name) {
+                    if !file_open(system, address) && fs.remove(&name) { frame.rax = 0; }
+                }
+            }
+            kernel_kit::fs::ROOT_FS.unlock();
+        }
+    } else if is(number, SYS_RENAME) {
+        if let (Ok(from), Ok(to)) = (user_string(context, arg, 64), user_string(context, arg1, 64)) {
+            if !builtin(&from) && !builtin(&to) {
+                let fs = kernel_kit::fs::ROOT_FS.lock();
+                if fs.rename(&from, &to) { frame.rax = 0; }
+                kernel_kit::fs::ROOT_FS.unlock();
+            }
+        }
+    } else if is(number, SYS_PROCESSES) {
+        let capacity = (arg1 as usize).min(crate::scheduler::MAX_TASKS);
+        let mut records = Vec::new();
+        for task in system.scheduler.tasks.iter().flatten().take(capacity) {
+            let mut record = [0u8; PROCESS_RECORD_BYTES];
+            record[0..4].copy_from_slice(&(task.id as u32).to_le_bytes());
+            record[4..8].copy_from_slice(&(task.parent as u32).to_le_bytes());
+            record[8] = match task.state {
+                TaskState::Ready => STATE_READY,
+                TaskState::Running => STATE_RUNNING,
+                TaskState::Blocked | TaskState::Trapped => STATE_BLOCKED,
+                TaskState::Terminated => STATE_EXITED,
+            };
+            let name = &task.name.as_bytes()[..task.name.len().min(PROCESS_NAME_BYTES)];
+            record[9] = name.len() as u8;
+            record[16..16 + name.len()].copy_from_slice(name);
+            records.extend_from_slice(&record);
+        }
+        let context = system.scheduler.current_task().unwrap();
+        if copy_to_user(context, arg, &records) { frame.rax = (records.len() / PROCESS_RECORD_BYTES) as u64; }
+    } else if is(number, SYS_KILL) {
+        if system.kill(arg as usize).is_ok() {
+            frame.rax = 0;
+            if arg as usize == pid { switch = true; }
         }
     } else if is(number, SYS_SYNC) {
         if kernel_kit::storage::sync().is_ok() { frame.rax = 0; }
