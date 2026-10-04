@@ -19,6 +19,7 @@ use super::{Action, App};
 use crate::font::{Font, Weight as FontWeight, UI};
 use crate::gfx::{Canvas, Color, Rect};
 use crate::icons::{self, Icon};
+use crate::textarea::{self, TextArea};
 use crate::theme::*;
 use crate::ui::{self, TextField};
 
@@ -29,6 +30,7 @@ enum Element {
     Button { id: u32, kind: ButtonKind, key: Option<AccessKey>, label: String },
     Toggle { id: u32, on: bool, label: String },
     Field { id: u32 },
+    Area { id: u32 },
     Icon { name: String, size: u16 },
     Divider,
     Spacer,
@@ -51,6 +53,10 @@ pub struct Remote {
     /// The client area the current layout was solved for (None: solve again).
     laid_for: Option<Rect>,
     fields: BTreeMap<u32, TextField>,
+    /// Text areas by program id, with whether each changed since its last
+    /// SetText/GetText (the program hears about the first change only).
+    areas: BTreeMap<u32, (TextArea, bool)>,
+    /// The field or text area with the keyboard (ids are the program's).
     focus: Option<u32>,
     pressed: Option<usize>,
     reported: (i32, i32),
@@ -63,7 +69,7 @@ impl Remote {
         let mut r = Remote {
             program: program.into(), title: title.into(), icon, size, pid: None, input: ERROR, output: ERROR,
             outbox: Vec::new(), reader: RequestReader::new(), tree: None, elements: Vec::new(), laid: Vec::new(),
-            laid_for: None, fields: BTreeMap::new(), focus: None, pressed: None, reported: (0, 0), error_logged: false,
+            laid_for: None, fields: BTreeMap::new(), areas: BTreeMap::new(), focus: None, pressed: None, reported: (0, 0), error_logged: false,
         };
         if let (Some(input), Some(output)) = (rt::pipe(), rt::pipe()) {
             let pid = rt::spawn_with(program, "", input, output);
@@ -96,8 +102,9 @@ impl Remote {
         self.laid_for = Some(area);
         let Some(tree) = self.tree.take() else { return };
         let mut seen = Vec::new();
-        let mut root = bridge(&tree, Dir::Column, &mut self.elements, &mut self.fields, self.focus, &mut seen);
+        let mut root = bridge(&tree, Dir::Column, &mut self.elements, &mut self.fields, &mut self.areas, self.focus, &mut seen);
         self.fields.retain(|id, _| seen.contains(id));
+        self.areas.retain(|id, _| seen.contains(id));
         if self.focus.is_some_and(|f| !seen.contains(&f)) { self.focus = None; }
         // The root fills the client area.
         if let UxNode::Box { style, .. } = &mut root {
@@ -114,10 +121,29 @@ impl Remote {
         layout::hit_test(&self.laid, x as f32, y as f32).map(|(id, _)| id as usize)
     }
 
+    /// The solved rectangle of element `index`.
+    fn rect_of_element(&self, index: usize) -> Option<Rect> {
+        self.laid.iter().find(|b| b.id == Some(index as u32)).map(|b| rect_of(&b.rect))
+    }
+    /// The element index and rectangle of text area `id`.
+    fn area_rect(&self, id: u32) -> Option<Rect> {
+        let index = self.elements.iter().position(|e| matches!(e, Element::Area { id: a } if *a == id))?;
+        self.rect_of_element(index).map(|r| r.inset(1))
+    }
+
     fn handle(&mut self, request: Request) {
         match request {
             Request::Window { title, .. } | Request::Title(title) => self.title = title,
             Request::Show(tree) => { self.tree = Some(tree); self.laid_for = None; }
+            Request::SetText(id, text) => {
+                let area = self.areas.entry(id).or_insert_with(|| (TextArea::new(false), false));
+                area.0.set_text(&text);
+                area.1 = false;
+            }
+            Request::GetText(id) => {
+                let text = self.areas.get_mut(&id).map(|area| { area.1 = false; area.0.text() }).unwrap_or_default();
+                self.send(Event::Text(id, text));
+            }
         }
     }
 }
@@ -148,9 +174,12 @@ fn text_span(text: &str, size: u16, weight: Weight) -> Span {
 /// The vocabulary -> the kit's UXI tree. Every element is a kit box whose id indexes
 /// `elements`; text inside it is measured by the kit with the desktop's fonts.
 fn bridge(node: &Node, parent: Dir, elements: &mut Vec<Element>, fields: &mut BTreeMap<u32, TextField>,
-          focus: Option<u32>, seen: &mut Vec<u32>) -> UxNode {
+          areas: &mut BTreeMap<u32, (TextArea, bool)>, focus: Option<u32>, seen: &mut Vec<u32>) -> UxNode {
     let index = elements.len() as u32;
-    let role = match node { Node::Button { .. } => Role::Button, Node::Toggle { .. } => Role::Toggle, Node::Field { .. } => Role::Input, _ => Role::None };
+    let role = match node {
+        Node::Button { .. } => Role::Button, Node::Toggle { .. } => Role::Toggle,
+        Node::Field { .. } | Node::TextArea { .. } => Role::Input, _ => Role::None,
+    };
     let base = KitStyle::default().interactive(index, role);
     match node {
         Node::Column { layout: l, children } | Node::Row { layout: l, children } => {
@@ -158,7 +187,7 @@ fn bridge(node: &Node, parent: Dir, elements: &mut Vec<Element>, fields: &mut BT
             elements.push(Element::Container { panel: l.panel });
             let mut style = KitStyle { dir, gap: l.gap as f32, padding: Edges::all(l.pad as f32), align: kit_align(l.align), ..base };
             if l.grow { style = grown(style, parent); }
-            let kids = children.iter().map(|child| bridge(child, dir, elements, fields, focus, seen)).collect();
+            let kids = children.iter().map(|child| bridge(child, dir, elements, fields, areas, focus, seen)).collect();
             UxNode::boxed(style, kids)
         }
         Node::Text { style, text } => {
@@ -192,6 +221,16 @@ fn bridge(node: &Node, parent: Dir, elements: &mut Vec<Element>, fields: &mut BT
             if *grow { style = grown(style, parent); }
             UxNode::boxed(style, alloc::vec![])
         }
+        Node::TextArea { id, grow, numbers } => {
+            elements.push(Element::Area { id: *id });
+            seen.push(*id);
+            areas.entry(*id).or_insert_with(|| (TextArea::new(*numbers), false)).0.numbers = *numbers;
+            let mut style = KitStyle { height: Dim::Px(120.0), width: Dim::Px(240.0), ..base };
+            if *grow { style = grown(style, parent); }
+            // Stretch across the parent too, so a growing area fills both ways.
+            match parent { Dir::Column => style.width = Dim::Auto, Dir::Row => style.height = Dim::Auto }
+            UxNode::boxed(style, alloc::vec![])
+        }
         Node::Icon { size, name } => {
             elements.push(Element::Icon { name: name.clone(), size: *size });
             UxNode::boxed(KitStyle { width: Dim::Px(*size as f32), height: Dim::Px(*size as f32), ..base }, alloc::vec![])
@@ -214,7 +253,7 @@ pub fn icon_named(name: &str) -> Icon {
     match name {
         "atom" => Icon::Atom, "info" => Icon::Info, "folder" => Icon::Folder, "document" => Icon::Document,
         "terminal" => Icon::Terminal, "monitor" => Icon::Monitor, "save" => Icon::Save, "power" => Icon::Power,
-        "exit" => Icon::Exit, "calculator" => Icon::Calculator, _ => Icon::Program,
+        "exit" => Icon::Exit, "calculator" => Icon::Calculator, "notepad" => Icon::Document, _ => Icon::Program,
     }
 }
 
@@ -275,6 +314,17 @@ impl App for Remote {
                 Element::Field { id } => {
                     if let Some(field) = self.fields.get(id) { field.draw(c, r, focused && self.focus == Some(*id)); }
                 }
+                Element::Area { id } => {
+                    let has_focus = focused && self.focus == Some(*id);
+                    c.round_rect(r, 6, WINDOW, 255);
+                    if let Some((area, _)) = self.areas.get(id) {
+                        let saved = c.clip();
+                        c.set_clip(r.inset(1).intersect(&saved));
+                        area.draw(c, r.inset(1), has_focus);
+                        c.set_clip(saved);
+                    }
+                    c.round_outline(r, 6, if has_focus { ACCENT } else { BORDER }, 255);
+                }
                 Element::Icon { name, size } => icons::draw(c, icon_named(name), r.x, r.y, *size as i32),
                 Element::Divider => c.fill(r, DIVIDER),
             }
@@ -283,6 +333,29 @@ impl App for Remote {
 
     fn key(&mut self, e: &InputEvent, _area: Rect) -> Action {
         if e.pressed == 0 { return Action::None; }
+        // Ctrl shortcuts a program declared win even over a field or text area.
+        if e.modifiers & MOD_CTRL != 0 && (32..127).contains(&e.key) {
+            let letter = (e.key as u8 as char).to_ascii_lowercase();
+            let target = self.elements.iter().find_map(|el| match el {
+                Element::Button { id, key: Some(AccessKey::Ctrl(k)), .. } if k.to_ascii_lowercase() == letter => Some(*id),
+                _ => None,
+            });
+            if let Some(id) = target { self.send(Event::Click(id)); return Action::None; }
+        }
+        if let Some(id) = self.focus.filter(|id| self.areas.contains_key(id)) {
+            let Some(rect) = self.area_rect(id) else { return Action::None };
+            let (area, edited) = self.areas.get_mut(&id).unwrap();
+            return match area.key(e, rect) {
+                textarea::Edit::Ignored => Action::None,
+                textarea::Edit::Moved => Action::Redraw,
+                textarea::Edit::Changed => {
+                    let first = !*edited;
+                    *edited = true;
+                    if first { self.send(Event::Edited(id)); }
+                    Action::Redraw
+                }
+            };
+        }
         if let Some(id) = self.focus {
             let Some(field) = self.fields.get_mut(&id) else { return Action::None };
             let event = match field.key(e) {
@@ -310,10 +383,17 @@ impl App for Remote {
         Action::None
     }
 
-    fn mouse_down(&mut self, x: i32, y: i32, _area: Rect, _double: bool) -> Action {
+    fn mouse_down(&mut self, x: i32, y: i32, _area: Rect, double: bool) -> Action {
         let Some(index) = self.element_at(x, y) else { self.focus = None; return Action::Redraw };
         let mut toggled = None;
         match &self.elements[index] {
+            Element::Area { id } => {
+                let id = *id;
+                self.focus = Some(id);
+                let rect = self.rect_of_element(index).map(|r| r.inset(1));
+                if let (Some((area, _)), Some(rect)) = (self.areas.get_mut(&id), rect) { area.mouse_down(x, y, rect, double); }
+                return Action::Redraw;
+            }
             Element::Button { .. } => { self.pressed = Some(index); }
             Element::Toggle { id, on, .. } => toggled = Some(Event::Toggle(*id, !*on)),
             Element::Field { id } => {
@@ -330,7 +410,23 @@ impl App for Remote {
         Action::Redraw
     }
 
+    fn mouse_drag(&mut self, x: i32, y: i32, _area: Rect) -> Action {
+        let Some(id) = self.focus.filter(|id| self.areas.contains_key(id)) else { return Action::None };
+        let Some(rect) = self.area_rect(id) else { return Action::None };
+        if self.areas.get_mut(&id).unwrap().0.mouse_drag(x, y, rect) { Action::Redraw } else { Action::None }
+    }
+
+    fn wheel(&mut self, delta: i32, _area: Rect) -> Action {
+        // The focused text area, else the first one.
+        let id = self.focus.filter(|id| self.areas.contains_key(id)).or_else(|| self.areas.keys().next().copied());
+        let Some(id) = id else { return Action::None };
+        let Some(rect) = self.area_rect(id) else { return Action::None };
+        self.areas.get_mut(&id).unwrap().0.wheel(delta, rect);
+        Action::Redraw
+    }
+
     fn mouse_up(&mut self, x: i32, y: i32, _area: Rect) -> Action {
+        for (area, _) in self.areas.values_mut() { area.mouse_up(); }
         let Some(pressed) = self.pressed.take() else { return Action::None };
         if self.element_at(x, y) == Some(pressed) {
             if let Element::Button { id, .. } = self.elements[pressed] { self.send(Event::Click(id)); }

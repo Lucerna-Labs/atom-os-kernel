@@ -16,3 +16,7 @@ path = "src/calculator.rs"
 [[bin]]
 name = "about"
 path = "src/about.rs"
+
+[[bin]]
+name = "notepad"
+path = "src/notepad.rs"

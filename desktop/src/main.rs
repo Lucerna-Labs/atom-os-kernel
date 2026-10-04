@@ -8,6 +8,7 @@ mod font;
 mod gfx;
 mod icons;
 mod theme;
+mod textarea;
 mod ui;
 
 use alloc::boxed::Box;
@@ -35,6 +36,7 @@ struct Program { title: String, path: String, icon: Icon, size: (i32, i32) }
 fn bundled_programs() -> Vec<Program> {
     alloc::vec![
         Program { title: "Calculator".into(), path: "calculator.elf".into(), icon: Icon::Calculator, size: (300, 440) },
+        Program { title: "Notepad".into(), path: "notepad.elf".into(), icon: Icon::Document, size: (640, 460) },
         Program { title: "About Atom OS".into(), path: "about.elf".into(), icon: Icon::Info, size: (460, 340) },
     ]
 }

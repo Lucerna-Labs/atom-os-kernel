@@ -20,8 +20,8 @@ import zlib
 SCREEN = (1920, 1080)
 SCALE = 1
 START_FROM_BOTTOM = 23
-MENU_FROM_BOTTOM = {"files": 412, "editor": 372, "terminal": 332, "monitor": 292, "calculator": 252, "about": 212,
-                    "sync": 164, "exit": 124, "restart": 84}
+MENU_FROM_BOTTOM = {"files": 452, "editor": 412, "terminal": 372, "monitor": 332, "calculator": 292, "notepad": 252,
+                    "about": 212, "sync": 164, "exit": 124, "restart": 84}
 TITLE_ACTIVE = (232, 236, 244)
 
 
@@ -280,6 +280,29 @@ def main():
         vm.combo("alt", "f4")
         time.sleep(1)
         passed("WINDOWED_PROGRAMS")
+
+        # Notepad: a windowed program with a text area the desktop edits. It opens at
+        # the first window position too; its text area covers (460, 300).
+        offset = len(vm.serial())
+        vm.menu("notepad")
+        vm.wait(r"WINDOW_OPEN Notepad", offset)
+        time.sleep(1.5)
+        vm.click(460, 300)
+        typed = "Hello from Notepad\nSecond line"
+        vm.keys(typed)
+        vm.combo("ctrl", "s")  # A declared Ctrl shortcut, even while the text area types.
+        match = vm.wait(r"NOTEPAD_SAVED /notepad\.txt (\d+)", offset)
+        assert int(match[1]) == len(typed), match[0]
+        offset = len(vm.serial())
+        vm.combo("ctrl", "n")
+        vm.combo("ctrl", "o")
+        match = vm.wait(r"NOTEPAD_OPENED /notepad\.txt (\d+)", offset)
+        assert int(match[1]) == len(typed), match[0]
+        time.sleep(1)
+        vm.shot("notepad")
+        vm.combo("alt", "f4")
+        time.sleep(1)
+        passed("NOTEPAD")
 
         # Editor: Save on an untitled document opens the Save As picker.
         vm.menu("editor")

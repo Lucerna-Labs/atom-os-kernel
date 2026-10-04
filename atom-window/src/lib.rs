@@ -32,6 +32,11 @@ impl Window {
     pub fn set_title(&mut self, title: &str) { rt::print(&Request::Title(title.into()).encode()); }
     /// Shows `tree` (replacing the previous one). False when the output was refused.
     pub fn show(&mut self, tree: &Node) -> bool { rt::try_print(&encode_show(tree)) }
+    /// Fills text area `id` with `text`. False when the output was refused (the E24
+    /// egress cone stops text that reads as key material).
+    pub fn set_text(&mut self, id: u32, text: &str) -> bool { rt::try_print(&Request::SetText(id, text.into()).encode()) }
+    /// Asks for text area `id`'s contents; they arrive as `Event::Text`.
+    pub fn request_text(&mut self, id: u32) { rt::print(&Request::GetText(id).encode()); }
 
     /// The next event, if one has arrived. The desktop closing the window's input
     /// (it closed the window or exited) reads as `Close`.

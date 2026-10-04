@@ -286,6 +286,7 @@ menu returns to the text shell, and the `desktop` command re-enters it.
 | Terminal | Runs `shell.elf` (or a program opened from Files) over pipes, with 2,000 lines of scrollback. |
 | System Monitor | Memory use, uptime and the process table, with **End process**. |
 | Calculator | A windowed program (`calculator.elf`, its own process): integer arithmetic with overflow and division checks; the digits, `+ - * /`, Enter, Esc and Backspace work from the keyboard. |
+| Notepad | A windowed program (`notepad.elf`) for plain text: type a path, **Open** (Ctrl+O, or Enter in the path field), edit in the shared editor (selection, clipboard, auto-indent), **Save** (Ctrl+S) writes the file and saves to the data disk, **New** (Ctrl+N). Documents up to 4 MB. |
 | About Atom OS | A windowed program (`about.elf`): memory, uptime, process count and its own process number. |
 
 Keyboard shortcuts: Alt+F4 closes the focused window, Alt+Tab switches windows
@@ -295,14 +296,20 @@ and Esc cancels dialogs.
 
 A windowed program is an ordinary process that the desktop starts with its standard
 output and input connected to a window. The program describes the window as a tree
-of **intent**: columns and rows of text, buttons, toggles, text fields, icons,
-spacers and dividers, with gaps, padding, alignment and theme tones. It never sends a
+of **intent**: columns and rows of text, buttons, toggles, text fields, multi-line
+text areas, icons, spacers and dividers, with gaps, padding, alignment and theme tones. It never sends a
 coordinate. The desktop derives every rectangle with pmre-kit's flex solver, paints
 the elements with its own widgets and theme (so they match the built-in apps), and
 sends interaction back as events: a click on button 7, a toggle, field edits and
 Enter, a resize, a close. The program owns all state and re-sends its tree when that
-state changes. A button can declare a keyboard shortcut, which the desktop presses
-for it.
+state changes. A button can declare a keyboard shortcut (a key, or Ctrl and a letter,
+which works even while a field has the keyboard), which the desktop presses for it.
+
+A text area is the exception to "the program owns the state": while it is being
+edited the desktop holds the text, using the same editor as the Text Editor. The
+program fills it with `settext` and asks for it with `gettext`, and hears `edited`
+on the first change after either. Documents travel as blocks, one `| `-prefixed line
+per text line, so they never hit the wire's line cap.
 
 The vocabulary is [`ui-intent`](ui-intent/src/lib.rs), a zero-dependency crate with
 no renderer types; the desktop's bridge to the kit lives only in

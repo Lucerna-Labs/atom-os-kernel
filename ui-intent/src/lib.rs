@@ -24,6 +24,18 @@
 //! click 7                           desktop -> program: an event
 //! ```
 //!
+//! Documents (a `textarea`'s contents) move as blocks, one `| `-prefixed line per text
+//! line (`+ ` continues a line longer than a wire line), so they never hit the line cap:
+//!
+//! ```text
+//! settext 5                          program -> desktop: fill text area 5
+//! | first line
+//! | second line
+//! end
+//! gettext 5                          program -> desktop: ask for its contents
+//! text 5                             desktop -> program: the reply, same block form
+//! ```
+//!
 //! Decoding fails closed: depth, node count, line length and message size are capped
 //! (`MAX_*`), and anything unknown is an error, never a guess.
 #![cfg_attr(not(test), no_std)]
@@ -41,6 +53,8 @@ pub const MAX_NODES: usize = 2048;
 pub const MAX_LINE: usize = 1024;
 /// Largest encoded tree accepted (bytes).
 pub const MAX_TREE_BYTES: usize = 128 * 1024;
+/// Largest document moved in one `settext` / `text` block (bytes).
+pub const MAX_TEXT_BYTES: usize = 4 << 20;
 
 /// Placement of children across a container's main axis.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -55,7 +69,11 @@ pub enum Weight { #[default] Regular, Bold, Mono }
 
 /// A keyboard shortcut a program declares for a button.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AccessKey { Char(char), Enter, Backspace, Escape }
+pub enum AccessKey {
+    Char(char), Enter, Backspace, Escape,
+    /// Ctrl and a letter: works even while a field or text area has the keyboard.
+    Ctrl(char),
+}
 
 /// A button's role, which the desktop shows with its own button styles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -91,6 +109,10 @@ pub enum Node {
     Toggle { id: u32, on: bool, label: String },
     /// A one-line text field; edits come back as `Change`, Enter as `Submit`.
     Field { id: u32, grow: bool, value: String },
+    /// A multi-line editing area. The desktop holds the text while it is edited:
+    /// `SetText` fills it, `GetText` asks for it (answered by `Event::Text`), and the
+    /// first change after either sends `Event::Edited`.
+    TextArea { id: u32, grow: bool, numbers: bool },
     /// A named icon from the desktop's set ("atom", "info", "folder", ...); an
     /// unknown name draws the desktop's generic icon.
     Icon { size: u16, name: String },
@@ -108,6 +130,7 @@ pub fn button(id: u32, label: &str) -> Node { Node::Button { id, kind: ButtonKin
 pub fn toggle(id: u32, label: &str, on: bool) -> Node { Node::Toggle { id, on, label: String::from(label) } }
 pub fn field(id: u32, value: &str) -> Node { Node::Field { id, grow: false, value: String::from(value) } }
 pub fn icon(name: &str, size: u16) -> Node { Node::Icon { size, name: String::from(name) } }
+pub fn text_area(id: u32) -> Node { Node::TextArea { id, grow: false, numbers: false } }
 
 impl Node {
     fn layout_mut(&mut self) -> Option<&mut Layout> {
@@ -126,7 +149,7 @@ impl Node {
     pub fn grow(mut self) -> Self {
         match &mut self {
             Node::Column { layout, .. } | Node::Row { layout, .. } => layout.grow = true,
-            Node::Button { grow, .. } | Node::Field { grow, .. } => *grow = true,
+            Node::Button { grow, .. } | Node::Field { grow, .. } | Node::TextArea { grow, .. } => *grow = true,
             _ => {}
         }
         self
@@ -143,6 +166,8 @@ impl Node {
     pub fn tone(mut self, tone: Tone) -> Self { if let Some(t) = self.text_mut() { t.tone = tone; } self }
     pub fn primary(mut self) -> Self { if let Node::Button { kind, .. } = &mut self { *kind = ButtonKind::Primary; } self }
     pub fn danger(mut self) -> Self { if let Node::Button { kind, .. } = &mut self { *kind = ButtonKind::Danger; } self }
+    /// Text area: line numbers in a gutter.
+    pub fn numbers(mut self) -> Self { if let Node::TextArea { numbers, .. } = &mut self { *numbers = true; } self }
     /// Button: its keyboard shortcut.
     pub fn key(mut self, access: AccessKey) -> Self { if let Node::Button { key, .. } = &mut self { *key = Some(access); } self }
 }
@@ -156,6 +181,10 @@ pub enum Request {
     Window { width: u16, height: u16, title: String },
     Title(String),
     Show(Node),
+    /// Replace a text area's contents.
+    SetText(u32, String),
+    /// Ask for a text area's contents (answered by `Event::Text`).
+    GetText(u32),
 }
 
 /// Desktop -> program.
@@ -168,6 +197,10 @@ pub enum Event {
     /// The client area's new size in logical pixels.
     Resize(u16, u16),
     Close,
+    /// A text area changed for the first time since its last `SetText` or `GetText`.
+    Edited(u32),
+    /// A text area's contents (the answer to `GetText`).
+    Text(u32, String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -194,6 +227,46 @@ fn unescape(text: &str) -> String {
         match chars.next() { Some('n') => out.push('\n'), Some(c) => out.push(c), None => out.push('\\') }
     }
     out
+}
+
+/// A document as a block: `head`, then each line `| `-prefixed (split with `+ `
+/// continuations so no wire line exceeds MAX_LINE), then `end`.
+fn push_text_block(out: &mut String, head: &str, text: &str) {
+    out.push_str(head);
+    out.push('\n');
+    for line in text.split('\n') {
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        let mut rest = line;
+        let mut first = true;
+        loop {
+            let mut cut = rest.len().min(MAX_LINE - 8);
+            while !rest.is_char_boundary(cut) { cut -= 1; }
+            out.push_str(if first { "| " } else { "+ " });
+            out.push_str(&rest[..cut]);
+            out.push('\n');
+            rest = &rest[cut..];
+            first = false;
+            if rest.is_empty() { break; }
+        }
+    }
+    out.push_str("end\n");
+}
+
+/// Collects a text block's lines (between its head and `end`).
+struct TextBlock { id: u32, text: String, lines: usize }
+impl TextBlock {
+    fn new(id: u32) -> Self { Self { id, text: String::new(), lines: 0 } }
+    fn line(&mut self, line: &str) -> Result<(), Error> {
+        if line.len() > MAX_LINE { return Err(Error::TooLong); }
+        let (new_line, body) = if line == "|" { (true, "") }
+            else if let Some(b) = line.strip_prefix("| ") { (true, b) }
+            else if let Some(b) = line.strip_prefix("+ ") { if self.lines == 0 { return Err(Error::Syntax); } (false, b) }
+            else { return Err(Error::Syntax) };
+        if new_line { if self.lines > 0 { self.text.push('\n'); } self.lines += 1; }
+        self.text.push_str(body);
+        if self.text.len() > MAX_TEXT_BYTES { return Err(Error::TooMany); }
+        Ok(())
+    }
 }
 
 fn align_word(a: Align) -> &'static str {
@@ -231,6 +304,7 @@ fn encode_node(out: &mut String, node: &Node, depth: usize) {
                 Some(AccessKey::Enter) => out.push_str(" key=enter"),
                 Some(AccessKey::Backspace) => out.push_str(" key=backspace"),
                 Some(AccessKey::Escape) => out.push_str(" key=escape"),
+                Some(AccessKey::Ctrl(c)) => { let _ = write!(out, " key=ctrl+{}", c); }
                 None => {}
             }
             out.push_str(": ");
@@ -245,6 +319,9 @@ fn encode_node(out: &mut String, node: &Node, depth: usize) {
             push_escaped(out, value);
         }
         Node::Icon { size, name } => { let _ = write!(out, "icon size={}: ", size); push_escaped(out, name); }
+        Node::TextArea { id, grow, numbers } => {
+            let _ = write!(out, "textarea id={}{}{}", id, if *grow { " grow" } else { "" }, if *numbers { " numbers" } else { "" });
+        }
         Node::Spacer => out.push_str("spacer"),
         Node::Divider => out.push_str("divider"),
     }
@@ -259,6 +336,8 @@ impl Request {
             Request::Window { width, height, title } => { let _ = write!(out, "window {} {}: ", width, height); push_escaped(&mut out, title); out.push('\n'); }
             Request::Title(title) => { out.push_str("title: "); push_escaped(&mut out, title); out.push('\n'); }
             Request::Show(node) => return encode_show(node),
+            Request::SetText(id, text) => push_text_block(&mut out, &alloc::format!("settext {}", id), text),
+            Request::GetText(id) => { let _ = writeln!(out, "gettext {}", id); }
         }
         out
     }
@@ -282,6 +361,8 @@ impl Event {
             Event::Submit(id, text) => { let _ = write!(out, "submit {}: ", id); push_escaped(&mut out, text); }
             Event::Resize(w, h) => { let _ = write!(out, "size {} {}", w, h); }
             Event::Close => out.push_str("close"),
+            Event::Edited(id) => { let _ = write!(out, "edited {}", id); }
+            Event::Text(id, text) => { push_text_block(&mut out, &alloc::format!("text {}", id), text); return out; }
         }
         out.push('\n');
         out
@@ -306,6 +387,7 @@ impl Event {
                 Event::Resize(w.min(u16::MAX as u32) as u16, h.min(u16::MAX as u32) as u16)
             }
             "close" => Event::Close,
+            "edited" => Event::Edited(number()?),
             _ => return Err(Error::Syntax),
         };
         if words.next().is_some() { return Err(Error::Syntax); }
@@ -339,7 +421,7 @@ fn parse_node(line: &str) -> Result<Node, Error> {
     let kind = words.next().ok_or(Error::Empty)?;
     let mut layout = Layout::default();
     let mut style = TextStyle::default();
-    let (mut id, mut on, mut grow, mut button_kind, mut access) = (None, false, false, ButtonKind::Normal, None);
+    let (mut id, mut on, mut grow, mut button_kind, mut access, mut numbers) = (None, false, false, ButtonKind::Normal, None, false);
     for word in words {
         let (key, value) = match word.split_once('=') { Some((k, v)) => (k, Some(v)), None => (word, None) };
         match (key, value) {
@@ -362,6 +444,8 @@ fn parse_node(line: &str) -> Result<Node, Error> {
             ("key", Some("backspace")) => access = Some(AccessKey::Backspace),
             ("key", Some("escape")) => access = Some(AccessKey::Escape),
             ("key", Some(v)) if v.chars().count() == 1 => access = v.chars().next().map(AccessKey::Char),
+            ("key", Some(v)) if v.starts_with("ctrl+") && v[5..].chars().count() == 1 => access = v[5..].chars().next().map(AccessKey::Ctrl),
+            ("numbers", None) => numbers = true,
             _ => return Err(Error::Syntax),
         }
     }
@@ -374,6 +458,7 @@ fn parse_node(line: &str) -> Result<Node, Error> {
         "toggle" => Node::Toggle { id: id.ok_or(Error::Syntax)?, on, label: label()? },
         "field" => Node::Field { id: id.ok_or(Error::Syntax)?, grow, value: label()? },
         "icon" => Node::Icon { size: style.size, name: label()? },
+        "textarea" if body.is_none() => Node::TextArea { id: id.ok_or(Error::Syntax)?, grow, numbers },
         "spacer" if body.is_none() => Node::Spacer,
         "divider" if body.is_none() => Node::Divider,
         _ => return Err(Error::Syntax),
@@ -423,12 +508,12 @@ fn close(stack: &mut Vec<(usize, Node)>, root: &mut Option<Node>) -> Result<(), 
 }
 
 /// Reassembles requests from a byte stream (a program's output pipe).
-pub struct RequestReader { pending: Vec<u8>, tree: Option<Vec<String>>, tree_bytes: usize }
+pub struct RequestReader { pending: Vec<u8>, tree: Option<Vec<String>>, tree_bytes: usize, text: Option<TextBlock> }
 
 impl Default for RequestReader { fn default() -> Self { Self::new() } }
 
 impl RequestReader {
-    pub const fn new() -> Self { Self { pending: Vec::new(), tree: None, tree_bytes: 0 } }
+    pub const fn new() -> Self { Self { pending: Vec::new(), tree: None, tree_bytes: 0, text: None } }
     /// Feeds bytes; returns every complete request (or error) they finish. An error
     /// discards the message it occurred in; reading resumes at the next line.
     pub fn feed(&mut self, bytes: &[u8]) -> Vec<Result<Request, Error>> {
@@ -442,11 +527,19 @@ impl RequestReader {
         if self.pending.len() > MAX_LINE {
             self.pending.clear();
             self.tree = None;
+            self.text = None;
             out.push(Err(Error::TooLong));
         }
         out
     }
     fn line(&mut self, line: String) -> Option<Result<Request, Error>> {
+        if let Some(block) = &mut self.text {
+            if line == "end" {
+                let block = self.text.take().unwrap();
+                return Some(Ok(Request::SetText(block.id, block.text)));
+            }
+            return match block.line(&line) { Ok(()) => None, Err(e) => { self.text = None; Some(Err(e)) } };
+        }
         if let Some(lines) = &mut self.tree {
             if line == "end" {
                 let lines = self.tree.take().unwrap();
@@ -462,6 +555,12 @@ impl RequestReader {
             return None;
         }
         if line == "tree" { self.tree = Some(Vec::new()); self.tree_bytes = 0; return None; }
+        let mut words = line.split_ascii_whitespace();
+        match (words.next(), words.next().map(parse_u32), words.next()) {
+            (Some("settext"), Some(Ok(id)), None) => { self.text = Some(TextBlock::new(id)); return None; }
+            (Some("gettext"), Some(Ok(id)), None) => return Some(Ok(Request::GetText(id))),
+            _ => {}
+        }
         if line.is_empty() { return None; }
         if line.len() > MAX_LINE { return Some(Err(Error::TooLong)); }
         let (head, body) = split_text(&line);
@@ -481,21 +580,34 @@ impl RequestReader {
     }
 }
 
-/// Splits a byte stream into event lines (a program's input pipe).
-pub struct EventReader { pending: Vec<u8> }
+/// Splits a byte stream into events (a program's input pipe).
+pub struct EventReader { pending: Vec<u8>, text: Option<TextBlock> }
 
 impl Default for EventReader { fn default() -> Self { Self::new() } }
 
 impl EventReader {
-    pub const fn new() -> Self { Self { pending: Vec::new() } }
+    pub const fn new() -> Self { Self { pending: Vec::new(), text: None } }
     pub fn feed(&mut self, bytes: &[u8]) -> Vec<Result<Event, Error>> {
         self.pending.extend_from_slice(bytes);
         let mut out = Vec::new();
         while let Some(end) = self.pending.iter().position(|&b| b == b'\n') {
             let line: Vec<u8> = self.pending.drain(..=end).collect();
-            out.push(Event::decode(&String::from_utf8_lossy(&line[..line.len() - 1])));
+            let line = String::from_utf8_lossy(&line[..line.len() - 1]).into_owned();
+            if let Some(block) = &mut self.text {
+                if line == "end" {
+                    let block = self.text.take().unwrap();
+                    out.push(Ok(Event::Text(block.id, block.text)));
+                } else if let Err(e) = block.line(&line) { self.text = None; out.push(Err(e)); }
+                continue;
+            }
+            let mut words = line.split_ascii_whitespace();
+            if let (Some("text"), Some(Ok(id)), None) = (words.next(), words.next().map(parse_u32), words.next()) {
+                self.text = Some(TextBlock::new(id));
+                continue;
+            }
+            out.push(Event::decode(&line));
         }
-        if self.pending.len() > MAX_LINE { self.pending.clear(); out.push(Err(Error::TooLong)); }
+        if self.pending.len() > MAX_LINE { self.pending.clear(); self.text = None; out.push(Err(Error::TooLong)); }
         out
     }
 }
@@ -556,6 +668,31 @@ mod tests {
             let mut reader = EventReader::new();
             assert_eq!(reader.feed(event.encode().as_bytes()), vec![Ok(event.clone())]);
         }
+    }
+
+    #[test]
+    fn documents_move_as_blocks_of_any_size() {
+        let long_line = "x".repeat(MAX_LINE * 3 + 17);
+        let docs = [String::new(), String::from("one"), String::from("a\n\nb\n"), alloc::format!("start\n{long_line}\nend\n| not a prefix"),
+                    String::from("ünïcödé ✓ end")];
+        for doc in docs {
+            for request in [Request::SetText(5, doc.clone()), Request::GetText(5)] {
+                let wire = request.encode();
+                assert!(wire.lines().all(|l| l.len() <= MAX_LINE), "a wire line over the cap");
+                let mut reader = RequestReader::new();
+                let got: Vec<_> = wire.as_bytes().chunks(5).flat_map(|c| reader.feed(c)).collect();
+                assert_eq!(got, vec![Ok(request)]);
+            }
+            let event = Event::Text(5, doc.clone());
+            let mut reader = EventReader::new();
+            assert_eq!(reader.feed(event.encode().as_bytes()), vec![Ok(event)]);
+        }
+        let area = Request::Show(column(vec![text_area(5).grow().numbers(),
+            button(1, "Save").key(AccessKey::Ctrl('s'))]));
+        assert_eq!(roundtrip(area.clone()), area);
+        let mut reader = EventReader::new();
+        assert_eq!(reader.feed(b"edited 5\n"), vec![Ok(Event::Edited(5))]);
+        assert!(reader.feed(b"text 5\nbad line\nend\nclose\n").iter().any(|r| r.is_err()));
     }
 
     #[test]
