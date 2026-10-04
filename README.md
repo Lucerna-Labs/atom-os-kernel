@@ -589,6 +589,9 @@ These are proposed work, not currently implemented features:
 - A way to put new program files on the disk: manifests in `/apps` can name any path,
   but program files still arrive only with the boot image.
 - Kernel hardening (SMEP/SMAP, user permissions) and multiprocessor support.
+- **TODO (handed to another coder):** run unmodified Linux programs by composing what
+  they lack over them from the outside. See
+  [docs/parked/linux-programs.md](docs/parked/linux-programs.md).
 
 ## CI and preserved history
 
