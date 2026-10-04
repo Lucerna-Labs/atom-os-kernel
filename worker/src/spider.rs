@@ -86,6 +86,9 @@ fn main() {
             breaths += 1;
         }
     }
+    // The measurement is done: end the rogue so the demo leaves nothing behind.
+    rt::kill(rogue_pid);
+    rt::wait(rogue_pid);
     // T3: the honest cost of feeling (average cycles per record call).
     let overhead = rt::call3(SYS_SENSE, 3, 0, 0);
     rt::print_args(format_args!("[Spider] T3 sensor overhead: {} cycles/syscall\n", overhead));

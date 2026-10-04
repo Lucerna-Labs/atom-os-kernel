@@ -23,6 +23,10 @@ pub mod address_space;
 pub mod virtio_blk;
 pub mod virtio_net;
 pub mod storage;
+pub mod pipe;
+pub mod input;
+pub mod display;
+pub mod rtc;
 
 #[path = "../../abi.rs"]
 pub mod abi;

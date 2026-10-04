@@ -15,6 +15,7 @@
 //! cursor in mode 13h, so the cursor is DRAWN (a two-pixel bar
 //! under the glyph at the insertion cell).
 
+use core::sync::atomic::{AtomicBool, Ordering};
 use crate::atoms::project;
 use crate::font8x8::FONT;
 use crate::memory::Spinlock;
@@ -30,7 +31,24 @@ const GLYPH: usize = 8;
 // Pixel primitives.
 // ---------------------------------------------------------------------------
 
+/// True while the desktop's linear framebuffer owns the screen: the console
+/// keeps its grid and cursor up to date but draws nothing until `resume`.
+static SUSPENDED: AtomicBool = AtomicBool::new(false);
+
+/// Stops drawing (the grid still records everything written).
+pub fn suspend() { SUSPENDED.store(true, Ordering::SeqCst); }
+
+/// Takes the screen back: redraws the chrome, every console cell and the cursor.
+pub fn resume() {
+    if !SUSPENDED.swap(false, Ordering::SeqCst) { return; }
+    desktop_init();
+    render_all();
+    let (col, row) = cursor_position();
+    draw_cursor_bar(col, row, true);
+}
+
 fn put_pixel(x: usize, y: usize, color: u8) {
+    if SUSPENDED.load(Ordering::Relaxed) { return; }
     if x < SCREEN_WIDTH && y < SCREEN_HEIGHT {
         unsafe {
             FRAMEBUFFER.add(y * SCREEN_WIDTH + x).write_volatile(color);

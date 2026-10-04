@@ -56,7 +56,9 @@ pub fn dispatch() {
         "--hold" => {
             let buffer = vec![0x5a; 65536];
             let fd = rt::open("kill-held.txt"); assert_ne!(fd, ERROR);
-            assert!(rt::replace(fd, &buffer)); assert!(rt::remove("kill-held.txt"));
+            // An open file cannot be removed ("in use"); the parent removes it
+            // once this process is killed and its descriptors are released.
+            assert!(rt::replace(fd, &buffer)); assert!(!rt::remove("kill-held.txt"));
             loop { rt::sleep(10000); core::hint::black_box(&buffer); }
         }
         "--wait-child" => {
@@ -136,8 +138,8 @@ fn test(original: &[String]) {
     assert!(!rt::processes().unwrap().iter().any(|p| p.pid == child));
     rt::print("KILL_WAIT_ORPHAN_OK\n");
 
-    // Warm all mappings before measuring kill/reap churn with open unlinked
-    // files and live heap allocations, including slot reuse beyond 16 tasks.
+    // Warm all mappings before measuring kill/reap churn with open files and
+    // live heap allocations, including slot reuse beyond 16 tasks.
     let child = launch(&["--hold"]); state(child, PROCESS_SLEEPING);
     assert!(rt::kill(child)); assert_eq!(rt::wait(child), KILLED_STATUS); rt::sleep(2);
     let before = rt::call(SYS_FREE_FRAMES, 0, 0); let buffers = rt::fs_stat(6);
@@ -149,5 +151,7 @@ fn test(original: &[String]) {
     let after = rt::call(SYS_FREE_FRAMES, 0, 0);
     assert_eq!(before, after); assert_eq!(rt::fs_stat(6), buffers);
     assert_eq!(rt::call(SYS_TASK_COUNT, 0, 0), before_tasks);
+    // The killed holders' descriptors are gone, so the file is free to remove.
+    assert!(rt::remove("kill-held.txt"));
     rt::print_args(format_args!("KILL_REAP_OK rounds=48 free_before={} free_after={}\n", before, after));
 }

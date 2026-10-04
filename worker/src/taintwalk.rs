@@ -30,7 +30,7 @@ fn main() {
     rt::print_args(format_args!("[Taint] self marked tainted (state={state})\n"));
 
     // Phase 2: attempt to spawn — must be REFUSED by the gate.
-    let spawn_result = rt::spawn("shell.elf");
+    let spawn_result = rt::spawn("hello.elf");
     if spawn_result == ERROR {
         rt::print("[Taint] spawn REFUSED — derived content stays data\n");
     } else {
@@ -48,8 +48,11 @@ fn main() {
         rt::print("[Taint] FAIL: promotion refused\n");
         rt::exit(7);
     }
-    let spawn_after = rt::spawn("shell.elf");
+    // The proof child is a short-lived program, reaped here, so the demo
+    // leaves no second interactive shell competing for the console.
+    let spawn_after = rt::spawn("hello.elf");
     if spawn_after != ERROR {
+        rt::wait(spawn_after);
         rt::print("[Taint] spawn after promotion: allowed\n");
         rt::print("[Taint] E34 PASS: tainted→refused→promoted→allowed\n");
         rt::exit(0);

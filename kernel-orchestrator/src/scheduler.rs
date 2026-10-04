@@ -71,6 +71,7 @@ impl Scheduler {
     }
     pub fn timer_tick(&mut self, rsp: u64) -> u64 {
         self.ticks = self.ticks.wrapping_add(1);
+        kernel_kit::io::INPUT_CLOCK.store(self.ticks as u32, core::sync::atomic::Ordering::Relaxed);
         // E35: the crypt master key is derived once, at the field's
         // first heartbeat, from the timestamp counter — per-boot
         // entropy (v1 honest label: TSC seed; v2 derives from the

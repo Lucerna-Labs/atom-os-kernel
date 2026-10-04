@@ -8,6 +8,13 @@ mod lightcone_probe;
 user_rt::entry!(main);
 
 fn main() {
+    // Child mode for the pipe check below: echo the arguments to stdout.
+    let args = rt::args_string();
+    if let Some(text) = args.strip_prefix("pipe-child ") {
+        rt::print(text);
+        rt::print("\n");
+        rt::exit(7);
+    }
     process_probe::dispatch();
     let pid = rt::call(SYS_GETPID, 0, 0);
     // Reject untrusted pointers without taking a kernel exception.
@@ -32,13 +39,31 @@ fn main() {
     let fd = rt::open(&held); assert_ne!(fd, ERROR);
     assert_eq!(rt::call(SYS_TRUNCATE, fd, 0), 0);
     for i in 0..32 {
-        let name = alloc::format!("growth{}.txt", i);
+        let name = alloc::format!("growth{}-{}.txt", pid % 16, i);
         let temporary = rt::open(&name); assert_ne!(temporary, ERROR); rt::close(temporary);
     }
     assert!(rt::write(fd, b"stable handle")); rt::close(fd);
     let fd = rt::open(&held);
     for &expected in b"stable handle" { assert_eq!(rt::read(fd), Some(expected)); }
-    assert_eq!(rt::read(fd), None); rt::close(fd);
+    assert_eq!(rt::read(fd), None);
+    // An open descriptor pins its file; built-ins can never be removed or renamed.
+    assert!(!rt::remove(&held));
+    rt::close(fd);
+    let moved = alloc::format!("moved{}.txt", pid % 16);
+    rt::remove(&moved);
+    assert!(rt::rename(&held, &moved));
+    assert!(!rt::rename(&moved, "/bin/worker.elf"));
+    assert!(!rt::remove("/bin/worker.elf") && !rt::rename("/bin/worker.elf", "renamed.elf"));
+    assert!(!rt::rename("/bin", "/programs"));
+    let fd = rt::open(&moved);
+    for &expected in b"stable handle" { assert_eq!(rt::read(fd), Some(expected)); }
+    rt::close(fd);
+    assert!(rt::remove(&moved) && !rt::remove(&moved));
+    for i in 0..32 { assert!(rt::remove(&alloc::format!("growth{}-{}.txt", pid % 16, i))); }
+    let mut ours = false;
+    for process in rt::process_list() { if process.pid as u64 == pid && process.name() == "worker.elf" { ours = true; } }
+    assert!(ours);
+    assert!(!rt::kill(0));
 
     let fast_pid: u64;
     unsafe {
@@ -79,6 +104,24 @@ fn main() {
             out("rax") ticks, out("rcx") _, out("r12") _, out("xmm0") _, options(nostack));
     }
     assert!(ticks > 0); assert_eq!(&observed[..2], &pattern); assert_eq!(observed_mxcsr, mxcsr);
+    // Arguments and pipes: the child's stdout arrives here, then end of input.
+    let handle = rt::pipe().unwrap();
+    let child = rt::spawn_with("worker.elf", "pipe-child piped hello", STDIO_CONSOLE, handle);
+    assert_ne!(child, ERROR);
+    rt::pipe_close(handle, PIPE_WRITE_END);
+    let mut output = alloc::vec::Vec::new();
+    let mut buffer = [0u8; 64];
+    loop {
+        match rt::pipe_read(handle, &mut buffer) {
+            Some(0) => break,
+            Some(count) => output.extend_from_slice(&buffer[..count]),
+            None => rt::yield_now(),
+        }
+    }
+    assert_eq!(output, b"piped hello\n");
+    assert_eq!(rt::wait(child), 7);
+    rt::pipe_close(handle, PIPE_BOTH);
+    assert_eq!(rt::spawn_with("worker.elf", "", 99, STDIO_INHERIT), ERROR);
     let mut sent = false;
     for _ in 0..200 { if rt::send(2, "worker delivered") { sent = true; break; } rt::sleep(1); }
     assert!(sent);

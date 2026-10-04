@@ -53,7 +53,9 @@ def main():
                 return read_until(expected, offset=offset)
 
             try:
-                read_until(r"10,000 SYS_YIELDs took \(CPU cycles\): \d+\n> ")
+                read_until(r"10,000 SYS_YIELDs took \(CPU cycles\): \d+\n")
+                # A new disk's first boot runs the demo fleet before the prompt.
+                read_until(r"shell: demo fleet (finished|already ran)[^\n]*\n/> ", seconds=180)
                 send("help", "commands:")
                 if number == 1:
                     text = send('spawn worker.elf --args "two words" \'\' a\\ b', 'ARG 4 len=3 a b\\n')
@@ -65,7 +67,7 @@ def main():
                     send('spawn worker.elf "unfinished', "invalid program arguments or quoting")
                     result["quoted_arguments"] = True
                     send(f"echo {token} > console.txt", "> ")
-                    send("mv console.txt retained.txt", "RENAMED")
+                    send("mv console.txt retained.txt", "renamed")
                     send("sync", "SYNC_OK")
                     send("status", r"FS_STATUS saved .*generation=1 disk=1")
                     previous_hash = hashlib.sha256(disk.read_bytes()).hexdigest()
@@ -77,7 +79,7 @@ def main():
                     duplicate = subprocess.run(command[:-2], capture_output=True, text=True, timeout=5)
                     assert duplicate.returncode != 0 and "already using" in duplicate.stderr
                     result["exclusive_session_lock"] = True
-                    text = send('run worker.elf --args "exec value" \'\'', 'ARG 3 len=0 \\n')
+                    text = send('exec worker.elf --args "exec value" \'\'', 'ARG 3 len=0 \\n')
                     assert "ARGS pid=1 count=4" in text
                     assert "ARG 2 len=10 exec value\nARG 3 len=0 \n" in text
                     read_until(r"\[Daemon\] Heartbeat\.\.\. tasks=1")

@@ -93,3 +93,7 @@ path = "src/calc.rs"
 [[bin]]
 name = "udpsend"
 path = "src/udpsend.rs"
+
+[[bin]]
+name = "sleeper"
+path = "src/sleeper.rs"

@@ -42,7 +42,7 @@ def main():
                "-blockdev", json.dumps({"driver": "file", "node-name": "atomfile", "filename": str(disk)}),
                "-blockdev", json.dumps({"driver": "raw", "node-name": "atomdata", "file": "atomfile"}),
                "-device", "virtio-blk-pci,drive=atomdata,disable-modern=on,write-cache=on",
-               "-display", "none", "-serial", "mon:stdio",
+               "-display", "none", "-vga", "none", "-serial", "mon:stdio",
                "-netdev", "user,id=atomnet", "-device", "virtio-net-pci,netdev=atomnet,disable-modern=on"]
     if args.pidfile: command += ["-pidfile", str(args.pidfile.absolute())]
     if args.accel == "kvm" and not os.access("/dev/kvm", os.R_OK | os.W_OK):

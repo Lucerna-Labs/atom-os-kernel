@@ -65,7 +65,7 @@ def main():
         guest = boot.Guest(source, out / "first", disk, args.accel)
         result["qmp_kvm"] = guest.kvm
         guest.wait("shell: demo fleet already ran")
-        guest.wait("STORAGE_READY generation=1")
+        guest.wait(r"STORAGE_READY generation=\d+")
         passed("BOOT_INTERACTIVE_CURRENT_IMAGE")
         match = guest.command("spawn worker.elf --ipc-test", r"spawned pid (\d+)")
         child = int(match[1])
@@ -79,7 +79,7 @@ def main():
         passed("BUFFERED_IPC_NO_FRAME_LEAK")
         guest.command(f"msg {token}", re.escape("[Daemon] Received IPC: " + token), 60)
         passed("DAEMON_USES_BUFFERED_RECEIVE")
-        guest.command("mkdir imports", "MADE")
+        guest.command("mkdir imports", "folder created")
         guest.command(f"echo {token} > imports/note", r"/> ")
         guest.command("sync", "SYNC_OK")
         guest.close(); guest = None

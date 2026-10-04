@@ -1,8 +1,10 @@
 # Atom OS Kernel
 
-An experimental x86-64 operating-system kernel written in Rust, with a command
-shell, isolated user processes, a real userspace heap, IPC, and persistent files
-on a virtual block device.
+An experimental x86-64 operating-system kernel written in Rust, with a graphical
+desktop, a command shell, isolated user processes, pipes, a real userspace heap,
+IPC, and persistent files on a virtual block device.
+
+![The Atom OS desktop with Files, a text editor, a terminal and the system monitor](docs/screenshots/desktop.png)
 
 This repository contains the kernel, userspace runtime, bundled programs, and
 build and verification tools. Its core library defines eight root operations:
@@ -15,26 +17,50 @@ software emulation. Hardware installation and multiprocessor operation have not
 been validated.
 
 [Verified results](#verified-results) · [Build and test](#build-and-test) ·
-[Shell commands](#shell-commands) · [Architecture](#architecture) ·
+[Desktop](#desktop) · [Shell commands](#shell-commands) · [Architecture](#architecture) ·
 [Current limits](#persistent-storage-and-current-limits) · [Next milestones](#next-milestones)
 
 ## What works
 
+- **Graphical desktop:** a 32-bit desktop that adapts to the display, from 1024×768
+  up to 6K (6144×3456), with HiDPI scaling (2× at 4K, 3× at 6K) and overlapping windows,
+  a taskbar, a start menu and a mouse pointer. It includes a file manager, a
+  text editor with a file picker, a terminal, a system monitor and an About
+  window; see [Desktop](#desktop).
+- **Input:** PS/2 keyboard with Shift, Caps Lock, Ctrl, Alt, arrows and
+  function keys, and a PS/2 mouse with a scroll wheel.
 - **Protected processes:** private address spaces, validated ELF loading,
   write/execute permissions, stack guards, and checked syscall buffers.
 - **Process lifecycle:** `spawn`, parent-owned `wait`, exit status, sleeping,
   argument passing, process inspection, explicit termination, orphan cleanup,
   and resource reclamation after a process stops using its
   address space and kernel stack.
+- **Physical memory:** every usable RAM region from the boot memory map,
+  including RAM above QEMU's 4 GiB PCI hole; the test VM boots with 8 GiB.
 - **Memory allocation:** a kernel slab allocator with reusable large/aligned
-  allocations, plus a Rust userspace allocator backed by mapped private pages.
+  allocations, plus a Rust userspace allocator with small-object size classes
+  over mapped private pages.
 - **Scheduling and syscalls:** round-robin preemption, `int 0x80` and fast
   `syscall/sysret` paths, and saved integer/x87/SSE/MXCSR context.
-- **Files and IPC:** a flat filesystem with owned open handles, safe removal and
-  rename, pre-write durable-capacity checks, saved-state reporting, read-only
-  embedded executables, and bounded per-process message queues.
-- **Persistent storage:** a legacy/transitional virtio-blk PCI driver with
-  FLUSH support and two checksummed snapshot slots.
+- **Files and IPC:** a filesystem with folders and paths, files up to 1 GiB held in
+  page frames (not the kernel heap), bulk read/write/seek calls, removal and moves
+  that refuse to touch open or built-in files, read-only embedded programs in
+  `/bin`, a per-process working folder, numbered error reasons (`SYS_FS_ERROR`),
+  saved-state reporting, and bounded per-process message queues.
+- **Process control:** `ps` lists live and exited processes with their parent,
+  state and program name; `kill` ends a process, whose parent then collects
+  status **137**.
+- **Arguments and pipes:** programs start with arguments (a packed argv, or one
+  argument string) and a chosen standard input and output (the console or a
+  pipe). The kernel redirects output, `ls` and `clear` into pipes, so the
+  unmodified shell runs inside the desktop terminal. Writers to a pipe without
+  readers exit with status **141**.
+- **Persistent storage:** a copy-on-write disk format: a save writes only the files
+  that changed, never overwrites the saved generation, and survives a power cut at
+  any step. Files load from disk when first opened and are checked against their
+  saved checksum. Disks in the earlier snapshot format (flat or folder tree) are
+  imported. The virtio-blk driver moves up to 128 KiB per request, and completed
+  I/O errors can be retried.
 - **Diagnostics:** serial crash reports and containment of user faults, with a
   dedicated fault probe that verifies the shell survives.
 
@@ -56,6 +82,19 @@ has passed. The earlier September 5 baseline remains preserved in test history.
 | Executable replacement | Worker replaced the shell, exited, and left the daemon running |
 | Interrupted storage / I/O failures | **7 cases passed per backend**, at a full 512 KiB serialized snapshot |
 | Interactive console | **2 sessions per backend**, exact retained contents and exclusive-image locking |
+
+**October 3, 2026 update:** with the desktop, pipes and 8 GiB of RAM, the
+native suite recorded **28 passed, 0 failed**, the text acceptance suite
+recorded **20 checks passed**, and the new desktop acceptance suite recorded
+**10 checks passed**, all under QEMU 8.2.2 with TCG (KVM was not available).
+Those logs were not committed; GitHub Actions runs both suites on every push.
+
+**Filesystem update (same day):** with folders, large files and the copy-on-write
+disk format, the native suite recorded **28 passed** (including a power cut at every
+write step of a save), the text suite **23 checks passed** (folders, a 3 MB file
+written, copied, checksummed and read back after a reboot) and the desktop suite
+**11 checks passed** (saving into a folder and browsing folders in the picker).
+
 
 The acceptance suite also exercises keyboard input, file reads/writes, exact IPC
 delivery, concurrent processes, invalid-pointer/ELF rejection, fast syscalls,
@@ -119,19 +158,42 @@ bash scripts/test-native.sh
 python3 scripts/boot-test.py --accel tcg --output test-results/local-tcg
 python3 scripts/test-storage-recovery.py --accel tcg --output test-results/local-recovery
 python3 scripts/test-console.py --accel tcg --output test-results/local-console
+python3 scripts/desktop-test.py --accel tcg --output test-results/local-desktop
 ```
 
-[`build.sh`](scripts/build.sh) builds the shell, daemon, worker and fault probe
-before embedding them in the kernel. The resulting boot image is:
+To use the desktop yourself, open it in a QEMU window. Files you save to disk
+are kept in `target/atom-data.img` between runs:
+
+```sh
+bash scripts/run-desktop.sh                            # Full HD
+ATOM_RESOLUTION=3840x2160 bash scripts/run-desktop.sh  # 4K, UI at 2x
+ATOM_RESOLUTION=6144x3456 bash scripts/run-desktop.sh  # 6K, UI at 3x
+```
+
+The kernel reads the monitor's preferred mode from its EDID (including the DisplayID
+block that 5K and 6K displays use) and uses it if the adapter's video memory and mode
+limits allow; otherwise it takes the largest standard mode that fits. Without EDID it
+stays at Full HD or below. The desktop then picks an integer UI scale so the
+interface keeps the same physical size: shapes and text are drawn at the higher
+resolution, not stretched.
+
+[`build.sh`](scripts/build.sh) builds the shell, daemon, worker, fault probe
+and desktop before embedding them in the kernel. The resulting boot image is:
 
 ```text
 target/x86_64-os/release/bootimage-x86_64-kernel.bin
 ```
 
-Use [`test-native.sh`](scripts/test-native.sh) for native checks and
-[`boot-test.py`](scripts/boot-test.py) for OS acceptance. The acceptance run is
-headless, injects keyboard input through QMP, and records serial output and
-machine-readable results. Each run requires a **new output directory**, creates
+Use [`test-native.sh`](scripts/test-native.sh) for native checks,
+[`boot-test.py`](scripts/boot-test.py) for text-console acceptance and
+[`desktop-test.py`](scripts/desktop-test.py) for the desktop. The acceptance
+runs are headless and boot the guest with 8 GiB of RAM (`--memory` changes
+this). `boot-test.py` runs without a display device, so the shell stays in
+text mode, and injects keyboard input through QMP. `desktop-test.py` boots with
+a virtual monitor of `--resolution` (default 1920x1080; 3840x2160 and 6144x3456 are
+also tested), drives the desktop with QMP mouse and keyboard events, and saves
+PNG screenshots of each step. Both record serial output and machine-readable
+results. Each run requires a **new output directory**, creates
 an isolated **8 MiB test disk**, and stops its QEMU instances when finished.
 
 For hardware acceleration on a machine with KVM available:
@@ -207,22 +269,78 @@ Run `bash scripts/vm-test-userspace.sh` on the configured host for focused nativ
 KVM and TCG verification. See [userspace reuse](docs/USERSPACE-REUSE.md) for the API,
 source provenance, acceptance cases, and compatibility decisions.
 
+## Desktop
+
+When a display device is present (QEMU `-vga std`), the console shell starts
+[`desktop.elf`](desktop/src/main.rs) at boot. **Exit to console** in the start
+menu returns to the text shell, and the `desktop` command re-enters it.
+
+| Part | What it does |
+|---|---|
+| Windows | Move by the title bar, resize from the corner grip, maximise (or double-click the title), minimise and close. Dialogs are modal. |
+| Taskbar | Start button, one button per window (click to focus or minimise), and a UTC clock read from the CMOS clock. |
+| Start menu | Launch apps, **Save all to disk**, **Exit to console** and **Restart**. The Super key also opens it. |
+| Files | Browse folders (Up, Backspace or Alt+Up goes up), with sizes, types and unsaved changes. New file, New folder, Open, Rename, Delete and **Save to disk**; the status bar shows disk use. Double-click enters folders, opens documents in the editor and runs programs in a terminal window. |
+| Text Editor | Line numbers, selection with Shift or the mouse, Ctrl+A/C/X/V, Ctrl+S, Ctrl+Shift+S, Ctrl+O, Ctrl+N and auto-indent. **Save writes to the data disk.** Files up to 16 MB. |
+| File picker | Modal **Open** and **Save As** dialogs that browse folders: Up, double-click a folder, or type a folder name or a path such as `docs/report.txt` or `..`. Save As can make a new folder. |
+| Terminal | Runs `shell.elf` (or a program opened from Files) over pipes, with 2,000 lines of scrollback. |
+| System Monitor | Memory use, uptime and the process table, with **End process**. |
+
+Keyboard shortcuts: Alt+F4 closes the focused window, Alt+Tab switches windows
+and Esc cancels dialogs.
+
+### How the desktop is rendered
+
+The desktop renders through **pmre-kit**, the primitive kit of the Atom Rendering
+Engine, copied into [`third_party/atom-rendering-engine`](third_party/atom-rendering-engine)
+so the build is self-contained (no git pins, no symlinks, no paths outside this
+repository). The kit does all rasterization on the CPU:
+
+- shapes (rectangles, rounded rectangles, circles, lines, and one-pixel rounded
+  outlines) are signed-distance fields with analytic anti-aliasing, and soft shadows
+  and glows use its widened AA band;
+- only edge pixels evaluate the distance field: the fully covered interior of each row
+  is a single span, which the back buffer fills as a bulk row write;
+- icon curves and the pointer are filled and stroked by its scanline path rasterizer;
+- text is rasterized from TrueType outlines by its built-in parser, using the DejaVu
+  subsets in [`desktop/fonts`](desktop/fonts).
+
+The desktop is the orchestrator: it decides draw order, clipping and what changed,
+and draws into a back buffer that implements the kit's `Surface`. Only the changed
+region is re-rendered, and each window is clipped to the parts not covered by
+windows above it. The finished region is copied to the linear framebuffer.
+
+The two patches in `third_party/atom-rendering-engine/patches` add a `std` feature so
+the kit builds without the standard library, the span fast path and outline shapes,
+and opt-out `uxi`/`html` features; the desktop turns all three off, so it compiles only
+the drawing primitives, not the engine's widget layer or HTML pipeline. With the span
+path, a desktop frame under QEMU software emulation dropped from 210–730 ms to 10–50 ms.
+[`update-engine.sh`](scripts/update-engine.sh) refreshes the copy from the engine
+repository when you want its latest improvements.
+
 ## Shell commands
 
 | Command | Behavior |
 |---|---|
-| `help`, `ls`, `clear` | List commands/files or clear the screen |
+| `help`, `clear` | List commands or clear the screen |
+| `ls [folder]`, `cd [folder]`, `pwd` | List a folder (sizes, unsaved files), change or show the current folder |
+| `mkdir folder`, `rmdir folder` | Create a folder, or remove an empty one |
 | `cat file` | Read a file |
+| `cp from to`, `mv from to` | Copy, or rename/move a file or folder; a folder as `to` means "into it" |
+| `rm path` | Remove a file no process has open, or an empty folder |
 | `echo text > file` | Append text and a newline |
-| `edit file` | Edit up to 64 KiB; Esc saves the RAM copy |
-| `rm file` | Remove a writable name; already-open handles retain the file until closed |
-| `mv old new` | Rename two whitespace-separated writable names; an existing destination is rejected |
-| `df`, `status` | Show file/snapshot/buffer capacity, saved state, generation and disk availability |
+| `edit file` | Edit up to 64 KiB on the console; Esc saves the RAM copy (atomic replace) |
+| `rm file` | Remove a file or empty folder; a file open in any process is refused ("in use") |
+| `mv old new` | Rename or move; an existing folder destination means "into that folder" |
+| `df` | Disk size, space used, and whether anything is unsaved |
+| `status` | One-line saved state, sizes, generation and disk availability (`FS_STATUS ...`) |
+| `fill file bytes`, `sum file` | Write a large test file / print a file's size and checksum |
 | `msg text` | Send a message to the daemon; a full mailbox returns an error |
 | `bench`, `heaptest`, `stats` | Exercise yields/heap or show free frames and live tasks |
 | `spawn worker.elf [arguments...]` | Start a child with arguments while the shell continues; print its PID |
 | `wait PID` | Wait for a child of this shell and collect its exit status |
-| `run worker.elf [arguments...]` | Replace the shell with the executable and arguments, retaining its PID |
+| `run worker.elf [arguments...]` | Start the program and keep the shell (same as `spawn`) |
+| `exec worker.elf [arguments...]` | Replace the shell with the executable and arguments, retaining its PID |
 | `ps` | Snapshot PID, parent PID, state and program name; uncollected exits remain visible |
 | `kill PID` | Immediately terminate a live process; its parent can collect status **137** with `wait` |
 | `proctest` | Exercise argument limits, bad pointers, exec, process inspection, kill/wait and cleanup |
@@ -230,7 +348,8 @@ source provenance, acceptance cases, and compatibility decisions.
 | `churn 48` | Exercise repeated process creation/reaping and compare free-frame counts |
 | `fstest` | Exercise file lifecycle and full-capacity checks on an empty filesystem with a disk |
 | `faulttest` | Confirm a user page fault terminates that worker while the shell survives |
-| `sync` | Commit writable files to the data disk |
+| `desktop` | Start the graphical desktop and wait until it exits |
+| `sync` | Save every change to the data disk |
 | `reboot` | Sync successfully, then reboot the OS |
 
 Program launches accept single/double quotes, empty quoted arguments, and
@@ -244,14 +363,18 @@ kill 4
 wait 4
 ```
 
+The [keyboard decoder](kernel-kit/src/input.rs) handles Shift, so `>` and `|`
+are typed normally. The numpad `+` key still enters `>`, as before.
+
 Use the actual PID printed by `spawn` in place of `4`. `worker.elf --args` prints
 its arguments and exits with status 41; `--sleep` is a long-lived diagnostic.
-`run` replaces the shell, so use `spawn` to keep the prompt. Invalid quoting or
-arguments are rejected. The ABI accepts at most 16 UTF-8 arguments including
-the executable name (`argv[0]`), and 1024 bytes including NUL separators.
-The shell's existing line editor accepts ASCII input. Userspace obtains owned
-argument strings through `user_rt::args()`; arguments are copied into the kernel
-before launch, and rejected exec requests leave the old image and arguments intact.
+`exec` replaces the shell; `run` and `spawn` keep the prompt. Invalid quoting or
+arguments are rejected. The packed-argv ABI accepts at most 16 UTF-8 arguments
+including the executable name (`argv[0]`), and 1024 bytes including NUL
+separators; userspace reads them with `user_rt::args()`. Programs started with an
+argument string (`spawn_with`, the desktop) read it with `user_rt::args_string()`;
+the kernel keeps both forms for every process. Arguments are copied into the
+kernel before launch, and rejected exec requests leave the old image intact.
 
 `ps` uses one validated, fixed-capacity snapshot; states are ready, running,
 sleeping, waiting, exited, or trapped. `kill` is immediate termination, not a
@@ -261,35 +384,53 @@ identities or permissions yet: **any process can kill any live user process,
 including the shell or daemon**. PID 0, unknown PIDs and already-exited PIDs are
 rejected. Process inspection and control are not security authorization boundaries.
 
-The serial console accepts normal terminal input. The optional VGA/PS/2 path
-uses the [basic keyboard mapping](kernel-kit/src/keyboard.rs), where numpad `+`
-enters `>` for redirection.
+The serial console accepts normal terminal input; arrow keys move the cursor in
+the shell's line editor on both the serial console and the keyboard.
 
-The kernel embeds five read-only programs: `shell.elf`, `daemon.elf`,
-`worker.elf`, `fault.elf`, and `fs-probe.elf`. The diagnostic worker checks heap contents,
-untrusted pointers, file handles, fast syscalls, SIMD context and IPC, then exits
-with status **37**. The fault probe touches a stack guard page and produces
-status **142**, which its parent checks. `fs-probe.elf` exercises deletion with
-open handles, name reuse, protected files, count/byte limits and saved-state
-tracking. The `storageprobe` diagnostic command supports `seed`, `mutate` and
-`verify` with a 16-hex-digit nonce for isolated recovery-test disks; `seed`
-requires an empty writable filesystem and fills one complete snapshot.
+Paths are relative to the current folder (the prompt shows it); `..` goes up.
+Changes made in the shell are saved to disk by `sync` (the desktop editor saves
+on Save). Built-in programs live read-only in `/bin` and run by bare name
+(`spawn worker.elf`); a file held open by any process cannot be removed.
+
+The kernel embeds the shell, the daemon, the desktop, the security and network
+demo programs, the userspace citizens (`hello.elf`, `sysinfo.elf`, `netstat.elf`,
+`calc.elf`, `udpsend.elf`) and the diagnostics. The diagnostic worker checks heap
+contents, untrusted pointers, file handles, fast syscalls, SIMD context and IPC,
+then exits with status **37**. It also checks remove/rename rules, its own
+process-list entry, and spawns itself with arguments, reading the child's output
+through a pipe. `sleeper.elf` sleeps until killed, for `ps`/`kill` tests. The
+fault probe touches a stack guard page and produces status **142**, which its
+parent checks. `fs-probe.elf` exercises the file lifecycle and error reasons,
+folders and the working folder, and saved-state tracking. The `storageprobe`
+diagnostic command supports `seed`, `mutate` and `verify` with a 16-hex-digit
+nonce for isolated recovery-test disks.
 
 The shared syscall definitions are in [`abi.rs`](abi.rs). Existing byte-I/O and
 IPC calls remain available alongside the newer process and memory operations.
 `SYS_ALLOC` returns mapped process-private memory; `SYS_FREE` releases it.
+`SYS_REMOVE` and `SYS_RENAME` take NUL-terminated names. `SYS_PROCESSES` copies
+fixed 64-byte records into a checked, writable user buffer, and `SYS_KILL`
+terminates a process by PID.
+
+| Area | Calls |
+|---|---|
+| Arguments and pipes | `SYS_SPAWN_WITH`, `SYS_ARGS`, `SYS_PIPE`, `SYS_PIPE_READ`, `SYS_PIPE_WRITE`, `SYS_PIPE_CLOSE`, `SYS_STDIN_READ`, `SYS_CONSOLE_WRITE`; `SYS_EXEC` accepts arguments |
+| Display and input | `SYS_DISPLAY_PRESENT`, `SYS_DISPLAY_OPEN` (maps the framebuffer and makes the caller the only input receiver), `SYS_DISPLAY_CLOSE`, `SYS_INPUT_POLL` |
+| Information | `SYS_LIST_FILES`, `SYS_MEMORY_TOTAL`, `SYS_TIME` (CMOS clock, Unix seconds) |
 
 ## Architecture
 
 | Location | Responsibility |
 |---|---|
 | [`x86_64-kernel/`](x86_64-kernel) | Boot entry, CPU/interrupt setup, context activation, program embedding and crash diagnostics |
-| [`kernel-kit/`](kernel-kit) | Root atoms, allocation, address spaces, ELF validation, filesystem, hardware I/O and storage |
+| [`kernel-kit/`](kernel-kit) | Root atoms, allocation, address spaces, ELF validation, filesystem, pipes, display, input, clock, hardware I/O and storage |
 | [`kernel-orchestrator/`](kernel-orchestrator) | Scheduling, process loading/lifecycle and syscall dispatch |
 | [`user-rt/`](user-rt) | Userspace entry, syscall wrappers, console helpers and allocator |
 | [`payload/`](payload) | Command shell |
+| [`desktop/`](desktop) | Graphical desktop: window manager, widgets, apps and embedded fonts |
+| [`third_party/atom-rendering-engine/`](third_party/atom-rendering-engine) | Copy of the Atom Rendering Engine's `pmre-kit`, the desktop's renderer |
 | [`daemon/`](daemon) | IPC receiver and heartbeat process |
-| [`worker/`](worker) | Diagnostic worker and fault-probe executables |
+| [`worker/`](worker) | Diagnostic worker, fault-probe and sleeper executables |
 | [`tests/`](tests) and [`scripts/`](scripts) | Native regression tests, builds and VM acceptance |
 
 Each process owns its image, stacks, heap allocations, receive page and copied
@@ -322,11 +463,17 @@ immutable-composition security model.
 
 ## Persistent storage and current limits
 
-The filesystem uses stable boxed file objects in RAM. A successful `sync`
-serializes writable files into an inactive disk slot, flushes the payload,
-writes a checksummed header, and flushes again. Mount selects the newest
-complete valid generation. Embedded executables come from the boot image and
-are excluded from disk snapshots.
+Folders and names live in the kernel; file contents live in 4 KiB page frames, so
+files can be large without touching the kernel's small heap. The data disk uses the
+copy-on-write format in [`storage.rs`](kernel-kit/src/storage.rs) ("ATOMFS02"): 4 KiB
+blocks, two superblocks, and checksummed metadata describing the folder tree and
+each file's extents and content checksum. A `sync` writes the changed files to free
+blocks, flushes, writes new metadata to free blocks, flushes, then writes the other
+superblock and flushes. Until that last write lands, the previous generation is the
+one that mounts, so an interrupted save never loses saved data. Files load when
+first opened. A disk in the earlier snapshot format is imported on mount and
+converted by the next save. Embedded programs come from the boot image and are
+never written to disk.
 
 The driver uses the legacy/transitional virtio-blk PCI interface with one polled
 queue and negotiated FLUSH support. The test harness attaches the data disk
@@ -338,35 +485,26 @@ with `virtio-blk-pci,disable-modern=on`; the storage contracts follow the
 | Task slots | 16 |
 | Program arguments | 16 including executable name; 1024 serialized bytes |
 | User stack | 32 KiB per process, with a guard page |
-| Heap address window | 16 MiB per process |
-| Individual user allocation | Up to 1 MiB |
-| Physical frame pool | Capped at 64 MiB |
+| Heap address window | 1 GiB per process |
+| Individual user allocation | Up to 256 MiB (physically contiguous) |
+| Pipes | 4 KiB buffer each; 8 pipe handles per process |
+| Display | EDID preferred mode up to 6K (6144×3456×32), limited by video memory, on a Bochs/QEMU VBE (BGA) device; one display owner at a time |
+| Physical memory | All usable RAM below 16 GiB physical; tests run with 8 GiB |
 | Open file descriptors | 16 per process |
 | IPC queue | 4 messages per recipient; up to 255 message bytes |
-| Writable names in RAM and on disk | 128 |
-| Embedded read-only programs | 5 |
-| Live writable-file buffer capacity | 1 MiB, including unlinked-but-open files |
-| Filename | 63 bytes; flat names |
-| File contents | Up to 64 KiB per writable file |
-| Serialized snapshot | 512 KiB total, including filenames and metadata |
+| Files and folders | No fixed count; names up to 255 bytes, paths up to 1,024 bytes |
+| File size | Up to 1 GiB per file; files in use stay in RAM |
+| Disk space | The data disk, less a 1/16 reserve that lets a save rewrite changed files |
+| Data disk | Up to the virtio disk size (tested at 8–64 MiB; `run-desktop.sh` creates 1 GiB) |
 
-**RAM edits are durable only after `sync` succeeds.** Creation, append, replacement
-and rename enforce the serialized snapshot budget before mutation. Rejected
-writes preserve existing contents; the editor uses atomic replacement rather
-than truncating before a save. `cat` opens existing files without creating them.
-
-Unlinking releases a file's name and snapshot capacity immediately. Open handles
-still reference its original data; recreating the same name makes a separate
-file. Its memory is released on the last close. Live buffer capacity is bounded,
-and truncation returns unused buffer capacity. Built-in files cannot be removed,
-renamed or written.
-
-`status` reports `saved` or `unsaved` for namespace changes, the last committed
-generation and disk availability. A failed sync keeps the RAM state unsaved.
-Completed virtio I/O errors can be retried; timed-out or invalid queue operations
-leave the device offline. Without a compatible disk, the kernel reports
-`STORAGE_UNAVAILABLE` and continues with RAM files. The disk format remains
-`ATOMFS01`; existing valid snapshots are compatible.
+**Changes are durable after `sync` (or Save in the editor) succeeds.** A write that
+would make the files larger than the disk can hold is refused up front, and `df`,
+`status` or the Files status bar show space used and whether anything is unsaved.
+A failed sync keeps the changes unsaved. Completed virtio I/O errors can be
+retried; timed-out or invalid queue operations leave the device offline. Without
+a compatible disk, the kernel reports `STORAGE_UNAVAILABLE` and keeps files in
+RAM. The disk format is `ATOMFS02`; `ATOMFS01` disks (flat or folder-tree
+snapshots) are imported and converted by the next save.
 
 ## Next milestones
 
@@ -374,13 +512,18 @@ These are proposed work, not currently implemented features:
 
 - Define and enforce the immutable-atom composition boundary before relying on
   it for the proposed network security architecture.
-- Further storage development beyond the current flat, bounded snapshot format.
+- Real-hardware reach: UEFI boot with the firmware framebuffer, AHCI/NVMe disks and
+  USB keyboard and mouse (today the desktop, disk and mouse need QEMU's devices).
+- Programs as separate windowed processes, and loading installed programs from disk folders.
+- Kernel hardening (SMEP/SMAP, user permissions) and multiprocessor support.
 
 ## CI and preserved history
 
 The [Test OS workflow](.github/workflows/test.yml) builds all bundled programs
-and the boot image, runs native regressions, TCG acceptance, interrupted-storage
-recovery and interactive-console checks, and retains failure artifacts. Check [GitHub Actions](https://github.com/Rekonquest/atom-os-kernel/actions)
+and the boot image. It runs native regressions, the network causal-world tests,
+the text acceptance suite, interrupted-storage recovery, the interactive console
+and the desktop acceptance suite under TCG, and keeps their logs and screenshots
+as artifacts. Check [GitHub Actions](https://github.com/Rekonquest/atom-os-kernel/actions)
 for the status of a particular commit.
 
 Selected reports and raw logs are committed under [`test-results/`](test-results),

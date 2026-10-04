@@ -2,3 +2,9 @@
 name = "user-rt"
 version = "0.1.0"
 edition = "2024"
+
+[features]
+# Size-class pools for small allocations: fast for allocation-heavy programs
+# (the desktop), but freed blocks stay in the process instead of returning to
+# the kernel. Off by default so frame accounting stays exact.
+pooled-heap = []

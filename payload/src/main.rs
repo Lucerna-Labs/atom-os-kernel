@@ -18,16 +18,7 @@ fn put(byte: u8) {
 
 /// E40: the prompt shows where you are — the tree is visible.
 fn prompt() {
-    let mut buffer = [0u8; 64];
-    let len = rt::call3(SYS_PWD, buffer.as_mut_ptr() as u64, 64, 0);
-    // SYS_PWD's count includes the trailing NUL; the text is len-1.
-    let cwd = if len <= 1 {
-        String::from("/")
-    } else {
-        let text_len = ((len as usize) - 1).min(63);
-        String::from(core::str::from_utf8(&buffer[..text_len]).unwrap_or("/"))
-    };
-    rt::print_args(format_args!("{cwd}> "));
+    rt::print_args(format_args!("{}> ", rt::cwd()));
 }
 
 fn redraw_tail(bytes: &[u8], from: usize, park_at: usize) {
@@ -104,14 +95,124 @@ fn line() -> String {
         }
     }
 }
-fn read_file(name: &str) -> Result<Vec<u8>, ()> {
-    let fd = rt::open_existing(name); if fd == ERROR { return Err(()); }
-    let mut bytes = Vec::new();
-    while let Some(byte) = rt::read(fd) {
-        if bytes.len() == 65536 { rt::close(fd); return Err(()); }
-        bytes.push(byte);
+fn read_file(path: &str) -> Result<Vec<u8>, rt::FsError> {
+    match rt::stat(path) {
+        Ok(entry) if entry.dir => Err(rt::FsError::IsDir),
+        Ok(_) => rt::read_file(path).ok_or(rt::FsError::Io),
+        Err(error) => Err(error),
     }
-    rt::close(fd); Ok(bytes)
+}
+
+/// The reason the last filesystem call returned ERROR.
+fn last_error() -> rt::FsError { rt::FsError::from_reason(rt::fs_error()) }
+fn failed(operation: &str, error: rt::FsError) {
+    rt::print_args(format_args!("{} failed: {}\n", operation, error.message()));
+}
+
+fn size_text(bytes: u64) -> String {
+    if bytes < 1024 { format!("{} B", bytes) }
+    else if bytes < 1 << 20 { format!("{}.{} KB", bytes >> 10, (bytes & 1023) * 10 >> 10) }
+    else if bytes < 1 << 30 { format!("{}.{} MB", bytes >> 20, (bytes & 0xfffff) * 10 >> 20) }
+    else { format!("{}.{} GB", bytes >> 30, (bytes & 0x3fff_ffff) * 10 >> 30) }
+}
+
+/// The checksum `fill` and `sum` print (FNV-1a, 64-bit).
+fn checksum(hash: u64, bytes: &[u8]) -> u64 { bytes.iter().fold(hash, |h, &b| (h ^ b as u64).wrapping_mul(0x100000001b3)) }
+
+/// Writes `size` bytes of a fixed pattern to `path` in 64 KiB pieces (for testing large files).
+fn fill(path: &str, size: u64) {
+    let fd = rt::open(path);
+    if fd == ERROR || rt::call(SYS_TRUNCATE, fd, 0) != 0 { rt::print("fill: cannot open\n"); if fd != ERROR { rt::close(fd); } return; }
+    let mut chunk = alloc::vec![0u8; 65536];
+    let (mut done, mut hash) = (0u64, 0xcbf29ce484222325u64);
+    while done < size {
+        let n = (size - done).min(chunk.len() as u64) as usize;
+        for (i, b) in chunk[..n].iter_mut().enumerate() { *b = ((done + i as u64) * 31 % 251) as u8; }
+        if let Err(e) = rt::file_write_all(fd, &chunk[..n]) { rt::print(&format!("fill: {}\n", e.message())); rt::close(fd); return; }
+        hash = checksum(hash, &chunk[..n]);
+        done += n as u64;
+    }
+    rt::close(fd);
+    rt::print(&format!("FILL_OK bytes={} sum={:016x}\n", done, hash));
+}
+
+fn sum(path: &str) {
+    if rt::stat(path).map_or(true, |e| e.dir) { rt::print("sum: no such file\n"); return; }
+    let fd = rt::open_existing(path);
+    let mut chunk = alloc::vec![0u8; 65536];
+    let (mut done, mut hash) = (0u64, 0xcbf29ce484222325u64);
+    loop {
+        match rt::file_read(fd, &mut chunk) {
+            Ok(0) => break,
+            Ok(n) => { hash = checksum(hash, &chunk[..n]); done += n as u64; }
+            Err(e) => { rt::print(&format!("sum: {}\n", e.message())); break; }
+        }
+    }
+    rt::close(fd);
+    rt::print(&format!("SUM bytes={} sum={:016x}\n", done, hash));
+}
+
+fn copy(from: &str, to: &str) -> Result<u64, rt::FsError> {
+    let source = rt::stat(from)?;
+    if source.dir { return Err(rt::FsError::IsDir); }
+    if from == to { return Err(rt::FsError::Exists); }
+    let (input, output) = (rt::open_existing(from), rt::open(to));
+    let result = (|| {
+        if input == ERROR || output == ERROR { return Err(last_error()); }
+        if rt::call(SYS_TRUNCATE, output, 0) != 0 { return Err(last_error()); }
+        let mut chunk = alloc::vec![0u8; 65536];
+        let mut done = 0;
+        loop {
+            let n = rt::file_read(input, &mut chunk)?;
+            if n == 0 { return Ok(done); }
+            rt::file_write_all(output, &chunk[..n])?;
+            done += n as u64;
+        }
+    })();
+    if input != ERROR { rt::close(input); }
+    if output != ERROR { rt::close(output); }
+    result
+}
+
+/// `to` as a destination for `from`: an existing folder means "into that folder".
+fn destination(from: &str, to: &str) -> String {
+    if rt::stat(to).is_ok_and(|e| e.dir) { rt::path::join(to, rt::path::name(from)) } else { String::from(to) }
+}
+
+/// Two whitespace-separated paths.
+fn two(argument: &str) -> Option<(&str, &str)> {
+    argument.split_once(' ').map(|(a, b)| (a.trim(), b.trim())).filter(|(a, b)| !a.is_empty() && !b.is_empty())
+}
+
+fn list(path: &str) {
+    match rt::read_dir(path) {
+        Ok(entries) => {
+            for e in entries {
+                if e.dir { rt::print(&format!("{}/\n", e.name)); }
+                else { rt::print(&format!("{:<32} {}{}\n", e.name, size_text(e.size), if e.unsaved { "  (unsaved)" } else { "" })); }
+            }
+        }
+        Err(e) => rt::print(&format!("ls: {}\n", e.message())),
+    }
+}
+
+fn disk_report() {
+    let info = rt::fs_info();
+    if info.disk == 0 { rt::print("No data disk: files are kept in memory only.\n"); }
+    else {
+        rt::print(&format!("Disk {}  saved {}  files need {} of {}\n", size_text(info.disk_bytes), size_text(info.saved_bytes),
+            size_text(info.needed_bytes), size_text(info.capacity_bytes)));
+    }
+    rt::print(if info.unsaved != 0 { "Unsaved changes: run sync to save them.\n" } else { "Everything is saved.\n" });
+}
+
+fn run_desktop() {
+    if rt::call(SYS_DISPLAY_PRESENT, 0, 0) != 1 { rt::print("desktop: no display device\n"); return; }
+    let pid = rt::spawn("desktop.elf");
+    if pid == ERROR { rt::print("desktop: could not start\n"); return; }
+    let status = rt::wait(pid);
+    rt::call(SYS_CLEAR, 0, 0);
+    rt::print(&format!("Desktop closed (status {}). Type 'desktop' to return.\n", status));
 }
 fn bench() {
     let start = unsafe { core::arch::x86_64::_rdtsc() };
@@ -154,8 +255,9 @@ fn churn(rounds: usize) {
 fn edit(name: &str) {
     let mut bytes = match read_file(name) {
         Ok(bytes) => bytes,
-        Err(()) if rt::fs_error() == FsError::NotFound as u64 => Vec::new(),
-        Err(()) => { fs_error("edit"); return; }
+        Err(rt::FsError::NotFound) => Vec::new(),
+        Err(rt::FsError::IsDir) => { rt::print("cannot edit a folder\n"); return; }
+        Err(error) => { failed("edit", error); return; }
     };
     rt::print("Editor: Esc saves; Backspace deletes.\n");
     if let Ok(text) = core::str::from_utf8(&bytes) { rt::print(text); }
@@ -172,10 +274,6 @@ fn edit(name: &str) {
     if ok { rt::print("\nUpdated in RAM; use sync to save to disk.\n"); }
     else { rt::print_args(format_args!("\nSave rejected: {} (previous contents preserved)\n", fs_error_message(error))); }
 }
-fn fs_error(operation: &str) {
-    let error = rt::fs_error();
-    rt::print_args(format_args!("{}: {}\n", operation, fs_error_message(error)));
-}
 fn fs_status() {
     rt::print_args(format_args!("FS_STATUS {} files={}/{} bytes={}/{} buffers={}/{} generation={} disk={}\n",
         if rt::fs_stat(4) == 0 { "saved" } else { "unsaved" },
@@ -185,51 +283,69 @@ fn fs_status() {
 fn execute(command: &str) {
     let (verb, argument) = command.split_once(' ').unwrap_or((command, ""));
     let argument = argument.trim();
+    // Paths are relative to the working folder; the kernel resolves them.
+    let here = |p: &str| if p.is_empty() { String::from(".") } else { String::from(p) };
     match verb {
         "" => {}
-        "help" => rt::print("commands: help ls clear cat edit echo msg bench heaptest stats spawn wait run ps kill proctest selftest pairtest churn faulttest fstest storageprobe rm mv df status sync reboot ping mkdir cd pwd\nuserspace: run hello.elf / sysinfo.elf / netstat.elf / calc.elf 2+3*4 / udpsend.elf <msg>\n"),
-        "ls" => { rt::call(SYS_LIST_DIR, 0, 0); }
+        "help" => rt::print("commands: help ls cd pwd mkdir rmdir cat edit echo cp rm mv df status fill sum clear msg desktop bench heaptest stats spawn run exec wait ps kill proctest selftest pairtest churn faulttest fstest storageprobe sync reboot ping\nuserspace: run hello.elf / sysinfo.elf / netstat.elf / calc.elf 2+3*4 / udpsend.elf <msg>\n"),
+        "ls" => list(&here(argument)),
         "clear" => { rt::call(SYS_CLEAR, 0, 0); }
         "bench" => bench(),
         "heaptest" => heap_test(),
-        "cat" => match read_file(argument) {
+        "cat" => match read_file(&here(argument)) {
             Ok(bytes) => { if let Ok(text) = core::str::from_utf8(&bytes) { rt::print(text); } else { rt::print("binary file"); } rt::print("\n"); }
-            Err(()) => fs_error("cat"),
+            Err(error) => rt::print_args(format_args!("cat: {}\n", error.message())),
         },
-        "edit" => edit(argument),
+        "edit" => edit(&here(argument)),
         "echo" => if let Some((text, name)) = argument.split_once(" > ") {
             let fd = rt::open(name.trim());
             let line = format!("{}\n", text);
-            if fd == ERROR || !rt::write(fd, line.as_bytes()) { fs_error("echo"); }
-            rt::close(fd);
+            if fd == ERROR || !rt::write(fd, line.as_bytes()) { failed("echo", last_error()); }
+            if fd != ERROR { rt::close(fd); }
         } else { rt::print("usage: echo text > file\n"); },
-        "rm" => { if rt::remove(argument) { rt::print("REMOVED\n"); } else { fs_error("rm"); } }
+        "rm" => match rt::remove_path(&here(argument)) {
+            Ok(()) => rt::print("removed (sync to save)\n"),
+            Err(e) => failed("rm", e),
+        },
         // E40: the tree. mkdir/cd/pwd ride SYS_MKDIR/CHDIR/PWD; every
         // path-taking command resolves against the shell's cwd.
-        "mkdir" => {
-            if argument.is_empty() { rt::print("usage: mkdir path\n"); }
-            else if rt::path_call(SYS_MKDIR, argument) == 0 { rt::print("MADE\n"); }
-            else { fs_error("mkdir"); }
-        }
+        "mkdir" => match rt::mkdir(&here(argument)) {
+            Ok(()) => rt::print("folder created (sync to save)\n"),
+            Err(e) => failed("mkdir", e),
+        },
+        "rmdir" => match rt::stat(&here(argument)) {
+            Ok(e) if !e.dir => rt::print("rmdir: not a folder\n"),
+            _ => match rt::remove_path(&here(argument)) {
+                Ok(()) => rt::print("removed (sync to save)\n"),
+                Err(e) => failed("rmdir", e),
+            },
+        },
         "cd" => {
-            if rt::path_call(SYS_CHDIR, argument) == ERROR { fs_error("cd"); }
+            let target = if argument.is_empty() { "/" } else { argument };
+            if let Err(error) = rt::chdir(target) { rt::print_args(format_args!("cd: {}\n", error.message())); }
         }
-        "pwd" => {
-            let mut buffer = [0u8; 64];
-            let len = rt::call3(SYS_PWD, buffer.as_mut_ptr() as u64, 64, 0);
-            if len <= 1 { rt::print("/\n"); }
-            else {
-                let text_len = ((len as usize) - 1).min(63);
-                let text = core::str::from_utf8(&buffer[..text_len]).unwrap_or("/");
-                rt::print_args(format_args!("{text}\n"));
-            }
-        }
-        "mv" => {
-            let words: Vec<_> = argument.split_whitespace().collect();
-            if words.len() != 2 { rt::print("usage: mv old-name new-name\n"); }
-            else if rt::rename(words[0], words[1]) { rt::print("RENAMED\n"); } else { fs_error("mv"); }
-        }
-        "df" | "status" => fs_status(),
+        "pwd" => rt::print_args(format_args!("{}\n", rt::cwd())),
+        "mv" => match two(argument) {
+            Some((from, to)) => match rt::move_path(from, &destination(from, to)) {
+                Ok(()) => rt::print("renamed (sync to save)\n"),
+                Err(e) => failed("mv", e),
+            },
+            None => rt::print("usage: mv old new\n"),
+        },
+        "cp" => match two(argument) {
+            Some((from, to)) => match copy(from, &destination(from, to)) {
+                Ok(n) => rt::print(&format!("copied {} (sync to save)\n", size_text(n))),
+                Err(e) => failed("cp", e),
+            },
+            None => rt::print("usage: cp from to\n"),
+        },
+        "df" => disk_report(),
+        "status" => fs_status(),
+        "fill" => match argument.split_once(' ').map(|(p, n)| (p.trim(), n.trim().parse::<u64>())) {
+            Some((path, Ok(size))) => fill(path, size),
+            _ => rt::print("usage: fill file bytes\n"),
+        },
+        "sum" => sum(&here(argument)),
         "fstest" => {
             let pid = rt::spawn("fs-probe.elf");
             if pid != ERROR && rt::wait(pid) == 0 { rt::print("FSTEST_OK\n"); } else { rt::print("FSTEST_FAIL\n"); }
@@ -242,16 +358,25 @@ fn execute(command: &str) {
                 // run = spawn-and-keep-the-session: exec semantics
                 // replaced the shell with the program, and an
                 // interactive OS that dies after one command is not
-                // playable. The shell survives its children.
+                // playable. The shell survives its children. (`exec`
+                // keeps the replacing form.)
                 let pid = rt::spawn_args(&words[0], &args);
                 if pid == ERROR { rt::print("spawn failed\n"); }
                 else { rt::print_args(format_args!("spawned pid {}\n", pid)); }
             }
             Err(()) => rt::print("invalid program arguments or quoting\n"),
         },
+        "exec" => match rt::arguments::words(argument) {
+            Ok(words) => {
+                let args: Vec<_> = words[1..].iter().map(String::as_str).collect();
+                rt::exec_args(&words[0], &args);
+                rt::print("exec failed\n");
+            }
+            Err(()) => rt::print("invalid program arguments or quoting\n"),
+        },
         "ps" => match rt::processes() {
             Ok(tasks) => {
-                rt::print("PID PPID STATE PROGRAM\n");
+                rt::print("PID PARENT STATE    NAME\n");
                 for task in tasks {
                     let end = task.name.iter().position(|&b| b == 0).unwrap_or(task.name.len());
                     let name = core::str::from_utf8(&task.name[..end]).unwrap_or("?");
@@ -260,7 +385,7 @@ fn execute(command: &str) {
                         PROCESS_SLEEPING => "sleeping", PROCESS_WAITING => "waiting",
                         PROCESS_EXITED => "exited", _ => "trapped",
                     };
-                    rt::print_args(format_args!("{} {} {} {}\n", task.pid, task.parent, state, name));
+                    rt::print_args(format_args!("{:<3} {:<6} {:<8} {}\n", task.pid, task.parent, state, name));
                 }
             }
             Err(()) => rt::print("ps failed\n"),
@@ -295,9 +420,10 @@ fn execute(command: &str) {
         }
         "stats" => { let free = rt::call(SYS_FREE_FRAMES, 0, 0); let tasks = rt::call(SYS_TASK_COUNT, 0, 0);
             rt::print(&format!("FREE_FRAMES {} TASKS {}\n", free, tasks)); }
-        "sync" => {
-            if rt::call(SYS_SYNC, 0, 0) == 0 { rt::print("SYNC_OK\n"); fs_status(); }
-            else { rt::print("SYNC_FAILED\n"); fs_error("sync"); }
+        "desktop" => run_desktop(),
+        "sync" => match rt::sync_status() {
+            Ok(()) => { rt::print("SYNC_OK\n"); fs_status(); }
+            Err(e) => { rt::print_args(format_args!("SYNC_FAILED: {}\n", e.message())); }
         },
         "reboot" => { rt::call(SYS_REBOOT, 0, 0); rt::print("reboot failed (sync required)\n"); }
         // E38b: the shell's window onto the wire. Spawned, never
@@ -318,42 +444,78 @@ fn main() {
     // promotion proof, etc.) goes straight to interactive mode.
     if rt::open_existing("boot.done") != ERROR {
         rt::print("shell: demo fleet already ran — interactive mode\n");
-        loop { prompt(); let command = line(); execute(command.trim()); }
+        interactive();
     }
+    let mut fleet = Vec::new();
     // E35: crypt first — the master key must be demonstrated alive
     // before the rogue's condemnation fires the destruction cascade,
     // and cryptwalk destroys the key itself at the end (one life per
     // boot, same doctrine as the perishable key).
-    let crypt = rt::spawn("crypt.elf");
+    let crypt = rt::spawn("crypt.elf"); fleet.push(crypt);
     if crypt == ERROR { rt::print("shell: crypt.elf not found\n"); }
     // E21: launch the shadow-web spider probe after the clean boot.
-    let spider = rt::spawn("spider.elf");
+    let spider = rt::spawn("spider.elf"); fleet.push(spider);
     if spider == ERROR { rt::print("shell: spider.elf not found\n"); }
-    let weave = rt::spawn("weave.elf");
+    let weave = rt::spawn("weave.elf"); fleet.push(weave);
     if weave == ERROR { rt::print("shell: weave.elf not found\n"); }
-    let keeper = rt::spawn("keykeep.elf");
+    let keeper = rt::spawn("keykeep.elf"); fleet.push(keeper);
     if keeper == ERROR { rt::print("shell: keykeep.elf not found\n"); }
-    let instant = rt::spawn("instant.elf");
+    let instant = rt::spawn("instant.elf"); fleet.push(instant);
     if instant == ERROR { rt::print("shell: instant.elf not found\n"); }
-    let smuggler = rt::spawn("smuggler.elf");
+    let smuggler = rt::spawn("smuggler.elf"); fleet.push(smuggler);
     if smuggler == ERROR { rt::print("shell: smuggler.elf not found\n"); }
-    let lane = rt::spawn("lane.elf");
+    let lane = rt::spawn("lane.elf"); fleet.push(lane);
     if lane == ERROR { rt::print("shell: lane.elf not found\n"); }
-    let metro = rt::spawn("metro.elf");
+    let metro = rt::spawn("metro.elf"); fleet.push(metro);
     if metro == ERROR { rt::print("shell: metro.elf not found\n"); }
-    let taint = rt::spawn("taint.elf");
+    let taint = rt::spawn("taint.elf"); fleet.push(taint);
     if taint == ERROR { rt::print("shell: taint.elf not found\n"); }
     // E36: last — the seam demo's certification fires the cascade.
-    let seam = rt::spawn("seam.elf");
+    let seam = rt::spawn("seam.elf"); fleet.push(seam);
     if seam == ERROR { rt::print("shell: seam.elf not found\n"); }
     // E37: the network ingress demo.
-    let net_demo = rt::spawn("net.elf");
+    let net_demo = rt::spawn("net.elf"); fleet.push(net_demo);
     if net_demo == ERROR { rt::print("shell: net.elf not found\n"); }
     // E38: the datagram demo (needs the host to send UDP to :5555).
-    let sock = rt::spawn("sock.elf");
+    let sock = rt::spawn("sock.elf"); fleet.push(sock);
     if sock == ERROR { rt::print("shell: sock.elf not found\n"); }
+    // The demos print as they run; the prompt waits until they are done
+    // (bounded, so a demo that hangs cannot take the console with it).
+    let mut remaining = 6000u64;
+    while remaining > 0 && rt::processes().is_ok_and(|tasks| tasks.iter().any(|t| fleet.contains(&t.pid) && t.state != PROCESS_EXITED)) {
+        rt::sleep(10); remaining = remaining.saturating_sub(10);
+    }
+    // A demo still running at the deadline is ended with everything it
+    // started, so nothing from the fleet outlives it.
+    let leftovers: Vec<(u64, String)> = rt::processes().unwrap_or_default().iter()
+        .filter(|t| t.state != PROCESS_EXITED && (fleet.contains(&t.pid) || fleet.contains(&t.parent)))
+        .map(|t| {
+            let end = t.name.iter().position(|&b| b == 0).unwrap_or(t.name.len());
+            (t.pid, String::from(core::str::from_utf8(&t.name[..end]).unwrap_or("?")))
+        }).collect();
+    for (pid, _) in leftovers.iter().rev() { rt::kill(*pid); }
+    let finished: Vec<u64> = rt::processes().unwrap_or_default().iter()
+        .filter(|t| fleet.contains(&t.pid) && t.state == PROCESS_EXITED).map(|t| t.pid).collect();
+    for pid in finished { rt::wait(pid); }
+    // E21: the demos are over, so the cone stands down (sensing continues).
+    rt::call3(SYS_SENSE, 11, 0, 0);
+    if leftovers.is_empty() { rt::print("shell: demo fleet finished\n"); }
+    else {
+        let names: Vec<&str> = leftovers.iter().map(|(_, name)| name.as_str()).collect();
+        rt::print_args(format_args!("shell: demo fleet finished (ended after 60 s: {})\n", names.join(", ")));
+    }
     // The fleet has run: mark the boot, forever after interactive.
     let fd = rt::open("boot.done");
     if fd != ERROR { rt::write(fd, b"fleet ran\n"); rt::close(fd); }
+    interactive();
+}
+
+fn interactive() -> ! {
+    // Boot into the desktop when this is the console shell on a machine with
+    // a display. A shell inside a desktop terminal has a piped stdin and
+    // never gets here with a free display.
+    if rt::args_string().is_empty() && rt::call(SYS_GETPID, 0, 0) == 1 && rt::call(SYS_DISPLAY_PRESENT, 0, 0) == 1 {
+        run_desktop();
+    }
     loop { prompt(); let command = line(); execute(command.trim()); }
 }

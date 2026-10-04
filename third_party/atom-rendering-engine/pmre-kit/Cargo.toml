@@ -1,0 +1,18 @@
+[package]
+name = "pmre-kit"
+version = "0.3.0"
+edition = "2021"
+license = "MIT"
+description = "The single primitive kit: all dumb rendering mechanism, wired from the 8 root atoms."
+
+[dependencies]
+
+[features]
+default = ["std", "uxi", "html"]
+# System font discovery and the threaded post-processing modules. Disable for no_std
+# targets (with alloc); fonts are then installed from bytes via `font::install`.
+std = []
+# The UXI intent tree (`ux`) and its flex/box layout solver (`layout`).
+uxi = []
+# The reduced HTML/CSS front end, which lowers onto the UXI tree.
+html = ["uxi"]

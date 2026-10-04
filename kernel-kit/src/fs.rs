@@ -1,551 +1,497 @@
-//! Hierarchical AtomNode namespace with owned handles and pre-mutation durable quotas.
-//! The root is a directory; paths are '/'-separated and resolve against a
-//! base (per-process working) directory with a hard MAX_DEPTH segment cap.
-use alloc::{string::String, sync::Arc, vec::Vec};
-use core::sync::atomic::{AtomicUsize, Ordering};
+//! The file system tree.
+//!
+//! Folders and names live in the kernel heap as an inode table; file contents live in
+//! 4 KiB physical frames, so a file can grow to `FILE_MAX` without touching the
+//! kernel's small heap. A file saved on disk is loaded on first open (see `storage`),
+//! and only files changed since the last save are written by the next one.
+//!
+//! Paths are absolute, `/`-separated, and resolved from the root; a missing leading
+//! `/` means the same (`notes.txt` is `/notes.txt`). `.` and `..` are resolved before
+//! a path reaches the tree: `join` resolves a path against a process's working
+//! folder (the syscall layer does this for every path argument).
+use alloc::{string::String, vec::Vec};
+use crate::address_space::{frames_allocate, frames_free};
 use crate::memory::Spinlock;
-pub use crate::abi::FsError;
+use crate::paging::phys_to_virt;
 
-pub const MAX_FILES: usize = 128;
-pub const MAX_FILE_BYTES: usize = 65536;
-pub const MAX_NAME_BYTES: usize = 63;
-pub const MAX_SNAPSHOT_BYTES: usize = 512 * 1024;
-pub const MAX_LIVE_BYTES: usize = 2 * MAX_SNAPSHOT_BYTES;
-/// Hard cap on the number of segments in any canonical path.
-pub const MAX_DEPTH: usize = 16;
+pub const NAME_MAX: usize = 255;
+pub const PATH_MAX: usize = 1024;
+/// Largest file: 1 GiB.
+pub const FILE_MAX: u64 = 1 << 30;
+pub const PAGE: usize = 4096;
+/// Data-page addresses held by one index frame.
+const PER_INDEX: usize = PAGE / 8;
 
-pub fn builtin(name: &str) -> bool { matches!(name, "shell.elf" | "daemon.elf" | "worker.elf" | "fault.elf" | "fs-probe.elf" | "spider.elf" | "rogue.elf" | "weave.elf" | "keykeep.elf" | "instant.elf" | "smuggler.elf" | "lane.elf" | "metro.elf" | "taint.elf" | "crypt.elf" | "seam.elf" | "net.elf" | "sock.elf" | "ping.elf" | "hello.elf" | "sysinfo.elf" | "netstat.elf" | "calc.elf" | "udpsend.elf") }
+pub type Ino = u32;
+pub const ROOT: Ino = 0;
+/// Folder that holds the programs embedded in the boot image.
+pub const BIN: &str = "bin";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FsError { NotFound, Exists, NotDir, IsDir, NotEmpty, Invalid, ReadOnly, Busy, NoSpace, Io }
+
 pub fn valid_name(name: &str) -> bool {
-    !name.is_empty() && name.len() <= MAX_NAME_BYTES && !name.bytes().any(|b| b < 32 || b == b'/')
+    !name.is_empty() && name.len() <= NAME_MAX && name != "." && name != ".."
+        && !name.bytes().any(|b| b < 32 || b == b'/' || b == 127)
+}
+
+/// The components of an absolute path, or `Invalid`.
+pub fn components(path: &str) -> Result<Vec<&str>, FsError> {
+    if path.len() > PATH_MAX { return Err(FsError::Invalid); }
+    let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
+    if parts.iter().all(|p| valid_name(p)) { Ok(parts) } else { Err(FsError::Invalid) }
+}
+
+/// `path` resolved against the absolute folder `base` ("" means the root): an
+/// absolute path ignores `base`, `.` stays, `..` stops at the root. The result is
+/// absolute and canonical ("/a/b", or "/" for the root).
+pub fn join(base: &str, path: &str) -> Result<String, FsError> {
+    if path.len() > PATH_MAX || base.len() > PATH_MAX { return Err(FsError::Invalid); }
+    let mut parts: Vec<&str> = Vec::new();
+    let start = if path.starts_with('/') { "" } else { base };
+    for part in start.split('/').chain(path.split('/')) {
+        match part {
+            "" | "." => {}
+            ".." => { parts.pop(); }
+            name => { if !valid_name(name) { return Err(FsError::Invalid); } parts.push(name); }
+        }
+    }
+    let mut out = String::new();
+    for part in &parts { out.push('/'); out.push_str(part); }
+    if out.is_empty() { out.push('/'); }
+    if out.len() > PATH_MAX { return Err(FsError::Invalid); }
+    Ok(out)
+}
+
+fn page_bytes(phys: u64) -> &'static mut [u8; PAGE] { unsafe { &mut *(phys_to_virt(phys) as *mut [u8; PAGE]) } }
+fn index_entries(phys: u64) -> &'static mut [u64; PER_INDEX] { unsafe { &mut *(phys_to_virt(phys) as *mut [u64; PER_INDEX]) } }
+fn frame() -> Result<u64, FsError> { frames_allocate(1).map_err(|_| FsError::NoSpace) }
+
+/// File contents in physical frames. `index` holds frames of `PER_INDEX` data-page
+/// addresses each (0 = a page never written, which reads as zeros). Bytes past `len`
+/// in the last page are always zero.
+pub struct FileData { index: Vec<u64>, len: u64 }
+
+impl FileData {
+    pub const fn new() -> Self { Self { index: Vec::new(), len: 0 } }
+    pub fn len(&self) -> u64 { self.len }
+    pub fn is_empty(&self) -> bool { self.len == 0 }
+
+    fn page(&self, n: usize) -> u64 {
+        self.index.get(n / PER_INDEX).map_or(0, |&ix| index_entries(ix)[n % PER_INDEX])
+    }
+    fn page_or_new(&mut self, n: usize) -> Result<u64, FsError> {
+        while self.index.len() <= n / PER_INDEX { self.index.push(frame()?); }
+        let entries = index_entries(self.index[n / PER_INDEX]);
+        if entries[n % PER_INDEX] == 0 { entries[n % PER_INDEX] = frame()?; }
+        Ok(entries[n % PER_INDEX])
+    }
+
+    /// Copies bytes from `offset` into `out`; returns how many (0 at the end).
+    pub fn read_at(&self, offset: u64, out: &mut [u8]) -> usize {
+        if offset >= self.len { return 0; }
+        let count = ((self.len - offset) as usize).min(out.len());
+        let mut done = 0;
+        while done < count {
+            let at = offset as usize + done;
+            let (n, within) = (at / PAGE, at % PAGE);
+            let chunk = (PAGE - within).min(count - done);
+            match self.page(n) {
+                0 => out[done..done + chunk].fill(0),
+                phys => out[done..done + chunk].copy_from_slice(&page_bytes(phys)[within..within + chunk]),
+            }
+            done += chunk;
+        }
+        count
+    }
+
+    /// Writes `data` at `offset` (a gap past the end reads as zeros).
+    pub fn write_at(&mut self, offset: u64, data: &[u8]) -> Result<usize, FsError> {
+        let end = offset.checked_add(data.len() as u64).ok_or(FsError::NoSpace)?;
+        if end > FILE_MAX { return Err(FsError::NoSpace); }
+        let mut done = 0;
+        while done < data.len() {
+            let at = offset as usize + done;
+            let (n, within) = (at / PAGE, at % PAGE);
+            let chunk = (PAGE - within).min(data.len() - done);
+            let phys = self.page_or_new(n)?;
+            page_bytes(phys)[within..within + chunk].copy_from_slice(&data[done..done + chunk]);
+            done += chunk;
+        }
+        self.len = self.len.max(end);
+        Ok(data.len())
+    }
+
+    /// Shrinks or extends to `len`. Shrinking frees whole pages past the end and zeroes
+    /// the tail of the last one, so a later extension reads zeros.
+    pub fn truncate(&mut self, len: u64) -> Result<(), FsError> {
+        if len > FILE_MAX { return Err(FsError::NoSpace); }
+        if len < self.len {
+            let keep = (len as usize).div_ceil(PAGE);
+            let pages = (self.len as usize).div_ceil(PAGE);
+            for n in keep..pages {
+                let Some(&ix) = self.index.get(n / PER_INDEX) else { break };
+                let entry = &mut index_entries(ix)[n % PER_INDEX];
+                if *entry != 0 { frames_free(*entry, 1); *entry = 0; }
+            }
+            let indexes = keep.div_ceil(PER_INDEX);
+            while self.index.len() > indexes { frames_free(self.index.pop().unwrap(), 1); }
+            if len as usize % PAGE != 0 {
+                let phys = self.page(len as usize / PAGE);
+                if phys != 0 { page_bytes(phys)[len as usize % PAGE..].fill(0); }
+            }
+        }
+        self.len = len;
+        Ok(())
+    }
+
+    /// Calls `f` with each page of contents in order (zeros for unwritten pages); the
+    /// last slice is cut at the end of the file.
+    pub fn for_each_page(&self, mut f: impl FnMut(&[u8])) {
+        static ZERO: [u8; PAGE] = [0; PAGE];
+        let pages = (self.len as usize).div_ceil(PAGE);
+        for n in 0..pages {
+            let len = (self.len as usize - n * PAGE).min(PAGE);
+            match self.page(n) { 0 => f(&ZERO[..len]), phys => f(&page_bytes(phys)[..len]) }
+        }
+    }
+
+    pub fn to_vec(&self) -> Vec<u8> {
+        let mut out = alloc::vec![0; self.len as usize];
+        self.read_at(0, &mut out);
+        out
+    }
+}
+
+impl Drop for FileData {
+    fn drop(&mut self) {
+        for &ix in &self.index {
+            for &page in index_entries(ix).iter() { if page != 0 { frames_free(page, 1); } }
+            frames_free(ix, 1);
+        }
+    }
+}
+
+/// A run of disk blocks holding part of a saved file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Extent { pub start: u64, pub count: u32 }
+
+pub enum Content {
+    /// A program embedded in the boot image: read-only, never saved.
+    Builtin(&'static [u8]),
+    Data(FileData),
+    /// Saved on disk and not read yet; `storage::ensure_loaded` reads it.
+    Unloaded,
 }
 
 pub struct File {
-    bytes: Spinlock<Vec<u8>>,
-    readonly: bool,
-    budget: Arc<AtomicUsize>,
+    pub content: Content,
+    pub size: u64,
+    /// Where the last saved version is on disk, and its checksum.
+    pub extents: Vec<Extent>,
+    pub checksum: u64,
+    /// Changed since the last save.
+    pub dirty: bool,
 }
-impl core::fmt::Debug for File {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("File").field("readonly", &self.readonly).finish_non_exhaustive()
+
+pub enum Kind { Dir(Vec<Ino>), File(File) }
+
+pub struct Node {
+    pub name: String,
+    pub parent: Ino,
+    /// Seconds since 1970 (UTC).
+    pub modified: u64,
+    /// The boot-image program folder and its programs: cannot be removed or renamed.
+    pub system: bool,
+    pub kind: Kind,
+}
+
+impl Node {
+    pub fn is_dir(&self) -> bool { matches!(self.kind, Kind::Dir(_)) }
+    pub fn size(&self) -> u64 { match &self.kind { Kind::File(f) => f.size, Kind::Dir(c) => c.len() as u64 } }
+    pub fn file(&self) -> Option<&File> { if let Kind::File(f) = &self.kind { Some(f) } else { None } }
+}
+
+pub struct Fs {
+    nodes: Vec<Option<Node>>,
+    free: Vec<Ino>,
+    /// Folders or names changed since the last save.
+    pub meta_dirty: bool,
+    /// Disk blocks the saved files may use (None without a disk: RAM only).
+    pub capacity: Option<u64>,
+    /// Blocks the current user files need when saved.
+    pub blocks: u64,
+    /// Counts every change; `saved_revision` is its value at the last save.
+    pub revision: u64,
+    pub saved_revision: u64,
+}
+
+fn blocks_for(size: u64) -> u64 { size.div_ceil(PAGE as u64) }
+
+impl Fs {
+    pub const fn new() -> Self {
+        Self { nodes: Vec::new(), free: Vec::new(), meta_dirty: false, capacity: None, blocks: 0, revision: 0, saved_revision: 0 }
     }
-}
-impl File {
-    pub fn with_bytes<R>(&self, f: impl FnOnce(&[u8]) -> R) -> R {
-        let data = self.bytes.lock();
-        let result = f(data);
-        self.bytes.unlock();
-        result
+    fn changed(&mut self) { self.meta_dirty = true; self.revision = self.revision.wrapping_add(1); }
+
+    fn root_ready(&mut self) {
+        if self.nodes.is_empty() {
+            self.nodes.push(Some(Node { name: String::new(), parent: ROOT, modified: 0, system: false, kind: Kind::Dir(Vec::new()) }));
+        }
     }
-    pub fn len(&self) -> usize { self.with_bytes(|data| data.len()) }
-    pub fn byte(&self, offset: usize) -> Option<u8> { self.with_bytes(|data| data.get(offset).copied()) }
-}
-impl Drop for File {
-    fn drop(&mut self) {
-        if !self.readonly { self.budget.fetch_sub(self.bytes.lock().capacity(), Ordering::Relaxed); self.bytes.unlock(); }
+
+    pub fn node(&self, ino: Ino) -> Option<&Node> {
+        if ino == ROOT && self.nodes.is_empty() { return Some(&EMPTY_ROOT); }
+        self.nodes.get(ino as usize).and_then(|n| n.as_ref())
     }
-}
-
-#[derive(Debug)]
-pub struct OpenFile { pub file: Arc<File>, pub cursor: usize }
-pub enum AtomNode { File(Arc<File>), Directory(Vec<(String, AtomNode)>) }
-
-fn directory(node: &AtomNode) -> Option<&Vec<(String, AtomNode)>> {
-    match node { AtomNode::Directory(children) => Some(children), AtomNode::File(_) => None }
-}
-
-/// Byte length of the root-relative snapshot name of a canonical path
-/// (["a","b"] -> "a/b"): segments plus separators, no leading '/'.
-fn joined_len(segments: &[String]) -> usize {
-    segments.iter().map(|segment| segment.len() + 1).sum::<usize>().saturating_sub(1)
-}
-
-/// Canonical display form of a resolved path (["a","b"] -> "/a/b", root -> "/").
-pub fn canonical(segments: &[String]) -> String {
-    let mut path = String::from("/");
-    for (index, segment) in segments.iter().enumerate() {
-        if index != 0 { path.push('/'); }
-        path.push_str(segment);
+    pub fn node_mut(&mut self, ino: Ino) -> Option<&mut Node> {
+        self.root_ready();
+        self.nodes.get_mut(ino as usize).and_then(|n| n.as_mut())
     }
-    path
-}
-
-/// Resolve `path` against `base` (the caller's canonical working directory;
-/// an empty base is the root). Absolute paths start with '/'; empty segments
-/// collapse; '.' stays; '..' pops, staying at the root when already there.
-/// Hard caps: MAX_DEPTH segments, MAX_NAME_BYTES per segment.
-pub fn resolve(base: &str, path: &str) -> Result<Vec<String>, FsError> {
-    let mut segments: Vec<String> = Vec::new();
-    if !path.starts_with('/') {
-        // Bases are kernel-produced canonical paths; validate defensively.
-        for segment in base.split('/') {
-            match segment {
-                "" => {}
-                "." | ".." => return Err(FsError::InvalidName),
-                name => {
-                    if !valid_name(name) || segments.len() >= MAX_DEPTH { return Err(FsError::InvalidName); }
-                    segments.try_reserve(1).map_err(|_| FsError::Memory)?;
-                    segments.push(String::from(name));
-                }
+    pub fn file_mut(&mut self, ino: Ino) -> Option<&mut File> {
+        match self.node_mut(ino) { Some(Node { kind: Kind::File(f), .. }) => Some(f), _ => None }
+    }
+    pub fn children(&self, dir: Ino) -> Result<&[Ino], FsError> {
+        match self.node(dir).ok_or(FsError::NotFound)?.kind { Kind::Dir(ref c) => Ok(c), _ => Err(FsError::NotDir) }
+    }
+    /// Every live node except the root, parents before children.
+    pub fn walk(&self) -> Vec<Ino> {
+        let mut out = Vec::new();
+        let mut stack = alloc::vec![ROOT];
+        while let Some(dir) = stack.pop() {
+            if let Ok(children) = self.children(dir) {
+                for &c in children { out.push(c); if self.node(c).is_some_and(Node::is_dir) { stack.push(c); } }
             }
         }
-    }
-    for segment in path.split('/') {
-        match segment {
-            "" | "." => {}
-            ".." => { segments.pop(); }
-            name => {
-                if !valid_name(name) || segments.len() >= MAX_DEPTH { return Err(FsError::InvalidName); }
-                segments.try_reserve(1).map_err(|_| FsError::Memory)?;
-                segments.push(String::from(name));
-            }
-        }
-    }
-    Ok(segments)
-}
-
-/// Validate a snapshot-layer entry name: a root-relative path whose segments
-/// are legal names, optionally ending in '/' to mark a directory (file names
-/// can never contain '/', so the marker is unambiguous).
-pub fn snapshot_segments(name: &str) -> Result<(Vec<String>, bool), FsError> {
-    let directory = name.ends_with('/');
-    let body = if directory { &name[..name.len() - 1] } else { &name[..] };
-    let body = body.strip_prefix('/').unwrap_or(body);
-    if body.is_empty() { return Err(FsError::InvalidName); }
-    let mut segments = Vec::new();
-    for segment in body.split('/') {
-        if segment.is_empty() || segment == "." || segment == ".." || !valid_name(segment)
-            || segments.len() >= MAX_DEPTH {
-            return Err(FsError::InvalidName);
-        }
-        segments.try_reserve(1).map_err(|_| FsError::Memory)?;
-        segments.push(String::from(segment));
-    }
-    Ok((segments, directory))
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Usage { pub files: usize, pub serialized_bytes: usize, pub live_bytes: usize,
-    pub dirty: bool, pub generation: u64, pub revision: u64, pub saved_revision: u64 }
-
-/// What sits at a resolved path: a directory, a file, or nothing (the parent
-/// chain must still exist; a missing or non-directory component is an error).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Probe { Directory, File, Missing }
-
-pub struct FileSystem {
-    root: AtomNode,
-    budget: Option<Arc<AtomicUsize>>,
-    revision: u64,
-    saved_revision: u64,
-    generation: u64,
-}
-impl FileSystem {
-    pub const fn new() -> Self { Self { root: AtomNode::Directory(Vec::new()), budget: None,
-        revision: 0, saved_revision: 0, generation: 0 } }
-    pub fn entries(&self) -> &[(String, AtomNode)] {
-        match &self.root { AtomNode::Directory(entries) => entries, _ => unreachable!() }
-    }
-    fn entries_mut(&mut self) -> &mut Vec<(String, AtomNode)> {
-        match &mut self.root { AtomNode::Directory(entries) => entries, _ => unreachable!() }
-    }
-    fn changed(&mut self) { self.revision = self.revision.wrapping_add(1); }
-    fn make_file(&mut self, bytes: Vec<u8>, readonly: bool) -> Arc<File> {
-        let budget = self.budget.get_or_insert_with(|| Arc::new(AtomicUsize::new(0))).clone();
-        if !readonly { budget.fetch_add(bytes.capacity(), Ordering::Relaxed); }
-        Arc::new(File { bytes: Spinlock::new(bytes), readonly, budget })
-    }
-    pub fn file(&self, name: &str) -> Option<Arc<File>> {
-        self.entries().iter().find_map(|(key, node)| {
-            if key == name { if let AtomNode::File(file) = node { return Some(file.clone()); } }
-            None
-        })
+        out
     }
 
-    // ---- tree navigation -------------------------------------------------
-
-    /// Walk to the directory at `segments` (empty = root). Missing
-    /// components are NotFound; a file component is NotDir.
-    fn walk(&self, segments: &[String]) -> Result<&Vec<(String, AtomNode)>, FsError> {
-        let mut node = &self.root;
-        for segment in segments {
-            let children = directory(node).ok_or(FsError::NotDir)?;
-            node = &children.iter().find(|(key, _)| key == segment).ok_or(FsError::NotFound)?.1;
-        }
-        directory(node).ok_or(FsError::NotDir)
+    pub fn lookup(&self, dir: Ino, name: &str) -> Option<Ino> {
+        self.children(dir).ok()?.iter().copied().find(|&c| self.node(c).is_some_and(|n| n.name == name))
     }
-    /// Mutable twin of `walk`; pre-validated paths only (None = impossible).
-    fn walk_dir_mut(&mut self, segments: &[String]) -> Option<&mut Vec<(String, AtomNode)>> {
-        let mut node = &mut self.root;
-        for segment in segments {
-            let children = match node { AtomNode::Directory(children) => children, _ => return None };
-            let index = children.iter().position(|(key, _)| key == segment)?;
-            node = &mut children[index].1;
+    pub fn resolve(&self, path: &str) -> Result<Ino, FsError> {
+        let mut at = ROOT;
+        for part in components(path)? {
+            if !self.node(at).ok_or(FsError::NotFound)?.is_dir() { return Err(FsError::NotDir); }
+            at = self.lookup(at, part).ok_or(FsError::NotFound)?;
         }
-        match node { AtomNode::Directory(children) => Some(children), _ => None }
+        Ok(at)
     }
-    fn lookup(&self, segments: &[String]) -> Option<&AtomNode> {
-        let mut node = &self.root;
-        for segment in segments {
-            node = &directory(node)?.iter().find(|(key, _)| key == segment)?.1;
+    /// The folder a path's last component lives in, and that component.
+    pub fn parent_of<'a>(&self, path: &'a str) -> Result<(Ino, &'a str), FsError> {
+        let parts = components(path)?;
+        let (&name, folders) = parts.split_last().ok_or(FsError::Invalid)?;
+        let mut at = ROOT;
+        for part in folders {
+            at = self.lookup(at, part).ok_or(FsError::NotFound)?;
+            if !self.node(at).ok_or(FsError::NotFound)?.is_dir() { return Err(FsError::NotDir); }
         }
-        Some(node)
+        Ok((at, name))
     }
-    fn probe(&self, segments: &[String]) -> Result<Probe, FsError> {
-        if segments.is_empty() { return Ok(Probe::Directory); }
-        let parent = self.walk(&segments[..segments.len() - 1])?;
-        let leaf = segments.last().unwrap();
-        Ok(match parent.iter().find(|(key, _)| key == leaf) {
-            Some((_, AtomNode::Directory(_))) => Probe::Directory,
-            Some((_, AtomNode::File(_))) => Probe::File,
-            None => Probe::Missing,
-        })
+    pub fn path_of(&self, mut ino: Ino) -> String {
+        let mut parts = Vec::new();
+        while ino != ROOT {
+            let Some(node) = self.node(ino) else { break };
+            parts.push(node.name.as_str());
+            ino = node.parent;
+        }
+        let mut path = String::new();
+        for part in parts.iter().rev() { path.push('/'); path.push_str(part); }
+        if path.is_empty() { path.push('/'); }
+        path
     }
 
-    fn linked(&self, file: &Arc<File>) -> bool {
-        fn in_entries(entries: &[(String, AtomNode)], file: &Arc<File>) -> bool {
-            entries.iter().any(|(_, node)| match node {
-                AtomNode::File(found) => Arc::ptr_eq(found, file),
-                AtomNode::Directory(children) => in_entries(children, file),
-            })
-        }
-        in_entries(self.entries(), file)
-    }
-    fn owns(&self, file: &Arc<File>) -> bool {
-        self.budget.as_ref().is_some_and(|b| Arc::ptr_eq(b, &file.budget))
-    }
-    pub fn usage(&self) -> Usage {
-        // Mirrors storage::encode's versioned payload byte-for-byte: a 12-byte
-        // magic+count header, 7 + path + data per writable file, 3 + path for
-        // each directory whose subtree holds no snapshot entries.
-        fn measure(entries: &[(String, AtomNode)], prefix: usize, files: &mut usize, bytes: &mut usize) -> bool {
-            let mut emitted = false;
-            for (name, node) in entries {
-                let path_len = prefix + name.len();
-                match node {
-                    AtomNode::File(file) if !file.readonly => { *files += 1; *bytes += 7 + path_len + file.len(); emitted = true; }
-                    AtomNode::File(_) => {}
-                    AtomNode::Directory(children) => {
-                        if measure(children, path_len + 1, files, bytes) { emitted = true; }
-                        else { *bytes += 3 + path_len; emitted = true; }
-                    }
-                }
-            }
-            emitted
-        }
-        let mut files = 0; let mut bytes = 12;
-        let _ = measure(self.entries(), 0, &mut files, &mut bytes);
-        Usage { files, serialized_bytes: bytes, live_bytes: self.budget.as_ref().map_or(0, |b| b.load(Ordering::Relaxed)),
-            dirty: self.revision != self.saved_revision, generation: self.generation,
-            revision: self.revision, saved_revision: self.saved_revision }
-    }
-    pub fn mark_saved(&mut self, revision: u64, generation: u64) {
-        self.saved_revision = revision; self.generation = generation;
-    }
-
-    // ---- path-aware operations (used by the syscall layer) ---------------
-
-    /// Open (creating if absent) the file at `path`. Opening a directory, or
-    /// a path whose parent does not exist, fails.
-    pub fn open_at(&mut self, base: &str, path: &str) -> Result<Arc<File>, FsError> {
-        let segments = resolve(base, path)?;
-        if segments.is_empty() { return Err(FsError::IsDir); }
-        let leaf = segments.last().unwrap().as_str();
-        match self.probe(&segments)? {
-            Probe::File => {
-                let parent = self.walk(&segments[..segments.len() - 1]).map_err(|_| FsError::NotFound)?;
-                if let Some((_, AtomNode::File(file))) = parent.iter().find(|(key, _)| key == leaf) {
-                    return Ok(file.clone());
-                }
-                return Err(FsError::NotFound);
-            }
-            Probe::Directory => return Err(FsError::IsDir),
-            Probe::Missing => {}
-        }
-        if segments.len() == 1 && builtin(leaf) { return Err(FsError::ReadOnly); }
-        let usage = self.usage();
-        if usage.files >= MAX_FILES || usage.serialized_bytes + 7 + joined_len(&segments) > MAX_SNAPSHOT_BYTES {
-            return Err(FsError::NoSpace);
-        }
-        let file = self.make_file(Vec::new(), false);
-        let parent = self.walk_dir_mut(&segments[..segments.len() - 1]).ok_or(FsError::NotFound)?;
-        parent.try_reserve(1).map_err(|_| FsError::Memory)?;
-        parent.push((String::from(leaf), AtomNode::File(file.clone())));
-        self.changed(); Ok(file)
-    }
-    pub fn open_existing_at(&self, base: &str, path: &str) -> Result<Arc<File>, FsError> {
-        let segments = resolve(base, path)?;
-        if segments.is_empty() { return Err(FsError::IsDir); }
-        let parent = self.walk(&segments[..segments.len() - 1])?;
-        let leaf = segments.last().unwrap();
-        match parent.iter().find(|(key, _)| key == leaf) {
-            Some((_, AtomNode::File(file))) => Ok(file.clone()),
-            Some((_, AtomNode::Directory(_))) => Err(FsError::IsDir),
-            None => Err(FsError::NotFound),
-        }
-    }
-    /// Strict mkdir: every parent must already exist (no mkdir -p).
-    pub fn mkdir_at(&mut self, base: &str, path: &str) -> Result<(), FsError> {
-        let segments = resolve(base, path)?;
-        if !matches!(self.probe(&segments)?, Probe::Missing) { return Err(FsError::Exists); }
-        let leaf = segments.last().ok_or(FsError::Exists)?.as_str(); // the root itself always exists
-        if segments.len() == 1 && builtin(leaf) { return Err(FsError::ReadOnly); }
-        let usage = self.usage();
-        if usage.serialized_bytes + 3 + joined_len(&segments) > MAX_SNAPSHOT_BYTES { return Err(FsError::NoSpace); }
-        let parent = self.walk_dir_mut(&segments[..segments.len() - 1]).ok_or(FsError::NotFound)?;
-        parent.try_reserve(1).map_err(|_| FsError::Memory)?;
-        parent.push((String::from(leaf), AtomNode::Directory(Vec::new())));
-        self.changed(); Ok(())
-    }
-    /// Resolve `path` to a directory and return its canonical absolute form
-    /// (the caller stores it as the new working directory).
-    pub fn directory_at(&self, base: &str, path: &str) -> Result<String, FsError> {
-        let segments = resolve(base, path)?;
-        match self.probe(&segments)? {
-            Probe::Directory => Ok(canonical(&segments)),
-            _ => Err(FsError::NotDir),
-        }
-    }
-    /// Entry names of the resolved directory; directories carry a trailing
-    /// '/' so they are visually distinct.
-    pub fn list_dir_at(&self, base: &str, path: &str) -> Result<Vec<String>, FsError> {
-        let segments = resolve(base, path)?;
-        let entries = self.walk(&segments)?;
-        let mut names = Vec::new();
-        for (name, node) in entries {
-            let mut label = name.clone();
-            if matches!(node, AtomNode::Directory(_)) { label.push('/'); }
-            names.try_reserve(1).map_err(|_| FsError::Memory)?;
-            names.push(label);
-        }
-        Ok(names)
-    }
-    /// Remove a file or an EMPTY directory; non-empty directories are
-    /// refused and open handles keep their Arc.
-    pub fn remove_at(&mut self, base: &str, path: &str) -> Result<(), FsError> {
-        let segments = resolve(base, path)?;
-        if segments.is_empty() { return Err(FsError::InvalidName); } // the root is not removable
-        let leaf = segments.last().unwrap().as_str();
-        {
-            let parent = self.walk(&segments[..segments.len() - 1])?;
-            match parent.iter().find(|(key, _)| key == leaf) {
-                None => return Err(FsError::NotFound),
-                Some((_, AtomNode::File(file))) if file.readonly => return Err(FsError::ReadOnly),
-                Some((_, AtomNode::Directory(children))) if !children.is_empty() => return Err(FsError::NotEmpty),
-                _ => {}
-            }
-        }
-        let parent = self.walk_dir_mut(&segments[..segments.len() - 1]).ok_or(FsError::NotFound)?;
-        let index = parent.iter().position(|(key, _)| key == leaf).ok_or(FsError::NotFound)?;
-        parent.remove(index); // open handles retain their Arc
-        self.changed(); Ok(())
-    }
-    /// Rename/move within the tree. A destination that is an existing
-    /// directory absorbs the source (mv-into-directory); an existing file
-    /// collides; moving a directory into its own subtree is refused.
-    pub fn rename_at(&mut self, base: &str, old: &str, new: &str) -> Result<(), FsError> {
-        let old_segments = resolve(base, old)?;
-        let mut new_segments = resolve(base, new)?;
-        if old_segments == new_segments { return Ok(()); }
-        if old_segments.is_empty() || new_segments.is_empty() { return Err(FsError::InvalidName); }
-        let old_leaf = old_segments.last().unwrap().as_str();
-        if old_segments.len() == 1 && builtin(old_leaf) { return Err(FsError::ReadOnly); }
-        if new_segments.len() == 1 && builtin(&new_segments[0]) { return Err(FsError::ReadOnly); }
-        if matches!(self.probe(&old_segments)?, Probe::Missing) { return Err(FsError::NotFound); }
-        match self.probe(&new_segments)? {
-            Probe::Directory => {
-                if new_segments.len() >= MAX_DEPTH { return Err(FsError::InvalidName); }
-                new_segments.try_reserve(1).map_err(|_| FsError::Memory)?;
-                new_segments.push(String::from(old_leaf));
-            }
-            Probe::File => return Err(FsError::Exists),
-            Probe::Missing => {}
-        }
-        let new_leaf = new_segments.last().unwrap().as_str();
-        {
-            let parent = self.walk(&new_segments[..new_segments.len() - 1])?;
-            if parent.iter().any(|(key, _)| key == new_leaf) { return Err(FsError::Exists); }
-        }
-        // A directory cannot move into its own subtree.
-        if new_segments.len() >= old_segments.len()
-            && new_segments[..old_segments.len()] == old_segments[..] {
-            return Err(FsError::InvalidName);
-        }
-        // Durable-quota check: the moved subtree re-serializes under the new path.
-        fn entry_cost(node: &AtomNode, path_len: usize) -> usize {
-            match node {
-                AtomNode::File(file) if !file.readonly => 7 + path_len + file.len(),
-                AtomNode::File(_) => 0,
-                AtomNode::Directory(children) => {
-                    let (mut total, mut emitted) = (0, false);
-                    for (name, child) in children {
-                        let cost = entry_cost(child, path_len + name.len() + 1);
-                        if cost > 0 { total += cost; emitted = true; }
-                    }
-                    if emitted { total } else { 3 + path_len }
-                }
-            }
-        }
-        let usage = self.usage();
-        {
-            let parent = self.walk(&old_segments[..old_segments.len() - 1])?;
-            let (_, node) = parent.iter().find(|(key, _)| key == old_leaf).ok_or(FsError::NotFound)?;
-            if usage.serialized_bytes.saturating_sub(entry_cost(node, joined_len(&old_segments)))
-                + entry_cost(node, joined_len(&new_segments)) > MAX_SNAPSHOT_BYTES {
-                return Err(FsError::NoSpace);
-            }
-        }
-        // Reserve destination capacity before detaching anything.
-        {
-            let parent = self.walk_dir_mut(&new_segments[..new_segments.len() - 1]).ok_or(FsError::NotFound)?;
-            parent.try_reserve(1).map_err(|_| FsError::Memory)?;
-        }
-        let node = {
-            let parent = self.walk_dir_mut(&old_segments[..old_segments.len() - 1]).ok_or(FsError::NotFound)?;
-            let index = parent.iter().position(|(key, _)| key == old_leaf).ok_or(FsError::NotFound)?;
-            let (_, node) = parent.remove(index);
-            node
+    /// Adds a node under `parent` (which must be a folder without that name).
+    pub fn insert(&mut self, parent: Ino, name: &str, modified: u64, kind: Kind) -> Result<Ino, FsError> {
+        self.root_ready();
+        if !valid_name(name) { return Err(FsError::Invalid); }
+        if !self.node(parent).ok_or(FsError::NotFound)?.is_dir() { return Err(FsError::NotDir); }
+        if self.lookup(parent, name).is_some() { return Err(FsError::Exists); }
+        let node = Node { name: String::from(name), parent, modified, system: false, kind };
+        let ino = match self.free.pop() {
+            Some(ino) => { self.nodes[ino as usize] = Some(node); ino }
+            None => { self.nodes.push(Some(node)); (self.nodes.len() - 1) as Ino }
         };
-        let parent = self.walk_dir_mut(&new_segments[..new_segments.len() - 1]).ok_or(FsError::NotFound)?;
-        parent.push((String::from(new_leaf), node));
-        self.changed(); Ok(())
+        if let Some(Node { kind: Kind::Dir(children), .. }) = self.node_mut(parent) { children.push(ino); }
+        Ok(ino)
     }
 
-    // ---- flat root-level API (legacy callers, exec image lookup) ---------
+    pub fn mkdir(&mut self, path: &str, now: u64) -> Result<Ino, FsError> {
+        let (parent, name) = self.parent_of(path)?;
+        let ino = self.insert(parent, name, now, Kind::Dir(Vec::new()))?;
+        self.changed();
+        Ok(ino)
+    }
 
-    pub fn open(&mut self, name: &str) -> Result<Arc<File>, FsError> {
-        if !valid_name(name) { return Err(FsError::InvalidName); }
-        self.open_at("", name)
+    /// The file at `path`, created empty if it does not exist.
+    pub fn open_or_create(&mut self, path: &str, now: u64) -> Result<Ino, FsError> {
+        match self.resolve(path) {
+            Ok(ino) if self.node(ino).is_some_and(Node::is_dir) => Err(FsError::IsDir),
+            Ok(ino) => Ok(ino),
+            Err(FsError::NotFound) => {
+                let (parent, name) = self.parent_of(path)?;
+                let file = File { content: Content::Data(FileData::new()), size: 0, extents: Vec::new(), checksum: 0, dirty: true };
+                let ino = self.insert(parent, name, now, Kind::File(file))?;
+                self.changed();
+                Ok(ino)
+            }
+            Err(e) => Err(e),
+        }
     }
-    pub fn open_existing(&self, name: &str) -> Result<Arc<File>, FsError> {
-        if !valid_name(name) { return Err(FsError::InvalidName); }
-        self.open_existing_at("", name)
+
+    /// Embeds a boot-image program as `/bin/<name>`, unless a saved file already
+    /// has that name.
+    pub fn install_builtin(&mut self, name: &str, bytes: &'static [u8]) -> Result<Ino, FsError> {
+        self.root_ready();
+        let bin = match self.lookup(ROOT, BIN) {
+            Some(ino) => ino,
+            None => self.insert(ROOT, BIN, 0, Kind::Dir(Vec::new()))?,
+        };
+        if let Some(node) = self.node_mut(bin) { node.system = true; }
+        let file = File { content: Content::Builtin(bytes), size: bytes.len() as u64, extents: Vec::new(), checksum: 0, dirty: false };
+        let ino = self.insert(bin, name, 0, Kind::File(file))?;
+        if let Some(node) = self.node_mut(ino) { node.system = true; }
+        Ok(ino)
     }
-    pub fn remove(&mut self, name: &str) -> Result<(), FsError> {
-        if !valid_name(name) { return Err(FsError::InvalidName); }
-        self.remove_at("", name)
+
+    pub fn is_builtin(&self, ino: Ino) -> bool {
+        matches!(self.node(ino).and_then(Node::file), Some(File { content: Content::Builtin(_), .. }))
     }
-    pub fn rename(&mut self, old: &str, new: &str) -> Result<(), FsError> {
-        if !valid_name(old) || !valid_name(new) { return Err(FsError::InvalidName); }
-        self.rename_at("", old, new)
-    }
-    pub fn insert_builtin(&mut self, name: &str, bytes: &[u8]) -> Result<(), FsError> {
-        if !builtin(name) { return Err(FsError::InvalidName); }
-        if self.entries().iter().any(|(key, _)| key == name) { return Err(FsError::Exists); }
-        let file = self.make_file(bytes.to_vec(), true);
-        self.entries_mut().push((String::from(name), AtomNode::File(file)));
+
+    /// Removes a file or an empty folder. `open` reports whether a descriptor holds a file.
+    pub fn remove(&mut self, path: &str, open: impl Fn(Ino) -> bool) -> Result<(), FsError> {
+        let ino = self.resolve(path)?;
+        let node = self.node(ino).ok_or(FsError::NotFound)?;
+        if ino == ROOT || node.system { return Err(FsError::ReadOnly); }
+        if let Kind::Dir(children) = &node.kind { if !children.is_empty() { return Err(FsError::NotEmpty); } }
+        if open(ino) { return Err(FsError::Busy); }
+        let parent = node.parent;
+        let size = node.file().map_or(0, |f| f.size);
+        if let Some(Node { kind: Kind::Dir(children), .. }) = self.node_mut(parent) { children.retain(|&c| c != ino); }
+        self.nodes[ino as usize] = None; // Drops the contents and frees their frames.
+        self.free.push(ino);
+        self.blocks -= blocks_for(size);
+        self.changed();
         Ok(())
     }
-    pub fn append(&mut self, file: &Arc<File>, bytes: &[u8]) -> Result<(), FsError> {
-        self.modify(file, bytes, false)
+
+    /// Renames or moves `from` to `to`; `to` must not exist. A folder cannot move into
+    /// itself.
+    pub fn rename(&mut self, from: &str, to: &str, now: u64) -> Result<(), FsError> {
+        let ino = self.resolve(from)?;
+        if ino == ROOT || self.node(ino).ok_or(FsError::NotFound)?.system { return Err(FsError::ReadOnly); }
+        let (parent, name) = self.parent_of(to)?;
+        if !valid_name(name) { return Err(FsError::Invalid); }
+        if self.lookup(parent, name).is_some() { return Err(FsError::Exists); }
+        let mut at = parent;
+        loop {
+            if at == ino { return Err(FsError::Invalid); }
+            if at == ROOT { break; }
+            at = self.node(at).ok_or(FsError::NotFound)?.parent;
+        }
+        let old_parent = self.node(ino).ok_or(FsError::NotFound)?.parent;
+        if let Some(Node { kind: Kind::Dir(children), .. }) = self.node_mut(old_parent) { children.retain(|&c| c != ino); }
+        if let Some(Node { kind: Kind::Dir(children), .. }) = self.node_mut(parent) { children.push(ino); }
+        let node = self.node_mut(ino).ok_or(FsError::NotFound)?;
+        node.name = String::from(name);
+        node.parent = parent;
+        node.modified = now;
+        self.changed();
+        Ok(())
     }
-    pub fn replace(&mut self, file: &Arc<File>, bytes: &[u8]) -> Result<(), FsError> {
-        self.modify(file, bytes, true)
+
+    fn data_mut(&mut self, ino: Ino) -> Result<&mut File, FsError> {
+        let file = self.file_mut(ino).ok_or(FsError::IsDir)?;
+        match file.content {
+            Content::Builtin(_) => Err(FsError::ReadOnly),
+            Content::Unloaded => Err(FsError::Io),
+            Content::Data(_) => Ok(file),
+        }
     }
-    fn modify(&mut self, file: &Arc<File>, input: &[u8], replace: bool) -> Result<(), FsError> {
-        if !self.owns(file) { return Err(FsError::BadHandle); }
-        if file.readonly { return Err(FsError::ReadOnly); }
-        let linked = self.linked(file);
-        let usage = self.usage(); // namespace -> file lock order, before holding target lock
-        let data = file.bytes.lock();
-        let result = (|| {
-            let old = data.len();
-            let new = if replace { input.len() } else { old.checked_add(input.len()).ok_or(FsError::FileTooLarge)? };
-            if new > MAX_FILE_BYTES { return Err(FsError::FileTooLarge); }
-            if linked && usage.serialized_bytes - old + new > MAX_SNAPSHOT_BYTES { return Err(FsError::NoSpace); }
-            let old_capacity = data.capacity();
-            let capacity = if replace { new } else if new > old_capacity { new.next_power_of_two().min(MAX_FILE_BYTES) } else { old_capacity };
-            if usage.live_bytes - old_capacity + capacity > MAX_LIVE_BYTES { return Err(FsError::Memory); }
-            if replace || new > old_capacity {
-                // Build the replacement before swapping. Shrinking/truncating
-                // must release capacity, including for unlinked open files.
-                let mut replacement = Vec::new();
-                replacement.try_reserve_exact(capacity).map_err(|_| FsError::Memory)?;
-                if usage.live_bytes - old_capacity + replacement.capacity() > MAX_LIVE_BYTES { return Err(FsError::Memory); }
-                if !replace { replacement.extend_from_slice(data); }
-                replacement.extend_from_slice(input);
-                *data = replacement;
-            } else { data.extend_from_slice(input); }
-            let new_capacity = data.capacity();
-            if new_capacity >= old_capacity { file.budget.fetch_add(new_capacity - old_capacity, Ordering::Relaxed); }
-            else { file.budget.fetch_sub(old_capacity - new_capacity, Ordering::Relaxed); }
-            Ok(())
-        })();
-        file.bytes.unlock();
-        if result.is_ok() && linked && (replace || !input.is_empty()) { self.changed(); }
+
+    /// Checks that growing a file from `old` to `new` bytes keeps every file saveable.
+    fn reserve(&mut self, old: u64, new: u64) -> Result<(), FsError> {
+        let (old, new) = (blocks_for(old), blocks_for(new));
+        let total = self.blocks - old + new;
+        if new > old && self.capacity.is_some_and(|cap| total > cap) { return Err(FsError::NoSpace); }
+        self.blocks = total;
+        Ok(())
+    }
+
+    pub fn read(&self, ino: Ino, offset: u64, out: &mut [u8]) -> Result<usize, FsError> {
+        match &self.node(ino).ok_or(FsError::NotFound)?.kind {
+            Kind::Dir(_) => Err(FsError::IsDir),
+            Kind::File(File { content: Content::Builtin(bytes), .. }) => {
+                let start = (offset as usize).min(bytes.len());
+                let count = (bytes.len() - start).min(out.len());
+                out[..count].copy_from_slice(&bytes[start..start + count]);
+                Ok(count)
+            }
+            Kind::File(File { content: Content::Data(data), .. }) => Ok(data.read_at(offset, out)),
+            Kind::File(File { content: Content::Unloaded, .. }) => Err(FsError::Io),
+        }
+    }
+
+    pub fn write(&mut self, ino: Ino, offset: u64, bytes: &[u8], now: u64) -> Result<usize, FsError> {
+        let size = self.data_mut(ino)?.size;
+        let end = offset.checked_add(bytes.len() as u64).ok_or(FsError::NoSpace)?.max(size);
+        if end > FILE_MAX { return Err(FsError::NoSpace); }
+        self.reserve(size, end)?;
+        let file = self.data_mut(ino)?;
+        let Content::Data(data) = &mut file.content else { return Err(FsError::Io) };
+        let result = data.write_at(offset, bytes);
+        let len = data.len();
+        file.size = len;
+        file.dirty = true;
+        // A failed write (out of memory) may have stored part of the data.
+        self.blocks = self.blocks - blocks_for(end) + blocks_for(len);
+        if let Some(node) = self.node_mut(ino) { node.modified = now; }
+        self.changed();
         result
     }
 
-    // ---- persistence ------------------------------------------------------
-
-    pub fn snapshot(&self) -> Vec<(String, Vec<u8>)> {
-        // Root-relative paths; a trailing '/' marks an empty directory (file
-        // names can never contain '/'). Only directories whose subtree holds
-        // no snapshot entries need an explicit marker — parents of real
-        // entries are implied and recreated on restore.
-        fn collect(entries: &[(String, AtomNode)], prefix: &str, out: &mut Vec<(String, Vec<u8>)>) -> bool {
-            let mut emitted = false;
-            for (name, node) in entries {
-                match node {
-                    AtomNode::File(file) if !file.readonly => {
-                        let mut path = String::from(prefix);
-                        path.push_str(name);
-                        out.push((path, file.with_bytes(|data| data.to_vec())));
-                        emitted = true;
-                    }
-                    AtomNode::File(_) => {}
-                    AtomNode::Directory(children) => {
-                        let mut child_prefix = String::from(prefix);
-                        child_prefix.push_str(name);
-                        child_prefix.push('/');
-                        if collect(children, &child_prefix, out) { emitted = true; }
-                        else { out.push((child_prefix, Vec::new())); emitted = true; }
-                    }
-                }
-            }
-            emitted
-        }
-        let mut files = Vec::new();
-        let _ = collect(self.entries(), "", &mut files);
-        files
-    }
-    /// Create the directory at `segments` and any missing parents (restore
-    /// path only — the syscall layer enforces strict parents).
-    fn make_dir_with_parents(&mut self, segments: &[String]) -> Result<(), FsError> {
-        for depth in 1..=segments.len() {
-            match self.lookup(&segments[..depth]) {
-                Some(AtomNode::Directory(_)) => continue,
-                Some(AtomNode::File(_)) => return Err(FsError::NotDir),
-                None => {}
-            }
-            let usage = self.usage();
-            if usage.serialized_bytes + 3 + joined_len(&segments[..depth]) > MAX_SNAPSHOT_BYTES {
-                return Err(FsError::NoSpace);
-            }
-            let parent = self.walk_dir_mut(&segments[..depth - 1]).ok_or(FsError::NotFound)?;
-            parent.try_reserve(1).map_err(|_| FsError::Memory)?;
-            parent.push((segments[depth - 1].clone(), AtomNode::Directory(Vec::new())));
-            self.changed();
-        }
+    pub fn truncate(&mut self, ino: Ino, len: u64, now: u64) -> Result<(), FsError> {
+        let size = self.data_mut(ino)?.size;
+        self.reserve(size, len)?;
+        let file = self.data_mut(ino)?;
+        let Content::Data(data) = &mut file.content else { return Err(FsError::Io) };
+        data.truncate(len)?;
+        file.size = len;
+        file.dirty = true;
+        if let Some(node) = self.node_mut(ino) { node.modified = now; }
+        self.changed();
         Ok(())
     }
-    pub fn restored(files: Vec<(String, Vec<u8>)>, generation: u64) -> Result<Self, FsError> {
-        let mut fs = Self::new();
-        for (name, bytes) in files {
-            let (segments, directory) = snapshot_segments(&name)?;
-            if segments.len() == 1 && builtin(&segments[0]) { return Err(FsError::ReadOnly); }
-            if fs.lookup(&segments).is_some() { return Err(FsError::Exists); }
-            if directory {
-                if !bytes.is_empty() { return Err(FsError::InvalidName); }
-                fs.make_dir_with_parents(&segments)?;
-            } else {
-                fs.make_dir_with_parents(&segments[..segments.len() - 1])?;
-                let file = fs.open_at("", &name)?;
-                fs.replace(&file, &bytes)?;
-            }
-        }
-        fs.mark_saved(fs.revision, generation);
-        Ok(fs)
+
+    /// Replaces a file's contents with `bytes`. A size that would not fit on the disk
+    /// is refused before anything changes.
+    pub fn replace(&mut self, ino: Ino, bytes: &[u8], now: u64) -> Result<(), FsError> {
+        let size = self.data_mut(ino)?.size;
+        let new = bytes.len() as u64;
+        if new > FILE_MAX { return Err(FsError::NoSpace); }
+        let (old, grown) = (blocks_for(size), blocks_for(new));
+        if grown > old && self.capacity.is_some_and(|cap| self.blocks - old + grown > cap) { return Err(FsError::NoSpace); }
+        self.truncate(ino, 0, now)?;
+        self.write(ino, 0, bytes, now).map(|_| ())
+    }
+
+    /// Files outside the boot-image program folder.
+    pub fn user_files(&self) -> usize {
+        self.walk().iter().filter(|&&i| self.node(i).is_some_and(|n| !n.system && !n.is_dir())).count()
+    }
+    /// Bytes of file contents held in memory (loaded or written, not built-in).
+    pub fn loaded_bytes(&self) -> u64 {
+        self.walk().iter().filter_map(|&i| self.node(i).and_then(Node::file))
+            .filter(|f| matches!(f.content, Content::Data(_))).map(|f| f.size).sum()
+    }
+
+    /// True when anything changed since the last save.
+    pub fn unsaved(&self) -> bool {
+        self.meta_dirty || self.walk().iter().any(|&i| self.node(i).and_then(Node::file).is_some_and(|f| f.dirty))
     }
 }
 
-pub static ROOT_FS: Spinlock<FileSystem> = Spinlock::new(FileSystem::new());
+static EMPTY_ROOT: Node = Node { name: String::new(), parent: ROOT, modified: 0, system: false, kind: Kind::Dir(Vec::new()) };
+
+/// The system's file tree.
+pub static ROOT_FS: Spinlock<Fs> = Spinlock::new(Fs::new());

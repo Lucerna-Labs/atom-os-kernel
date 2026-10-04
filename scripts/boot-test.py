@@ -15,7 +15,7 @@ import uuid
 
 
 class Guest:
-    def __init__(self, source, output, disk, accel, *, blkdebug=None, netdev=None):
+    def __init__(self, source, output, disk, accel, memory="128M", *, blkdebug=None, netdev=None):
         self.output = output
         output.mkdir()
         self.control = tempfile.TemporaryDirectory(prefix="atom-qmp-")
@@ -24,12 +24,12 @@ class Guest:
         self.disk = disk
         image = source / "target/x86_64-os/release/bootimage-x86_64-kernel.bin"
         disk_source = str(disk) if blkdebug is None else f"blkdebug:{blkdebug}:{disk}"
-        command = ["qemu-system-x86_64", "-accel", accel, "-m", "128M", "-smp", "1",
+        command = ["qemu-system-x86_64", "-accel", accel, "-m", memory, "-smp", "1",
                    "-drive", f"format=raw,file={image},snapshot=on",
                    "-drive", f"if=none,format=raw,file={disk_source},id=atomdata,cache=writeback,werror=report,rerror=report",
                    "-device", "virtio-blk-pci,drive=atomdata,disable-modern=on",
                    "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
-                   "-display", "none", "-nic", "none", "-serial", f"file:{output / 'serial.log'}",
+                   "-display", "none", "-vga", "none", "-nic", "none", "-serial", f"file:{output / 'serial.log'}",
                    "-qmp", f"unix:{self.qmp_path},server=on,wait=off", "-pidfile", str(self.pidfile),
                    "-no-shutdown", "-d", "guest_errors", "-D", str(output / "guest-errors.log")]
         if netdev is not None:
@@ -106,7 +106,10 @@ class Guest:
         return self.wait(expected, offset, seconds)
 
     def ready(self, offset=0):
-        self.wait(r"10,000 SYS_YIELDs took \(CPU cycles\): \d+\n> ", offset)
+        # The prompt follows the boot benchmark and the shell's demo-fleet line
+        # (the fleet runs on a disk's first boot and finishes before the prompt).
+        self.wait(r"10,000 SYS_YIELDs took \(CPU cycles\): \d+\n", offset)
+        self.wait(r"shell: demo fleet (finished|already ran)[^\n]*\n/[^\n]*> ", offset, 180)
         self.wait(r"HEAP_OK", offset)
         self.wait(r"STORAGE_READY generation=\d+", offset)
 
@@ -165,14 +168,15 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--accel", choices=["kvm", "tcg"], default="tcg")
     parser.add_argument("--rounds", type=int, default=48)
+    parser.add_argument("--memory", default="8G", help="guest RAM, in QEMU -m syntax (default 8G)")
     args = parser.parse_args()
     output = args.output.resolve(); output.mkdir(parents=True, exist_ok=False)
     source = args.source.resolve()
     disk = output / "data.img"
-    with disk.open("xb") as stream: stream.truncate(8 * 1024 * 1024)
+    with disk.open("xb") as stream: stream.truncate(64 * 1024 * 1024)
     image = source / "target/x86_64-os/release/bootimage-x86_64-kernel.bin"
     token = "persist-" + uuid.uuid4().hex[:16]
-    result = {"acceleration": args.accel, "image_sha256": hashlib.sha256(image.read_bytes()).hexdigest(),
+    result = {"acceleration": args.accel, "memory": args.memory, "image_sha256": hashlib.sha256(image.read_bytes()).hexdigest(),
               "nonce": token, "checks": {}, "disk": str(disk)}
     started = time.monotonic()
     guest = None
@@ -182,44 +186,29 @@ def main():
         print(name + " PASS", flush=True)
 
     try:
-        guest = Guest(source, output / "first", disk, args.accel)
+        guest = Guest(source, output / "first", disk, args.accel, args.memory)
         result["qmp_kvm"] = guest.kvm
         guest.ready(); passed("BOOT_HEAP_BENCH")
-        guest.command("fstest", "FSTEST_OK", 90)
-        guest.wait("FILE_LIFECYCLE_OK")
-        guest.wait("DURABLE_QUOTAS_OK")
-        guest.wait("FS_STATE_OK")
-        passed("FILE_LIFECYCLE_QUOTAS_SAVED_STATE")
-        guest.command("status", r"FS_STATUS saved files=0/128 bytes=4/524288")
-        guest.command("echo kept > move.txt", "> ")
-        guest.command("mv move.txt renamed.txt", "RENAMED")
-        guest.command("cat renamed.txt", r"\nkept\n")
-        guest.command("rm renamed.txt", "REMOVED")
-        guest.command("cat renamed.txt", "cat: file not found")
-        guest.command("df", r"FS_STATUS unsaved files=0/128 bytes=4/524288")
-        passed("FILE_MANAGEMENT_COMMANDS")
+        match = guest.wait(r"MEMORY_READY frames=(\d+) mib=(\d+) regions=(\d+) top=(0x[0-9a-f]+) probe=ok")
+        guest_mib = guest.qmp("query-memory-size-summary")["base-memory"] >> 20
+        result["memory_ready"] = {"frames": int(match[1]), "mib": int(match[2]), "regions": int(match[3]), "top": match[4], "guest_mib": guest_mib}
+        # All but firmware, the first 1 MiB and the boot image's own frames.
+        assert int(match[2]) >= guest_mib - 64, match[0]
+        passed("PHYSICAL_MEMORY_DISCOVERED")
+        guest.command("help", "commands:"); passed("KEYBOARD")
         guest.command("proctest", "PROCTEST_OK", 90)
         for marker in ["PROCESS_INPUT_VALIDATION_OK", "ARGUMENT_LIMITS_EXEC_OK", "KILL_WAIT_ORPHAN_OK", "KILL_REAP_OK"]:
             guest.wait(marker)
         passed("PROCESS_ARGUMENTS_KILL_BOUNDARIES")
-        guest.command("ps", r"1 0 running shell\.elf")
-        match = guest.command("spawn worker.elf --sleep", r"spawned pid (\d+)")
-        sleeper = int(match[1])
-        guest.command("ps", rf"{sleeper} 1 sleeping worker\.elf")
-        guest.command(f"kill {sleeper}", rf"killed pid {sleeper}")
-        guest.command("ps", rf"{sleeper} 1 exited worker\.elf")
-        guest.command(f"wait {sleeper}", rf"wait pid={sleeper} status=137")
-        guest.command(f"kill {sleeper}", "kill failed")
-        guest.command("kill 0", "kill failed")
-        passed("PS_KILL_COMMANDS")
         match = guest.command("spawn worker.elf --args hello world", r"spawned pid (\d+)")
         argument_pid = int(match[1])
         guest.wait(rf"ARGS pid={argument_pid} count=4")
         guest.wait("ARG 2 len=5 hello\nARG 3 len=5 world")
         guest.command(f"wait {argument_pid}", rf"wait pid={argument_pid} status=41")
         passed("SHELL_PROGRAM_ARGUMENTS")
-        guest.command("help", "commands:"); passed("KEYBOARD")
-        guest.command("ls", r"shell\.elf.*daemon\.elf"); passed("RAMFS_LIST")
+        guest.command("fstest", "FSTEST_OK", 90)
+        passed("FILE_LIFECYCLE_ERRORS_SAVED_STATE")
+        guest.command("ls /bin", r"daemon\.elf[\s\S]*shell\.elf"); passed("RAMFS_LIST")
         guest.command(f"echo {token} > durable.txt", "> ")
         guest.command("cat durable.txt", re.escape(token) + r"\n"); passed("RAMFS_WRITE_READ")
         guest.command("msg acceptance ipc", r"Received IPC: acceptance ipc"); passed("IPC_DELIVERY")
@@ -236,22 +225,77 @@ def main():
         assert int(match[1]) == args.rounds and match[2] == match[3] and match[4] == "2"
         result["process_churn"] = {"rounds": int(match[1]), "free_before": int(match[2]), "free_after": int(match[3]), "tasks": int(match[4])}
         passed("PROCESS_REAP_NO_FRAME_LEAK")
+        match = guest.command("spawn sleeper.elf", r"spawned pid (\d+)")
+        sleeper = int(match[1])
+        guest.command("ps", rf"\n{sleeper} +1 +\w+ +sleeper\.elf\n")
+        guest.command(f"kill {sleeper}", rf"killed pid {sleeper}")
+        guest.command(f"wait {sleeper}", rf"wait pid={sleeper} status=137")
+        guest.command(f"kill {sleeper}", "kill failed")
+        guest.command("kill 9999", "kill failed")
+        match = guest.command("stats", r"FREE_FRAMES (\d+) TASKS (\d+)")
+        assert int(match[1]) == result["process_churn"]["free_after"] and match[2] == "2", match[0]
+        listing = guest.command("ps", r"PID PARENT STATE +NAME\n[\s\S]*?\n/[^\n]*> ")
+        assert "sleeper" not in listing[0], listing[0]
+        passed("PS_KILL_REAP")
+        guest.command("echo doomed > doomed.txt", "> ")
+        guest.command("mv doomed.txt kept.txt", "renamed")
+        listing = guest.command("ls", r"bin/\n[\s\S]*?\n/[^\n]*> ")
+        assert "kept.txt" in listing[0] and "doomed.txt" not in listing[0], listing[0]
+        guest.command("cat kept.txt", r"doomed\n")
+        guest.command("echo spare > spare.txt", "> ")
+        guest.command("mv kept.txt spare.txt", "mv failed")
+        guest.command("rm spare.txt", "removed")
+        guest.command("rm worker.elf", "rm failed")
+        guest.command("rm bin/worker.elf", "rm failed: read-only")
+        guest.command("mv shell.elf x.elf", "mv failed")
+        guest.command("mv bin/shell.elf x.elf", "mv failed: read-only")
+        passed("FILE_REMOVE_RENAME")
+        guest.command("mkdir docs", "folder created")
+        guest.command("cd docs", "> ")
+        guest.command("pwd", r"\n/docs\n")
+        guest.command("echo inner > note.txt", "> ")
+        guest.command("cd /", "> ")
+        guest.command("cat docs/note.txt", r"inner\n")
+        guest.command("mkdir docs/deep", "folder created")
+        guest.command("mv docs/note.txt docs/deep", "renamed")
+        guest.command("ls docs/deep", r"note\.txt")
+        guest.command("rmdir docs", "rmdir failed: folder is not empty")
+        guest.command("cd docs/missing", "cd: not found")
+        passed("FOLDERS")
+        # 3 MB through the bulk read/write calls: far past the old 64 KiB file limit.
+        match = guest.command("fill docs/big.bin 3000000", r"FILL_OK bytes=3000000 sum=([0-9a-f]{16})", 60)
+        big_sum = match[1]
+        guest.command("sum docs/big.bin", rf"SUM bytes=3000000 sum={big_sum}", 60)
+        guest.command("cp docs/big.bin copy.bin", r"copied 2\.8 MB", 60)
+        guest.command("sum copy.bin", rf"SUM bytes=3000000 sum={big_sum}", 60)
+        guest.command("df", r"Unsaved changes")
+        result["large_file_sum"] = big_sum
+        passed("LARGE_FILE_BULK_IO")
         guest.command("faulttest", "FAULT_ISOLATION_OK status=142"); passed("USER_FAULT_CONTAINED")
-        guest.command("sync", "SYNC_OK"); passed("VIRTIO_FLUSH_COMMIT")
+        guest.command("sync", "SYNC_OK", 120)
+        guest.command("df", r"Everything is saved"); passed("VIRTIO_FLUSH_COMMIT")
         offset = len(guest.serial())
         guest.keys("reboot\n")
         guest.ready(offset)
         guest.command("cat durable.txt", re.escape(token) + r"\n"); passed("OS_REBOOT_PERSISTENCE")
+        guest.command("cat kept.txt", r"doomed\n")
+        listing = guest.command("ls", r"bin/\n[\s\S]*?\n/[^\n]*> ")
+        assert "spare.txt" not in listing[0] and "doomed.txt" not in listing[0], listing[0]
+        passed("REMOVE_RENAME_PERSISTENCE")
+        guest.command("cat docs/deep/note.txt", r"inner\n")
+        guest.command("sum docs/big.bin", rf"SUM bytes=3000000 sum={big_sum}", 60)
+        guest.command("sum copy.bin", rf"SUM bytes=3000000 sum={big_sum}", 60)
+        passed("FOLDERS_AND_LARGE_FILES_PERSIST")
         second = "second-" + token
         guest.command(f"echo {second} > durable.txt", "> ")
         guest.command("sync", "SYNC_OK")
         guest.close(); guest = None
         result["disk_sha256_after_save"] = hashlib.sha256(disk.read_bytes()).hexdigest()
-        guest = Guest(source, output / "cold", disk, args.accel)
+        guest = Guest(source, output / "cold", disk, args.accel, args.memory)
         guest.ready()
         guest.command("cat durable.txt", re.escape(token + "\n" + second + "\n")); passed("COLD_BOOT_EXACT_CONTENT")
         offset = len(guest.serial())
-        guest.keys("run worker.elf\n")
+        guest.keys("exec worker.elf\n")
         guest.wait("WORKER_OK", offset, 60)
         guest.wait(r"\[Daemon\] Heartbeat\.\.\. tasks=1", offset, 10)
         passed("EXEC_REPLACEMENT_DAEMON_SURVIVES")

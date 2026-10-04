@@ -47,6 +47,7 @@ cp target/x86_64-os/release/bootimage-x86_64-kernel.bin "$run/results/bootimage.
 python3 scripts/boot-test.py --accel "$accel" --output "$run/results/acceptance"
 python3 scripts/test-storage-recovery.py --accel "$accel" --output "$run/results/recovery"
 python3 scripts/test-console.py --accel "$accel" --output "$run/results/console"
+python3 scripts/desktop-test.py --accel "$accel" --output "$run/results/desktop"
 SH
 status=$?
 set -e

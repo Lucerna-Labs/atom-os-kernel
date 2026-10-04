@@ -1,0 +1,9 @@
+[package]
+name = "desktop"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+user-rt = { path = "../user-rt", features = ["pooled-heap"] }
+# The Atom Rendering Engine kit, copied into this repository (third_party/), no_std.
+pmre-kit = { path = "../third_party/atom-rendering-engine/pmre-kit", default-features = false }

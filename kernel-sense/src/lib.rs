@@ -19,7 +19,13 @@
 //! - **The spider**: `quarantined(pid)` — the scheduler asks one
 //!   question and simply stops scheduling tasks the cone has
 //!   condemned. A task that never runs cannot act: the veil dial,
-//!   expressed as policy.
+//!   expressed as policy. Starvation needs the cone ARMED: an explicit
+//!   `freeze()` arms it and `disarm()` stands it down. The automatic
+//!   freeze after HISTORY events trains the map (sensing, budgets and
+//!   verdicts all run) but does not arm it, because a map learned from
+//!   a few boot processes condemns nearly every later program. (Interim
+//!   policy from the desktop merge, 2026-10-03; the first-boot demo
+//!   fleet arms it through the spider and the shell disarms it after.)
 //!
 //! no_std + core only (f32 via hardware SSE in task context). State
 //! lives behind a tiny spin lock touched only from syscall/scheduler
@@ -304,6 +310,8 @@ struct Sensor {
     /// every other signal source (the seam's, measured live).
     foreign: [(u64, f32, bool); MAX_TRACKED],
     trained: bool,
+    /// Condemned pids are starved only while armed (see the module docs).
+    armed: bool,
     normal_map: [bool; SITES],
     events: u64,
     /// Scheduler ticks (advanced by tick(); the rhythm's clock).
@@ -316,6 +324,7 @@ static SENSOR: Lock<Sensor> = Lock::new(Sensor {
     permeability: [FLOOR; SITES],
     foreign: [(0, 0.0, false); MAX_TRACKED],
     trained: false,
+    armed: false,
     normal_map: [false; SITES],
     events: 0,
     ticks: 0,
@@ -493,13 +502,26 @@ fn learned_map(permeability: &[f32; SITES]) -> Option<[bool; SITES]> {
     Some(map)
 }
 
-/// Force-freeze now (the SYS_SENSE control path).
+/// Force-freeze now (the SYS_SENSE control path). An explicit freeze
+/// also arms the cone: condemned pids are starved from here on.
 pub fn freeze() {
     let mut sensor = SENSOR.lock();
     if let Some(map) = learned_map(&sensor.permeability) {
         sensor.normal_map = map;
         sensor.trained = true;
+        sensor.armed = true;
     }
+}
+
+/// Stand the cone down: sensing, budgets and verdicts continue, but
+/// condemned pids are scheduled again until the next explicit freeze.
+pub fn disarm() {
+    SENSOR.lock().armed = false;
+}
+
+/// True while condemned pids are starved.
+pub fn armed() -> bool {
+    SENSOR.lock().armed
 }
 
 /// Foreign budget a pid has accumulated outside the normal map.
@@ -520,6 +542,7 @@ pub fn quarantined(pid: u64) -> bool {
         let mut sensor = SENSOR.lock();
         let mut fresh = false;
         let tripped = sensor.trained
+            && sensor.armed
             && sensor
                 .foreign
                 .iter_mut()
