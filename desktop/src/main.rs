@@ -13,7 +13,7 @@ mod ui;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
-use apps::{about::About, editor::Editor, files::Files, monitor::Monitor, terminal::Terminal, Action, App, DialogResult};
+use apps::{editor::Editor, files::Files, monitor::Monitor, remote::Remote, terminal::Terminal, Action, App, DialogResult};
 use font::{UI, UI_BOLD};
 use gfx::{rgb, Canvas, Color, Rect};
 use icons::Icon;
@@ -27,35 +27,89 @@ const SHADOW_MARGIN: i32 = 24;
 
 pub fn is_builtin(path: &str) -> bool { rt::stat(path).is_ok_and(|e| e.builtin) }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Launch { Files, Editor, Terminal, Monitor, About }
+/// A windowed program: its own process, drawn from the intent tree it sends.
+#[derive(Clone, PartialEq, Eq)]
+struct Program { title: String, path: String, icon: Icon, size: (i32, i32) }
+
+/// Windowed programs in the boot image (in /bin).
+fn bundled_programs() -> Vec<Program> {
+    alloc::vec![
+        Program { title: "Calculator".into(), path: "calculator.elf".into(), icon: Icon::Calculator, size: (300, 440) },
+        Program { title: "About Atom OS".into(), path: "about.elf".into(), icon: Icon::Info, size: (460, 340) },
+    ]
+}
+
+/// Installed programs: one `/apps/<name>.app` manifest each, `key=value` lines:
+/// `name=` (title), `program=` (path), optional `icon=` (a desktop icon name) and
+/// `size=WxH`. A manifest without a name or program is skipped.
+fn installed_programs() -> Vec<Program> {
+    let mut out = Vec::new();
+    let Ok(entries) = rt::read_dir("/apps") else { return out };
+    for entry in entries.iter().filter(|e| !e.dir && e.name.ends_with(".app")) {
+        let Some(bytes) = rt::read_file(&alloc::format!("/apps/{}", entry.name)) else { continue };
+        let text = String::from_utf8_lossy(&bytes);
+        let (mut title, mut path, mut icon, mut size) = (None, None, Icon::Program, (520, 380));
+        for line in text.lines() {
+            match line.split_once('=') {
+                Some(("name", v)) => title = Some(String::from(v.trim())),
+                Some(("program", v)) => path = Some(String::from(v.trim())),
+                Some(("icon", v)) => icon = apps::remote::icon_named(v.trim()),
+                Some(("size", v)) => if let Some((w, h)) = v.trim().split_once('x') {
+                    if let (Ok(w), Ok(h)) = (w.parse::<i32>(), h.parse::<i32>()) { size = (w.clamp(160, 4000), h.clamp(120, 3000)); }
+                },
+                _ => {}
+            }
+        }
+        if let (Some(title), Some(path)) = (title, path) {
+            if !title.is_empty() && !path.is_empty() { out.push(Program { title, path, icon, size }); }
+        }
+    }
+    out
+}
+
+#[derive(Clone, PartialEq, Eq)]
+enum Launch { Files, Editor, Terminal, Monitor, Program(Program) }
 impl Launch {
-    fn create(self) -> Box<dyn App> {
+    fn create(&self) -> Box<dyn App> {
         match self {
             Launch::Files => Box::new(Files::new()),
             Launch::Editor => Box::new(Editor::new()),
             Launch::Terminal => Box::new(Terminal::shell()),
             Launch::Monitor => Box::new(Monitor::new()),
-            Launch::About => Box::new(About::new()),
+            Launch::Program(p) => Box::new(Remote::run(&p.path, &p.title, p.icon, p.size)),
         }
     }
 }
-const DESKTOP_ICONS: [(Launch, Icon, &str); 4] = [
-    (Launch::Files, Icon::Folder, "Files"), (Launch::Editor, Icon::Document, "Text Editor"),
-    (Launch::Terminal, Icon::Terminal, "Terminal"), (Launch::Monitor, Icon::Monitor, "System Monitor"),
-];
-#[derive(Clone, Copy)]
+fn desktop_icons() -> Vec<(Launch, Icon, String)> {
+    let mut icons = alloc::vec![
+        (Launch::Files, Icon::Folder, String::from("Files")), (Launch::Editor, Icon::Document, String::from("Text Editor")),
+        (Launch::Terminal, Icon::Terminal, String::from("Terminal")), (Launch::Monitor, Icon::Monitor, String::from("System Monitor")),
+    ];
+    if let Some(calc) = bundled_programs().into_iter().find(|p| p.path == "calculator.elf") {
+        icons.push((Launch::Program(calc.clone()), calc.icon, calc.title));
+    }
+    icons
+}
+#[derive(Clone)]
 enum MenuItem { App(Launch), Sync, Exit, Restart }
-const MENU_ITEMS: [(MenuItem, Icon, &str); 8] = [
-    (MenuItem::App(Launch::Files), Icon::Folder, "Files"),
-    (MenuItem::App(Launch::Editor), Icon::Document, "Text Editor"),
-    (MenuItem::App(Launch::Terminal), Icon::Terminal, "Terminal"),
-    (MenuItem::App(Launch::Monitor), Icon::Monitor, "System Monitor"),
-    (MenuItem::App(Launch::About), Icon::Info, "About Atom OS"),
-    (MenuItem::Sync, Icon::Save, "Save all to disk"),
-    (MenuItem::Exit, Icon::Exit, "Exit to console"),
-    (MenuItem::Restart, Icon::Power, "Restart"),
-];
+/// The start menu: the built-in apps, the windowed programs (bundled, then installed
+/// in /apps), then the system items. Returns the items and how many are apps.
+fn menu_items() -> (Vec<(MenuItem, Icon, String)>, usize) {
+    let mut items = alloc::vec![
+        (MenuItem::App(Launch::Files), Icon::Folder, String::from("Files")),
+        (MenuItem::App(Launch::Editor), Icon::Document, String::from("Text Editor")),
+        (MenuItem::App(Launch::Terminal), Icon::Terminal, String::from("Terminal")),
+        (MenuItem::App(Launch::Monitor), Icon::Monitor, String::from("System Monitor")),
+    ];
+    for p in bundled_programs().into_iter().chain(installed_programs()) {
+        items.push((MenuItem::App(Launch::Program(p.clone())), p.icon, p.title));
+    }
+    let apps = items.len();
+    items.push((MenuItem::Sync, Icon::Save, String::from("Save all to disk")));
+    items.push((MenuItem::Exit, Icon::Exit, String::from("Exit to console")));
+    items.push((MenuItem::Restart, Icon::Power, String::from("Restart")));
+    (items, apps)
+}
 
 struct Window { id: u32, app: Box<dyn App>, rect: Rect, minimized: bool, maximized: Option<Rect>, parent: Option<u32>, modal: Option<u32>, tag: u32, title: String }
 impl Window {
@@ -84,6 +138,9 @@ struct Desktop {
     last_click: (u64, i32, i32), menu_open: bool, menu_hover: Option<usize>, hover_button: Option<(u32, usize)>,
     selected_icon: Option<usize>, toast: Option<(String, u64)>, damage: Rect, cursor_drawn: Option<(i32, i32)>,
     clock: String, quit: bool, pointer: Pointer, event_time: u64,
+    /// The start menu's items (rebuilt each time it opens) and how many are apps.
+    menu: Vec<(MenuItem, Icon, String)>, menu_apps: usize,
+    icons: Vec<(Launch, Icon, String)>,
 }
 
 
@@ -263,11 +320,21 @@ impl Desktop {
 
     fn launch(&mut self, launch: Launch) {
         // Single-instance apps are raised instead of duplicated.
-        if matches!(launch, Launch::Monitor | Launch::About) {
-            let title = launch.create().title();
+        let single = match &launch {
+            Launch::Monitor => Some(String::from("System Monitor")),
+            Launch::Program(p) => Some(p.title.clone()),
+            _ => None,
+        };
+        if let Some(title) = single {
             if let Some(id) = self.windows.iter().find(|w| w.app.title() == title).map(|w| w.id) { self.raise(id); return; }
         }
         self.open(launch.create(), None, 0);
+    }
+    fn open_menu(&mut self) {
+        let (menu, apps) = menu_items();
+        self.menu = menu; self.menu_apps = apps;
+        self.menu_open = true; self.menu_hover = None;
+        self.invalidate_menu();
     }
 
     // ---- input ---------------------------------------------------------
@@ -287,8 +354,8 @@ impl Desktop {
         }).collect()
     }
     fn start_button(&self) -> Rect { let s = self.screen(); Rect::new(8, s.h - TASKBAR_HEIGHT + 6, 48, TASKBAR_HEIGHT - 12) }
-    fn menu_rect(&self) -> Rect { let s = self.screen(); Rect::new(8, s.h - TASKBAR_HEIGHT - 8 - (64 + MENU_ITEMS.len() as i32 * 40 + 16), 300, 64 + MENU_ITEMS.len() as i32 * 40 + 16) }
-    fn menu_item(&self, index: usize) -> Rect { let m = self.menu_rect(); Rect::new(m.x + 8, m.y + 64 + index as i32 * 40 + if index >= 5 { 8 } else { 0 }, m.w - 16, 36) }
+    fn menu_rect(&self) -> Rect { let s = self.screen(); let n = self.menu.len() as i32; Rect::new(8, s.h - TASKBAR_HEIGHT - 8 - (64 + n * 40 + 16), 300, 64 + n * 40 + 16) }
+    fn menu_item(&self, index: usize) -> Rect { let m = self.menu_rect(); Rect::new(m.x + 8, m.y + 64 + index as i32 * 40 + if index >= self.menu_apps { 8 } else { 0 }, m.w - 16, 36) }
     fn icon_rect(index: usize) -> Rect { Rect::new(20, 20 + index as i32 * 96, 88, 88) }
 
     fn window_at(&self, x: i32, y: i32) -> Option<usize> {
@@ -351,7 +418,7 @@ impl Desktop {
                     self.hover_button = hover;
                 }
                 if self.menu_open {
-                    let item = (0..MENU_ITEMS.len()).find(|&i| self.menu_item(i).contains(x, y));
+                    let item = (0..self.menu.len()).find(|&i| self.menu_item(i).contains(x, y));
                     if item != self.menu_hover { self.menu_hover = item; self.invalidate_menu(); }
                 }
             }
@@ -369,8 +436,8 @@ impl Desktop {
         if self.menu_open {
             self.menu_open = false;
             self.invalidate_menu();
-            if let Some(i) = (0..MENU_ITEMS.len()).find(|&i| self.menu_item(i).contains(x, y)) {
-                match MENU_ITEMS[i].0 {
+            if let Some(i) = (0..self.menu.len()).find(|&i| self.menu_item(i).contains(x, y)) {
+                match self.menu[i].0.clone() {
                     MenuItem::App(launch) => self.launch(launch),
                     MenuItem::Sync => { let ok = rt::sync(); self.toast(String::from(if ok { "All files saved to disk" } else { "Save failed: no data disk" })); }
                     MenuItem::Exit => self.quit = true,
@@ -381,7 +448,7 @@ impl Desktop {
             if self.menu_rect().contains(x, y) || self.start_button().contains(x, y) { return; }
         }
         if y >= s.h - TASKBAR_HEIGHT {
-            if self.start_button().contains(x, y) { self.menu_open = true; self.menu_hover = None; self.invalidate_menu(); return; }
+            if self.start_button().contains(x, y) { self.open_menu(); return; }
             if let Some((id, _)) = self.taskbar_buttons().into_iter().find(|(_, r)| r.contains(x, y)) {
                 let i = self.index(id).unwrap();
                 if self.focused() == Some(id) && !self.windows[i].minimized { self.minimize(id); } else { self.raise(id); }
@@ -414,9 +481,9 @@ impl Desktop {
             return;
         }
         // The desktop itself: icons.
-        let hit = (0..DESKTOP_ICONS.len()).find(|&i| Self::icon_rect(i).contains(x, y));
-        if hit != self.selected_icon { self.selected_icon = hit; self.invalidate(Rect::new(0, 0, 130, 20 + DESKTOP_ICONS.len() as i32 * 96)); }
-        if let (Some(i), true) = (hit, double) { self.launch(DESKTOP_ICONS[i].0); }
+        let hit = (0..self.icons.len()).find(|&i| Self::icon_rect(i).contains(x, y));
+        if hit != self.selected_icon { self.selected_icon = hit; self.invalidate(Rect::new(0, 0, 130, 20 + self.icons.len() as i32 * 96)); }
+        if let (Some(i), true) = (hit, double) { self.launch(self.icons[i].0.clone()); }
     }
 
     fn left_up(&mut self, x: i32, y: i32) {
@@ -432,7 +499,10 @@ impl Desktop {
 
     fn key(&mut self, e: &InputEvent) {
         if e.pressed == 0 { return; }
-        if e.key == KEY_SUPER { self.menu_open = !self.menu_open; self.invalidate_menu(); return; }
+        if e.key == KEY_SUPER {
+            if self.menu_open { self.menu_open = false; self.invalidate_menu(); } else { self.open_menu(); }
+            return;
+        }
         if self.menu_open && e.key == 27 { self.menu_open = false; self.invalidate_menu(); return; }
         if e.modifiers & MOD_ALT != 0 && e.key == KEY_F1 + 3 {
             if let Some(id) = self.focused() {
@@ -522,7 +592,7 @@ impl Desktop {
         let s = self.screen();
         self.canvas.set_clip(damage);
         self.canvas.blit(&self.wallpaper, self.canvas.width, s);
-        for (i, (_, icon, label)) in DESKTOP_ICONS.iter().enumerate() {
+        for (i, (_, icon, label)) in self.icons.iter().enumerate() {
             let r = Self::icon_rect(i);
             if self.selected_icon == Some(i) { self.canvas.round_rect(r, 8, rgb(255, 255, 255), 50); }
             icons::draw(&mut self.canvas, *icon, r.x + 20, r.y + 8, 48);
@@ -595,8 +665,8 @@ impl Desktop {
 
     fn draw_menu(&mut self) {
         let m = self.menu_rect();
-        let items: Vec<Rect> = (0..MENU_ITEMS.len()).map(|i| self.menu_item(i)).collect();
-        let hover = self.menu_hover;
+        let items: Vec<Rect> = (0..self.menu.len()).map(|i| self.menu_item(i)).collect();
+        let (hover, apps) = (self.menu_hover, self.menu_apps);
         let c = &mut self.canvas;
         c.shadow(m, 12, 16, 90);
         c.round_rect(m, 12, MENU, 255);
@@ -604,9 +674,9 @@ impl Desktop {
         icons::draw(c, Icon::Atom, m.x + 16, m.y + 14, 36);
         c.text(&font::TITLE, m.x + 62, m.y + 14, "Atom OS", rgb(255, 255, 255));
         c.text(&UI, m.x + 62, m.y + 38, "Applications", rgb(148, 163, 184));
-        for (i, (_, icon, label)) in MENU_ITEMS.iter().enumerate() {
+        for (i, (_, icon, label)) in self.menu.iter().enumerate() {
             let r = items[i];
-            if i == 5 { c.fill(Rect::new(r.x + 8, r.y - 6, r.w - 16, 1), rgb(60, 68, 92)); }
+            if i == apps { c.fill(Rect::new(r.x + 8, r.y - 6, r.w - 16, 1), rgb(60, 68, 92)); }
             if hover == Some(i) { c.round_rect(r, 8, MENU_HOVER, 255); }
             icons::draw(c, *icon, r.x + 10, r.y + 6, 24);
             c.text(&UI, r.x + 46, r.y + (r.h - UI.line_height()) / 2, label, TASKBAR_TEXT);
@@ -690,9 +760,11 @@ fn main() {
     let (pw, ph) = (info.width as i32, info.height as i32);
     let scale = ui_scale(pw, ph);
     let (w, h) = (pw / scale, ph / scale);
+    let (menu, menu_apps) = menu_items();
     let mut desktop = Desktop {
         canvas: Canvas::new(pw, ph, scale), wallpaper: wallpaper(pw, ph, scale), fb: base as *mut u32, pitch: (info.pitch / 4) as usize,
         windows: Vec::new(), next_id: 1, mx: w / 2, my: h / 2, buttons: 0, drag: Drag::None,
+        menu, menu_apps, icons: desktop_icons(),
         last_click: (0, 0, 0), menu_open: false, menu_hover: None, hover_button: None, selected_icon: None,
         toast: None, damage: Rect::new(0, 0, w, h), cursor_drawn: None, clock: String::new(), quit: false, pointer: Pointer::new(scale), event_time: 0,
     };

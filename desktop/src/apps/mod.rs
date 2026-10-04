@@ -11,7 +11,7 @@ pub mod files;
 pub mod editor;
 pub mod terminal;
 pub mod monitor;
-pub mod about;
+pub mod remote;
 
 pub enum DialogResult { Cancel, Ok, Text(String) }
 

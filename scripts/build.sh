@@ -6,7 +6,7 @@ toolchain=${ATOM_TOOLCHAIN:-nightly-2026-08-18}
 python3 "$root/network-lightcone/tools/verify.py"
 offline=()
 if [ "${ATOM_OFFLINE:-0}" = 1 ]; then offline=(--offline); fi
-for program in payload daemon worker desktop; do
+for program in payload daemon worker desktop gui-apps; do
   (cd "$root/$program" && cargo +"$toolchain" build -Zjson-target-spec --release --locked "${offline[@]}")
 done
 bash "$root/scripts/check-elf.sh"

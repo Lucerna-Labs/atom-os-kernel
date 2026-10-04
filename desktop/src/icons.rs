@@ -2,7 +2,7 @@
 use crate::gfx::{rgb, Canvas, Rect};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Icon { Folder, Document, Terminal, Monitor, Info, Program, Atom, Save, Power, Exit }
+pub enum Icon { Folder, Document, Terminal, Monitor, Info, Program, Atom, Save, Power, Exit, Calculator }
 
 /// Draws `icon` in a `size` x `size` square at (x, y).
 pub fn draw(c: &mut Canvas, icon: Icon, x: i32, y: i32, size: i32) {
@@ -42,6 +42,16 @@ pub fn draw(c: &mut Canvas, icon: Icon, x: i32, y: i32, size: i32) {
             c.circle(x + px(16.0), y + px(16.0), px(14.0), rgb(59, 130, 246), 255);
             c.circle(x + px(16.0), y + px(9.5), px(2.2).max(1), rgb(255, 255, 255), 255);
             c.round_rect(r(14.0, 14.0, 4.0, 11.0), px(1.5), rgb(255, 255, 255), 255);
+        }
+        Icon::Calculator => {
+            c.round_rect(r(5.0, 2.0, 22.0, 28.0), px(4.0), rgb(51, 65, 85), 255);
+            c.round_rect(r(8.0, 5.0, 16.0, 6.0), px(1.5), rgb(187, 247, 208), 255);
+            for row in 0..3 {
+                for col in 0..3 {
+                    let color = if col == 2 { rgb(59, 130, 246) } else { rgb(226, 232, 240) };
+                    c.round_rect(r(8.0 + col as f32 * 6.0, 14.0 + row as f32 * 5.0, 4.0, 3.5), px(1.0), color, 255);
+                }
+            }
         }
         Icon::Program => {
             c.round_rect(r(3.0, 3.0, 26.0, 26.0), px(6.0), rgb(124, 58, 237), 255);

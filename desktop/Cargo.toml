@@ -6,4 +6,6 @@ edition = "2024"
 [dependencies]
 user-rt = { path = "../user-rt", features = ["pooled-heap"] }
 # The Atom Rendering Engine kit, copied into this repository (third_party/), no_std.
-pmre-kit = { path = "../third_party/atom-rendering-engine/pmre-kit", default-features = false }
+# `uxi`: the kit's intent tree and flex solver, which lay out windowed programs.
+pmre-kit = { path = "../third_party/atom-rendering-engine/pmre-kit", default-features = false, features = ["uxi"] }
+ui-intent = { path = "../ui-intent" }

@@ -59,4 +59,3 @@ pub const UI: Font = Font { weight: Weight::Regular, size: 13 };
 pub const UI_BOLD: Font = Font { weight: Weight::Bold, size: 13 };
 pub const MONO: Font = Font { weight: Weight::Mono, size: 13 };
 pub const TITLE: Font = Font { weight: Weight::Bold, size: 20 };
-pub const LARGE: Font = Font { weight: Weight::Regular, size: 32 };

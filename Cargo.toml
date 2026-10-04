@@ -1,5 +1,5 @@
 [workspace]
-members = ["daemon", "user-rt", "worker", "desktop",
+members = ["daemon", "user-rt", "worker", "desktop", "ui-intent", "atom-window", "gui-apps",
     "kernel-kit", "kernel-lightcone",
     "kernel-orchestrator", "kernel-sense", "kernel-key", "kernel-instant", "kernel-egress", "kernel-lane", "kernel-taint", "kernel-crypt", "kernel-net", "payload",
     "x86_64-kernel",

@@ -1,0 +1,8 @@
+[package]
+name = "atom-window"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+user-rt = { path = "../user-rt" }
+ui-intent = { path = "../ui-intent" }

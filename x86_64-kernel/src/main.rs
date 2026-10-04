@@ -569,13 +569,16 @@ fn inject_payloads() {
     let udpsend_bytes = include_bytes!("../../target/x86_64-os/release/udpsend");
     let sleeper_bytes = include_bytes!("../../target/x86_64-os/release/sleeper");
     let desktop_bytes = include_bytes!("../../target/x86_64-os/release/desktop");
+    let calculator_bytes = include_bytes!("../../target/x86_64-os/release/calculator");
+    let about_bytes = include_bytes!("../../target/x86_64-os/release/about");
     // The boot image's programs appear read-only in /bin, served from the image itself.
     let fs = kernel_kit::fs::ROOT_FS.lock();
     for (name, bytes) in [("shell.elf", &shell_bytes[..]), ("daemon.elf", &daemon_bytes[..]),
         ("spider.elf", &spider_bytes[..]), ("rogue.elf", &rogue_bytes[..]),
         ("weave.elf", &weave_bytes[..]), ("keykeep.elf", &keykeep_bytes[..]), ("instant.elf", &instant_bytes[..]), ("smuggler.elf", &smuggler_bytes[..]), ("lane.elf", &lane_bytes[..]), ("metro.elf", &metro_bytes[..]), ("taint.elf", &taint_bytes[..]), ("crypt.elf", &crypt_bytes[..]), ("seam.elf", &seam_bytes[..]), ("net.elf", &net_bytes[..]), ("sock.elf", &sock_bytes[..]), ("ping.elf", &ping_bytes[..]), ("hello.elf", &hello_bytes[..]), ("sysinfo.elf", &sysinfo_bytes[..]), ("netstat.elf", &netstat_bytes[..]), ("calc.elf", &calc_bytes[..]), ("udpsend.elf", &udpsend_bytes[..]),
                           ("worker.elf", &worker_bytes[..]), ("fault.elf", &fault_bytes[..]), ("fs-probe.elf", &fs_bytes[..]),
-                          ("sleeper.elf", &sleeper_bytes[..]), ("desktop.elf", &desktop_bytes[..])] {
+                          ("sleeper.elf", &sleeper_bytes[..]), ("desktop.elf", &desktop_bytes[..]),
+                          ("calculator.elf", &calculator_bytes[..]), ("about.elf", &about_bytes[..])] {
         let _ = fs.install_builtin(name, bytes);
     }
     kernel_kit::fs::ROOT_FS.unlock();

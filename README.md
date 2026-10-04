@@ -279,15 +279,74 @@ menu returns to the text shell, and the `desktop` command re-enters it.
 |---|---|
 | Windows | Move by the title bar, resize from the corner grip, maximise (or double-click the title), minimise and close. Dialogs are modal. |
 | Taskbar | Start button, one button per window (click to focus or minimise), and a UTC clock read from the CMOS clock. |
-| Start menu | Launch apps, **Save all to disk**, **Exit to console** and **Restart**. The Super key also opens it. |
+| Start menu | Launch the built-in apps and the windowed programs (bundled, plus any installed in `/apps`), **Save all to disk**, **Exit to console** and **Restart**. The Super key also opens it. |
 | Files | Browse folders (Up, Backspace or Alt+Up goes up), with sizes, types and unsaved changes. New file, New folder, Open, Rename, Delete and **Save to disk**; the status bar shows disk use. Double-click enters folders, opens documents in the editor and runs programs in a terminal window. |
 | Text Editor | Line numbers, selection with Shift or the mouse, Ctrl+A/C/X/V, Ctrl+S, Ctrl+Shift+S, Ctrl+O, Ctrl+N and auto-indent. **Save writes to the data disk.** Files up to 16 MB. |
 | File picker | Modal **Open** and **Save As** dialogs that browse folders: Up, double-click a folder, or type a folder name or a path such as `docs/report.txt` or `..`. Save As can make a new folder. |
 | Terminal | Runs `shell.elf` (or a program opened from Files) over pipes, with 2,000 lines of scrollback. |
 | System Monitor | Memory use, uptime and the process table, with **End process**. |
+| Calculator | A windowed program (`calculator.elf`, its own process): integer arithmetic with overflow and division checks; the digits, `+ - * /`, Enter, Esc and Backspace work from the keyboard. |
+| About Atom OS | A windowed program (`about.elf`): memory, uptime, process count and its own process number. |
 
 Keyboard shortcuts: Alt+F4 closes the focused window, Alt+Tab switches windows
 and Esc cancels dialogs.
+
+### Windowed programs
+
+A windowed program is an ordinary process that the desktop starts with its standard
+output and input connected to a window. The program describes the window as a tree
+of **intent**: columns and rows of text, buttons, toggles, text fields, icons,
+spacers and dividers, with gaps, padding, alignment and theme tones. It never sends a
+coordinate. The desktop derives every rectangle with pmre-kit's flex solver, paints
+the elements with its own widgets and theme (so they match the built-in apps), and
+sends interaction back as events: a click on button 7, a toggle, field edits and
+Enter, a resize, a close. The program owns all state and re-sends its tree when that
+state changes. A button can declare a keyboard shortcut, which the desktop presses
+for it.
+
+The vocabulary is [`ui-intent`](ui-intent/src/lib.rs), a zero-dependency crate with
+no renderer types; the desktop's bridge to the kit lives only in
+[`desktop/src/apps/remote.rs`](desktop/src/apps/remote.rs). On the wire it is
+readable text, one node per line, so a window description passes the E24 egress cone
+like any prose and shows up legibly in logs:
+
+```text
+window 300 440: Calculator
+tree
+column gap=8 pad=12 align=stretch
+  text size=36 weight=bold tone=normal align=end: 42
+  row gap=8 pad=0 align=stretch grow
+    button id=7 kind=normal grow key=7: 7
+end
+click 7
+```
+
+Decoding fails closed (depth, node count, line length and message size are capped,
+and unknown words are errors); a malformed message is dropped and the last good tree
+stays. A program writes against [`atom-window`](atom-window/src/lib.rs):
+
+```rust
+let mut win = Window::open("Counter", 240, 160);
+let mut count = 0;
+loop {
+    win.show(&column(vec![text(&format!("{count}")).size(28), button(1, "Add").key(AccessKey::Enter)]).pad(12));
+    match win.wait() { Event::Click(1) => count += 1, Event::Close => break, _ => {} }
+}
+```
+
+Standard output is the window protocol, so diagnostics go to `console_print`. The
+bundled programs live in [`gui-apps`](gui-apps/src). To add one to the start menu,
+put a manifest in `/apps` (any file ending in `.app`), one `key=value` per line:
+
+```text
+name=Counter
+program=/apps/counter.elf
+icon=program
+size=240x160
+```
+
+`icon` names a desktop icon (`atom`, `info`, `folder`, `document`, `terminal`,
+`monitor`, `calculator`, ...). The menu rescans `/apps` each time it opens.
 
 ### How the desktop is rendered
 
@@ -312,8 +371,9 @@ windows above it. The finished region is copied to the linear framebuffer.
 
 The two patches in `third_party/atom-rendering-engine/patches` add a `std` feature so
 the kit builds without the standard library, the span fast path and outline shapes,
-and opt-out `uxi`/`html` features; the desktop turns all three off, so it compiles only
-the drawing primitives, not the engine's widget layer or HTML pipeline. With the span
+and opt-out `uxi`/`html` features. The desktop turns off `std` and `html` and turns on
+`uxi`, whose intent tree and flex solver lay out windowed programs; it does not use the
+kit's HTML pipeline. With the span
 path, a desktop frame under QEMU software emulation dropped from 210–730 ms to 10–50 ms.
 [`update-engine.sh`](scripts/update-engine.sh) refreshes the copy from the engine
 repository when you want its latest improvements.
@@ -517,7 +577,10 @@ These are proposed work, not currently implemented features:
   it for the proposed network security architecture.
 - Real-hardware reach: UEFI boot with the firmware framebuffer, AHCI/NVMe disks and
   USB keyboard and mouse (today the desktop, disk and mouse need QEMU's devices).
-- Programs as separate windowed processes, and loading installed programs from disk folders.
+- Move the remaining built-in apps (Files, Text Editor, Terminal, System Monitor) to
+  windowed programs, and add list, scroll and text-area elements to `ui-intent`.
+- A way to put new program files on the disk: manifests in `/apps` can name any path,
+  but program files still arrive only with the boot image.
 - Kernel hardening (SMEP/SMAP, user permissions) and multiprocessor support.
 
 ## CI and preserved history

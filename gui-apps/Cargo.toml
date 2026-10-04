@@ -1,0 +1,18 @@
+[package]
+name = "gui-apps"
+version = "0.1.0"
+edition = "2024"
+
+# Windowed programs: each is its own process, drawn by the desktop from the intent
+# tree it sends (see atom-window).
+[dependencies]
+user-rt = { path = "../user-rt" }
+atom-window = { path = "../atom-window" }
+
+[[bin]]
+name = "calculator"
+path = "src/calculator.rs"
+
+[[bin]]
+name = "about"
+path = "src/about.rs"

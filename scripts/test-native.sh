@@ -28,3 +28,6 @@ done
 rustc +"$toolchain" --edition=2021 --test "$root/tests/core.rs" \
   -L "dependency=$out" "${deps[@]}" -o "$out/core-tests" 2>> "$out/compile.log"
 "$out/core-tests" --test-threads=1 --nocapture
+# The window vocabulary shared by windowed programs and the desktop.
+rustc +"$toolchain" --edition=2024 --test "$root/ui-intent/src/lib.rs" -o "$out/ui-intent-tests" 2>> "$out/compile.log"
+"$out/ui-intent-tests" --test-threads=1

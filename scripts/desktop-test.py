@@ -20,8 +20,8 @@ import zlib
 SCREEN = (1920, 1080)
 SCALE = 1
 START_FROM_BOTTOM = 23
-MENU_FROM_BOTTOM = {"files": 372, "editor": 332, "terminal": 292, "monitor": 252, "about": 212, "sync": 164,
-                    "exit": 124, "restart": 84}
+MENU_FROM_BOTTOM = {"files": 412, "editor": 372, "terminal": 332, "monitor": 292, "calculator": 252, "about": 212,
+                    "sync": 164, "exit": 124, "restart": 84}
 TITLE_ACTIVE = (232, 236, 244)
 
 
@@ -176,7 +176,8 @@ class Desktop:
     def keys(self, text):
         names = {" ": "spc", "\n": "ret", ".": "dot", "-": "minus", "/": "slash", ",": "comma", "=": "equal",
                  "_": ("shift", "minus"), ">": ("shift", "dot"), "|": ("shift", "backslash"), "!": ("shift", "1"),
-                 "@": ("shift", "2"), "#": ("shift", "3"), ":": ("shift", "semicolon")}
+                 "@": ("shift", "2"), "#": ("shift", "3"), ":": ("shift", "semicolon"), "+": ("shift", "equal"),
+                 "*": ("shift", "8")}
         for ch in text:
             key = names.get(ch, ch)
             keys = list(key) if isinstance(key, tuple) else (["shift", ch.lower()] if ch.isupper() else [key])
@@ -249,6 +250,36 @@ def main():
         assert s.near(*menu_probe, (28, 32, 46), 6), s.pixel(*menu_probe)
         vm.combo("esc")
         passed("START_MENU")
+
+        # Windowed programs: separate processes drawn by the desktop from the intent
+        # tree they send. With no other window open, the Calculator opens at the first
+        # window position (140, 40); the "5" key sits near (254, 315) in its layout.
+        offset = len(vm.serial())
+        vm.menu("calculator")
+        vm.wait(r"WINDOW_OPEN Calculator", offset)
+        vm.wait(r"CALC_DISPLAY 0\n", offset)
+        time.sleep(1)
+        offset = len(vm.serial())
+        vm.keys("12+30\n")  # Declared keyboard shortcuts press the buttons.
+        vm.wait(r"CALC_DISPLAY 42\n", offset)
+        offset = len(vm.serial())
+        vm.click(254, 315)  # The mouse: the desktop's layout and hit test find the button.
+        vm.wait(r"CALC_DISPLAY 5\n", offset)
+        time.sleep(1)
+        vm.shot("calculator")
+        offset = len(vm.serial())
+        vm.combo("esc")
+        vm.wait(r"CALC_DISPLAY 0\n", offset)
+        vm.combo("alt", "f4")
+        time.sleep(1)
+        offset = len(vm.serial())
+        vm.menu("about")
+        vm.wait(r"WINDOW_OPEN About Atom OS", offset)
+        time.sleep(2)
+        vm.shot("about")
+        vm.combo("alt", "f4")
+        time.sleep(1)
+        passed("WINDOWED_PROGRAMS")
 
         # Editor: Save on an untitled document opens the Save As picker.
         vm.menu("editor")
