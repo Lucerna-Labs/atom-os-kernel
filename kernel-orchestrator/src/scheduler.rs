@@ -137,7 +137,11 @@ impl Scheduler {
                 kernel_taint::forget(task.id as u64);
                 if task.state == TaskState::Terminated {
                     task.release_resources();
-                    if task.parent == 0 || task.waited { self.tasks[index] = None; }
+                    if task.parent == 0 || task.waited {
+                        // E21: the reaped pid leaves the shadow web's tables.
+                        kernel_sense::forget(task.id as u64);
+                        self.tasks[index] = None;
+                    }
                 }
             }
         }

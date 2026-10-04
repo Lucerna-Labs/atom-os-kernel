@@ -569,20 +569,17 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         } else {
             let request = (|| {
                 let name = program_at(context, arg)?;
-                let (extra, text) = if is(number, SYS_EXEC_ARGS) || is(number, SYS_SPAWN_ARGS) {
+                let extra = if is(number, SYS_EXEC_ARGS) || is(number, SYS_SPAWN_ARGS) {
                     if arg2 > MAX_ARG_BYTES as u64 { return Err(()); }
-                    let extra = if arg2 == 0 { Vec::new() } else { copy_from_user(context, arg1, arg2 as usize).ok_or(())? };
-                    (extra, None)
+                    if arg2 == 0 { Vec::new() } else { copy_from_user(context, arg1, arg2 as usize).ok_or(())? }
                 } else if is(number, SYS_EXEC) && arg1 != 0 {
-                    // The string form: SYS_EXEC's optional argument string.
-                    let text = user_string(context, arg1, ARGS_MAX + 1)?;
-                    (kernel_kit::arguments::extra_from_string(&text), Some(text))
-                } else { (Vec::new(), None) };
-                let packed = kernel_kit::arguments::pack(&name, &extra)
-                    .or_else(|_| if text.is_some() { kernel_kit::arguments::pack(&name, &[]) } else { Err(()) })?;
-                Ok((name, extra, packed, text))
+                    // SYS_EXEC's optional argument string, split like a shell line.
+                    kernel_kit::arguments::extra_from_string(&user_string(context, arg1, ARGS_MAX + 1)?)
+                } else { Vec::new() };
+                let packed = kernel_kit::arguments::pack(&name, &extra)?;
+                Ok((name, extra, packed))
             })();
-            if let Ok((name, extra, packed, text)) = request {
+            if let Ok((name, extra, packed)) = request {
                 if is(number, SYS_SPAWN) || is(number, SYS_SPAWN_ARGS) {
                     match system.spawn_with_args(pid, &name, &extra) {
                         Ok(child) => {
@@ -599,7 +596,6 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                     unsafe { Cr3::load(space.root); }
                     context.page_table_root = space.root;
                     context.space = Some(space);
-                    context.args = text.unwrap_or_else(|| kernel_kit::arguments::joined(&packed));
                     context.arguments = packed;
                     context.name = name;
                     context.open_files = [(0, 0); 16]; context.readonly_files = 0; context.fs_error = 0;
@@ -637,10 +633,6 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         // The packed argv: name NUL arg NUL ...
         let len = context.arguments.len();
         if arg1 >= len as u64 && copy_to_user(context, arg, &context.arguments) { frame.rax = len as u64; }
-    } else if is(number, SYS_ARGS_STRING) {
-        // The arguments after argv[0] as one string; returns the full length.
-        let count = context.args.len().min(arg1 as usize);
-        if copy_to_user(context, arg, &context.args.as_bytes()[..count]) { frame.rax = context.args.len() as u64; }
     } else if is(number, SYS_PIPE) {
         if let Some(slot) = context.pipes.iter().position(|p| p.0.is_none() && p.1.is_none()) {
             let (read, write) = kernel_kit::pipe::PipeEnd::pair();
@@ -773,6 +765,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         //   1 = freeze the normality cone now
         //   2 = foreign budget of pid `arg1` (x 1e6, truncated)
         //   11 = disarm (condemned pids are scheduled again), 12 = armed?
+        //   13 = reset the web to pre-learning (the demos replay a clean boot)
         let sub = arg;
         if sub == 0 {
             let (trained, events, raised, _readable) = kernel_sense::status();
@@ -814,6 +807,9 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             frame.rax = 0;
         } else if sub == 12 {
             frame.rax = kernel_sense::armed() as u64;
+        } else if sub == 13 {
+            kernel_sense::reset();
+            frame.rax = 0;
         } else if sub == 3 {
             // T3: average cycles per sensor record() call.
             let calls = SENSOR_CALLS.load(Ordering::Relaxed);

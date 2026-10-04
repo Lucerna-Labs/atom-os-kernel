@@ -70,7 +70,8 @@ pub const SYS_PROCESSES: u64 = 42;
 pub const SYS_KILL: u64 = 43;
 /// E21 shadow web: status / freeze the normality cone / query foreign budget.
 /// Sub 1 (freeze) also ARMS the cone: condemned pids are starved until sub 11
-/// disarms it (sub 12 reports whether it is armed).
+/// disarms it (sub 12 reports whether it is armed). Sub 13 resets the web to
+/// its pre-learning state (used by the shell's `demos` command).
 pub const SYS_SENSE: u64 = 44;
 /// E22 fail-dead key: sub=arg, see syscall handler (init/maintain/read/status).
 pub const SYS_KEY: u64 = 45;
@@ -125,6 +126,17 @@ pub struct ProcessInfo {
 }
 impl ProcessInfo {
     pub const EMPTY: Self = Self { pid: 0, parent: 0, state: 0, exit_code: 0, name: [0; 64] };
+    /// The program name (argv[0]).
+    pub fn name(&self) -> &str {
+        let end = self.name.iter().position(|&b| b == 0).unwrap_or(self.name.len());
+        core::str::from_utf8(&self.name[..end]).unwrap_or("?")
+    }
+    pub fn state_name(&self) -> &'static str {
+        match self.state {
+            PROCESS_READY => "ready", PROCESS_RUNNING => "running", PROCESS_SLEEPING => "sleeping",
+            PROCESS_WAITING => "waiting", PROCESS_EXITED => "exited", PROCESS_TRAPPED => "trapped", _ => "?",
+        }
+    }
 }
 
 /// Read-only network causal-world admission records and provenance.
@@ -140,20 +152,15 @@ pub const LIGHTCONE_PAGE: u64 = 0x0000_7f00_0000_0000;
 // SYS_PROCESSES / SYS_KILL / SYS_MKDIR / SYS_REMOVE / SYS_RENAME above serve
 // both lines.
 // ---------------------------------------------------------------------------
-/// Coarse process states for listings (user-rt `Process::state`).
-pub const STATE_READY: u8 = 0;
-pub const STATE_RUNNING: u8 = 1;
-pub const STATE_BLOCKED: u8 = 2;
-pub const STATE_EXITED: u8 = 3;
 /// Exit status of a process that wrote to a pipe nobody reads.
 pub const BROKEN_PIPE_STATUS: u64 = 141;
 
-/// rdi = SpawnRequest pointer; returns the child's pid.
+/// rdi = SpawnRequest pointer; returns the child's pid. The argument string is
+/// split with the shell's quoting rules into the child's argv (read with
+/// SYS_ARGS); more than MAX_ARGS - 1 arguments is refused.
 pub const SYS_SPAWN_WITH: u64 = 60;
-/// rdi = buffer, rsi = capacity; copies the caller's arguments after argv[0]
-/// as one space-separated string and returns its full length (which may
-/// exceed the capacity). SYS_ARGS returns the packed argv instead.
-pub const SYS_ARGS_STRING: u64 = 61;
+// 61 is retired (it was SYS_ARGS_STRING, a second copy of the arguments as one
+// string); do not reuse it.
 /// Creates a pipe and returns a handle holding both of its ends.
 pub const SYS_PIPE: u64 = 62;
 pub const SYS_PIPE_CLOSE: u64 = 63;
@@ -165,7 +172,7 @@ pub const SYS_CONSOLE_WRITE: u64 = 65;
 /// SYS_WRITE_BUFFER writes to stdout. It returns bytes written (possibly
 /// fewer than requested), WOULD_BLOCK when a pipe is full, BROKEN_PIPE when no
 /// reader remains, or ERROR for a bad buffer or refused output. SYS_EXEC takes
-/// an optional argument string in rsi.
+/// an optional argument string in rsi, split like SYS_SPAWN_WITH's.
 pub const WOULD_BLOCK: u64 = u64::MAX - 1;
 /// SYS_WRITE_BUFFER's result when standard output is a pipe nobody reads any more
 /// (ERROR there means a bad buffer or output the egress cone refused).

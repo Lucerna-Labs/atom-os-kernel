@@ -49,8 +49,7 @@ pub fn load_image(name: &str, kernel_root: u64) -> Result<(AddressSpace, u64), M
     result
 }
 
-/// `arguments` is the packed argv (see `kernel_kit::arguments::pack`); `args` is
-/// the same arguments as one space-separated string for the string ABI.
+/// `arguments` is the packed argv (see `kernel_kit::arguments::pack`).
 pub fn create(pid: usize, parent: usize, name: &str, arguments: alloc::vec::Vec<u8>, kernel_root: u64) -> Result<Context, MapError> {
     let (space, entry) = load_image(name, kernel_root)?;
     let pages = 4;
@@ -61,7 +60,6 @@ pub fn create(pid: usize, parent: usize, name: &str, arguments: alloc::vec::Vec<
     let mut context = Context::new(pid, rsp, top, space.root);
     context.parent = parent;
     context.name = alloc::string::String::from(name);
-    context.args = kernel_kit::arguments::joined(&arguments);
     context.arguments = arguments;
     context.space = Some(space);
     context.kernel_stack_phys = phys;

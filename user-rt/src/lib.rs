@@ -347,7 +347,8 @@ pub fn ticks() -> u64 { call(SYS_TICKS, 0, 0) }
 pub fn spawn(path: &str) -> u64 {
     path_call(SYS_SPAWN, path)
 }
-/// Starts `path` with `args`; stdin/stdout are STDIO_INHERIT, STDIO_CONSOLE or a pipe handle.
+/// Starts `path` with `args` (split with the shell's quoting rules into argv);
+/// stdin/stdout are STDIO_INHERIT, STDIO_CONSOLE or a pipe handle.
 pub fn spawn_with(path: &str, args: &str, stdin: u64, stdout: u64) -> u64 {
     if path.is_empty() || path.len() > 63 || args.len() > ARGS_MAX || path.contains('\0') || args.contains('\0') { return ERROR; }
     let mut request = SpawnRequest { path: [0; 64], args: [0; ARGS_MAX + 1], stdin, stdout };
@@ -518,14 +519,6 @@ pub fn args() -> alloc::vec::Vec<alloc::string::String> {
         .map(|arg| alloc::string::String::from_utf8(arg.to_vec()).unwrap())
         .collect()
 }
-/// The arguments after the executable name as one string (as `spawn_with` passed
-/// them, or joined by spaces).
-pub fn args_string() -> alloc::string::String {
-    let mut buffer = [0u8; ARGS_MAX];
-    let len = call(SYS_ARGS_STRING, buffer.as_mut_ptr() as u64, buffer.len() as u64);
-    if len == ERROR { return alloc::string::String::new(); }
-    alloc::string::String::from_utf8_lossy(&buffer[..(len as usize).min(ARGS_MAX)]).into_owned()
-}
 fn launch(number: u64, path: &str, args: &[&str]) -> u64 {
     let mut extra = alloc::vec::Vec::new();
     if args.len() >= MAX_ARGS {
@@ -571,26 +564,4 @@ pub fn processes() -> Result<alloc::vec::Vec<ProcessInfo>, ()> {
         return Err(());
     }
     Ok(records[..count as usize].to_vec())
-}
-/// A process as listings show it.
-pub struct Process { pub pid: u32, pub parent: u32, pub state: u8, name: alloc::string::String }
-impl Process {
-    pub fn name(&self) -> &str { &self.name }
-    pub fn state_name(&self) -> &'static str {
-        match self.state { STATE_READY => "ready", STATE_RUNNING => "running", STATE_BLOCKED => "blocked", STATE_EXITED => "exited", _ => "?" }
-    }
-}
-/// The process table as listings show it (empty if the call fails).
-pub fn process_list() -> alloc::vec::Vec<Process> {
-    processes().unwrap_or_default().iter().map(|info| {
-        let len = info.name.iter().position(|&b| b == 0).unwrap_or(info.name.len());
-        let state = match info.state {
-            PROCESS_READY => STATE_READY,
-            PROCESS_RUNNING => STATE_RUNNING,
-            PROCESS_EXITED => STATE_EXITED,
-            _ => STATE_BLOCKED,
-        };
-        Process { pid: info.pid as u32, parent: info.parent as u32, state,
-                  name: alloc::string::String::from_utf8_lossy(&info.name[..len]).into_owned() }
-    }).collect()
 }

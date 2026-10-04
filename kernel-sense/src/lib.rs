@@ -19,13 +19,15 @@
 //! - **The spider**: `quarantined(pid)` — the scheduler asks one
 //!   question and simply stops scheduling tasks the cone has
 //!   condemned. A task that never runs cannot act: the veil dial,
-//!   expressed as policy. Starvation needs the cone ARMED: an explicit
+//!   expressed as policy. Acting on a verdict needs the cone ARMED:
+//!   starvation and intrusion signals (drift, seam, condemnation — the
+//!   destruction cascade's trigger) happen only while armed. An explicit
 //!   `freeze()` arms it and `disarm()` stands it down. The automatic
 //!   freeze after HISTORY events trains the map (sensing, budgets and
 //!   verdicts all run) but does not arm it, because a map learned from
 //!   a few boot processes condemns nearly every later program. (Interim
-//!   policy from the desktop merge, 2026-10-03; the first-boot demo
-//!   fleet arms it through the spider and the shell disarms it after.)
+//!   policy from the desktop merge, 2026-10-03; the shell's `demos`
+//!   command arms it through the spider and disarms it after.)
 //!
 //! no_std + core only (f32 via hardware SSE in task context). State
 //! lives behind a tiny spin lock touched only from syscall/scheduler
@@ -524,6 +526,18 @@ pub fn armed() -> bool {
     SENSOR.lock().armed
 }
 
+/// Forget a pid that no longer exists: its foreign budget, rhythm slot and
+/// docket are released, so the fixed tables keep room for live processes.
+/// Without this, a long-running boot fills them with dead pids and every
+/// new process goes untracked. (Pids are never reused, so nothing a dead
+/// pid did can be inherited.)
+pub fn forget(pid: u64) {
+    let mut sensor = SENSOR.lock();
+    for entry in sensor.foreign.iter_mut() { if entry.0 == pid { *entry = (0, 0.0, false); } }
+    for slot in sensor.rhythm.iter_mut() { if slot.pid == pid { *slot = RhythmSlot::EMPTY; } }
+    for slot in sensor.judge.iter_mut() { if slot.pid == pid { *slot = JudgeSlot::EMPTY; } }
+}
+
 /// Foreign budget a pid has accumulated outside the normal map.
 pub fn foreign_budget(pid: u64) -> f32 {
     let sensor = SENSOR.lock();
@@ -608,6 +622,11 @@ static INTRUSION_HEAD: core::sync::atomic::AtomicU64 = core::sync::atomic::Atomi
 
 fn fire_intrusion_signal(pid: u64) {
     use core::sync::atomic::Ordering;
+    // Verdicts are acted on only while armed: an unarmed cone still latches
+    // drift and seam findings, but sends nothing to the destruction
+    // listeners (the keys, the lane, the judge). Never called with the
+    // sensor lock held.
+    if !SENSOR.lock().armed { return; }
     let head = INTRUSION_HEAD.fetch_add(1, Ordering::AcqRel) as usize;
     INTRUSION_QUEUE[head % 8].store(pid, Ordering::Release);
 }
@@ -843,12 +862,17 @@ pub fn learning() -> bool {
     !SENSOR.lock().trained
 }
 
-/// Reset (host tests only; the kernel never resets its web).
+/// Reset the web to its pre-learning state. Host tests use it, and so does
+/// the shell's `demos` command (SYS_SENSE 13): the demo fleet was designed
+/// against a web freshly trained on a clean boot, so it replays one. In-flight
+/// intrusion signals are dropped with the rest.
 pub fn reset() {
+    for slot in INTRUSION_QUEUE.iter() { slot.store(u64::MAX, core::sync::atomic::Ordering::Release); }
     let mut sensor = SENSOR.lock();
     sensor.permeability = [FLOOR; SITES];
     sensor.foreign = [(0, 0.0, false); MAX_TRACKED];
     sensor.trained = false;
+    sensor.armed = false;
     sensor.normal_map = [false; SITES];
     sensor.events = 0;
     sensor.ticks = 0;

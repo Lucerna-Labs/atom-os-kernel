@@ -17,28 +17,27 @@ impl System {
     /// Starts `name` with the parent's standard input and output.
     pub fn spawn_program(&mut self, parent: usize, name: &str) -> Result<usize, ()> {
         let (stdin, stdout) = self.parent_stdio(parent);
-        self.spawn_inner(parent, name, kernel_kit::arguments::pack(name, &[])?, None, stdin, stdout)
+        self.spawn_inner(parent, name, kernel_kit::arguments::pack(name, &[])?, stdin, stdout)
     }
     /// Starts `name` with packed extra arguments (each NUL-terminated) and the
     /// parent's standard input and output.
     pub fn spawn_with_args(&mut self, parent: usize, name: &str, extra: &[u8]) -> Result<usize, ()> {
         let arguments = kernel_kit::arguments::pack(name, extra)?;
         let (stdin, stdout) = self.parent_stdio(parent);
-        self.spawn_inner(parent, name, arguments, None, stdin, stdout)
+        self.spawn_inner(parent, name, arguments, stdin, stdout)
     }
-    /// Starts `name` with an argument string and explicit standard streams.
+    /// Starts `name` with an argument string (split with the shell's quoting
+    /// rules; refused when the argv would exceed its limits) and explicit
+    /// standard streams.
     pub fn spawn_with(&mut self, parent: usize, name: &str, args: &str,
                       stdin: Option<PipeEnd>, stdout: Option<PipeEnd>) -> Result<usize, ()> {
-        // The packed argv mirrors the string; more words than the packed
-        // ABI holds leave argv as just the name (the string stays whole).
-        let arguments = kernel_kit::arguments::pack(name, &kernel_kit::arguments::extra_from_string(args))
-            .or_else(|_| kernel_kit::arguments::pack(name, &[]))?;
-        self.spawn_inner(parent, name, arguments, Some(args), stdin, stdout)
+        let arguments = kernel_kit::arguments::pack(name, &kernel_kit::arguments::extra_from_string(args))?;
+        self.spawn_inner(parent, name, arguments, stdin, stdout)
     }
     fn parent_stdio(&self, parent: usize) -> (Option<PipeEnd>, Option<PipeEnd>) {
         self.scheduler.task(parent).map(|p| (p.stdin.clone(), p.stdout.clone())).unwrap_or((None, None))
     }
-    fn spawn_inner(&mut self, parent: usize, name: &str, arguments: alloc::vec::Vec<u8>, args: Option<&str>,
+    fn spawn_inner(&mut self, parent: usize, name: &str, arguments: alloc::vec::Vec<u8>,
                    stdin: Option<PipeEnd>, stdout: Option<PipeEnd>) -> Result<usize, ()> {
         self.scheduler.collect();
         // No has_slot() pre-gate: spawn() itself pressure-reaps
@@ -47,7 +46,6 @@ impl System {
         let pid = self.next_pid;
         let next = pid.checked_add(1).ok_or(())?;
         let mut context = crate::process::create(pid, parent, name, arguments, self.kernel_root).map_err(|_| ())?;
-        if let Some(args) = args { context.args = alloc::string::String::from(args); }
         context.stdin = stdin;
         context.stdout = stdout;
         if let Err(mut context) = self.scheduler.spawn(context) {

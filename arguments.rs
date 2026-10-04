@@ -38,20 +38,8 @@ pub fn words(input: &str) -> Result<Vec<String>, ()> {
     Ok(result)
 }
 
-/// The arguments after argv[0] of a packed argv, joined by single spaces: the
-/// form the string-argument ABI (`SYS_ARGS_STRING`) hands to programs.
-pub fn joined(packed: &[u8]) -> String {
-    let body = packed.strip_suffix(&[0]).unwrap_or(packed);
-    let mut out = String::new();
-    for (index, part) in body.split(|&b| b == 0).enumerate().skip(1) {
-        if index > 1 { out.push(' '); }
-        out.push_str(core::str::from_utf8(part).unwrap_or(""));
-    }
-    out
-}
-
-/// Packed extra arguments (each NUL-terminated) for an argument string from the
-/// string-argument ABI, split with the shell's quoting rules. Unbalanced
+/// Packed extra arguments (each NUL-terminated) for an argument string
+/// (SYS_SPAWN_WITH, SYS_EXEC), split with the shell's quoting rules. Unbalanced
 /// quoting falls back to plain whitespace splitting; an empty string has none.
 pub fn extra_from_string(args: &str) -> Vec<u8> {
     let mut extra = Vec::new();

@@ -36,8 +36,6 @@ pub struct Context {
     pub arguments: Vec<u8>,
     /// Name of the executable image, for process listings.
     pub name: String,
-    /// The arguments after argv[0] as one string, returned by SYS_ARGS_STRING.
-    pub args: String,
     /// Standard input and output: None is the console.
     pub stdin: Option<PipeEnd>,
     pub stdout: Option<PipeEnd>,
@@ -54,7 +52,7 @@ impl Context {
             open_files: [(0, 0); 16], readonly_files: 0, fs_error: 0, cwd: String::new(), space: None,
             kernel_stack_phys: 0, kernel_stack_pages: 0, parent: 0,
             wait_for: None, sleep_until: 0, exit_code: 0, waited: false,
-            mailbox: VecDeque::new(), arguments: Vec::new(), name: String::new(), args: String::new(),
+            mailbox: VecDeque::new(), arguments: Vec::new(), name: String::new(),
             stdin: None, stdout: None, pipes: [const { (None, None) }; MAX_PIPES] }
     }
     pub fn set_state(&mut self, state: TaskState) { self.state = state; }

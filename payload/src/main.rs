@@ -287,7 +287,7 @@ fn execute(command: &str) {
     let here = |p: &str| if p.is_empty() { String::from(".") } else { String::from(p) };
     match verb {
         "" => {}
-        "help" => rt::print("commands: help ls cd pwd mkdir rmdir cat edit echo cp rm mv df status fill sum clear msg desktop bench heaptest stats spawn run exec wait ps kill proctest selftest pairtest churn faulttest fstest storageprobe sync reboot ping\nuserspace: run hello.elf / sysinfo.elf / netstat.elf / calc.elf 2+3*4 / udpsend.elf <msg>\n"),
+        "help" => rt::print("commands: help ls cd pwd mkdir rmdir cat edit echo cp rm mv df status fill sum clear msg desktop demos bench heaptest stats spawn run exec wait ps kill proctest selftest pairtest churn faulttest fstest storageprobe sync reboot ping\nuserspace: run hello.elf / sysinfo.elf / netstat.elf / calc.elf 2+3*4 / udpsend.elf <msg>\n"),
         "ls" => list(&here(argument)),
         "clear" => { rt::call(SYS_CLEAR, 0, 0); }
         "bench" => bench(),
@@ -378,18 +378,12 @@ fn execute(command: &str) {
             Ok(tasks) => {
                 rt::print("PID PARENT STATE    NAME\n");
                 for task in tasks {
-                    let end = task.name.iter().position(|&b| b == 0).unwrap_or(task.name.len());
-                    let name = core::str::from_utf8(&task.name[..end]).unwrap_or("?");
-                    let state = match task.state {
-                        PROCESS_READY => "ready", PROCESS_RUNNING => "running",
-                        PROCESS_SLEEPING => "sleeping", PROCESS_WAITING => "waiting",
-                        PROCESS_EXITED => "exited", _ => "trapped",
-                    };
-                    rt::print_args(format_args!("{:<3} {:<6} {:<8} {}\n", task.pid, task.parent, state, name));
+                    rt::print_args(format_args!("{:<3} {:<6} {:<8} {}\n", task.pid, task.parent, task.state_name(), task.name()));
                 }
             }
             Err(()) => rt::print("ps failed\n"),
         },
+        "demos" => demos(),
         "kill" => match argument.parse::<u64>() {
             Ok(pid) => if rt::kill(pid) { rt::print_args(format_args!("killed pid {}\n", pid)); }
                        else { rt::print("kill failed: no live process with that PID\n"); },
@@ -435,52 +429,35 @@ fn execute(command: &str) {
         _ => rt::print("Unknown command\n"),
     }
 }
-fn main() {
-    rt::print("ATOM OS kernel shell\n");
-    heap_test(); bench();
-    // One fleet per boot, decided by a marker FILE (task-count
-    // heuristics fail once the fleet retires): the first shell runs
-    // the demos and drops boot.done; every later shell (taint's
-    // promotion proof, etc.) goes straight to interactive mode.
-    if rt::open_existing("boot.done") != ERROR {
-        rt::print("shell: demo fleet already ran — interactive mode\n");
-        interactive();
+/// The security demo fleet (E21-E38), on request. The demos print as they
+/// run and the command returns when they are done (bounded, so a demo that
+/// hangs cannot keep the shell). Their keys have one life per boot, so a
+/// second run in the same boot is refused.
+fn demos() {
+    // E35's master key is alive from the first tick until the crypt demo
+    // destroys it; a dead key means the fleet already ran this boot.
+    if rt::call3(SYS_CRYPT, 3, 0, 0) >> 63 == 0 {
+        rt::print("demos: already ran this boot (their keys have one life per boot)\n");
+        return;
     }
+    // The fleet was designed against a shadow web freshly trained on a clean
+    // boot, so replay one: reset the web, then the boot benchmark's 10,000
+    // yields retrain it (unarmed) before the demos start.
+    rt::call3(SYS_SENSE, 13, 0, 0);
+    for _ in 0..10000 { rt::yield_now(); }
     let mut fleet = Vec::new();
     // E35: crypt first — the master key must be demonstrated alive
     // before the rogue's condemnation fires the destruction cascade,
     // and cryptwalk destroys the key itself at the end (one life per
     // boot, same doctrine as the perishable key).
-    let crypt = rt::spawn("crypt.elf"); fleet.push(crypt);
-    if crypt == ERROR { rt::print("shell: crypt.elf not found\n"); }
-    // E21: launch the shadow-web spider probe after the clean boot.
-    let spider = rt::spawn("spider.elf"); fleet.push(spider);
-    if spider == ERROR { rt::print("shell: spider.elf not found\n"); }
-    let weave = rt::spawn("weave.elf"); fleet.push(weave);
-    if weave == ERROR { rt::print("shell: weave.elf not found\n"); }
-    let keeper = rt::spawn("keykeep.elf"); fleet.push(keeper);
-    if keeper == ERROR { rt::print("shell: keykeep.elf not found\n"); }
-    let instant = rt::spawn("instant.elf"); fleet.push(instant);
-    if instant == ERROR { rt::print("shell: instant.elf not found\n"); }
-    let smuggler = rt::spawn("smuggler.elf"); fleet.push(smuggler);
-    if smuggler == ERROR { rt::print("shell: smuggler.elf not found\n"); }
-    let lane = rt::spawn("lane.elf"); fleet.push(lane);
-    if lane == ERROR { rt::print("shell: lane.elf not found\n"); }
-    let metro = rt::spawn("metro.elf"); fleet.push(metro);
-    if metro == ERROR { rt::print("shell: metro.elf not found\n"); }
-    let taint = rt::spawn("taint.elf"); fleet.push(taint);
-    if taint == ERROR { rt::print("shell: taint.elf not found\n"); }
-    // E36: last — the seam demo's certification fires the cascade.
-    let seam = rt::spawn("seam.elf"); fleet.push(seam);
-    if seam == ERROR { rt::print("shell: seam.elf not found\n"); }
-    // E37: the network ingress demo.
-    let net_demo = rt::spawn("net.elf"); fleet.push(net_demo);
-    if net_demo == ERROR { rt::print("shell: net.elf not found\n"); }
-    // E38: the datagram demo (needs the host to send UDP to :5555).
-    let sock = rt::spawn("sock.elf"); fleet.push(sock);
-    if sock == ERROR { rt::print("shell: sock.elf not found\n"); }
-    // The demos print as they run; the prompt waits until they are done
-    // (bounded, so a demo that hangs cannot take the console with it).
+    // E21: the shadow-web spider probe, then the key, cone, lane, rhythm
+    // and taint demos; E36 last — the seam demo's certification fires the
+    // cascade; then the network ingress (E37) and datagram (E38) demos.
+    for program in ["crypt.elf", "spider.elf", "weave.elf", "keykeep.elf", "instant.elf", "smuggler.elf",
+                    "lane.elf", "metro.elf", "taint.elf", "seam.elf", "net.elf", "sock.elf"] {
+        let pid = rt::spawn(program);
+        if pid == ERROR { rt::print_args(format_args!("demos: {} not found\n", program)); } else { fleet.push(pid); }
+    }
     let mut remaining = 6000u64;
     while remaining > 0 && rt::processes().is_ok_and(|tasks| tasks.iter().any(|t| fleet.contains(&t.pid) && t.state != PROCESS_EXITED)) {
         rt::sleep(10); remaining = remaining.saturating_sub(10);
@@ -489,32 +466,28 @@ fn main() {
     // started, so nothing from the fleet outlives it.
     let leftovers: Vec<(u64, String)> = rt::processes().unwrap_or_default().iter()
         .filter(|t| t.state != PROCESS_EXITED && (fleet.contains(&t.pid) || fleet.contains(&t.parent)))
-        .map(|t| {
-            let end = t.name.iter().position(|&b| b == 0).unwrap_or(t.name.len());
-            (t.pid, String::from(core::str::from_utf8(&t.name[..end]).unwrap_or("?")))
-        }).collect();
+        .map(|t| (t.pid, String::from(t.name()))).collect();
     for (pid, _) in leftovers.iter().rev() { rt::kill(*pid); }
     let finished: Vec<u64> = rt::processes().unwrap_or_default().iter()
         .filter(|t| fleet.contains(&t.pid) && t.state == PROCESS_EXITED).map(|t| t.pid).collect();
     for pid in finished { rt::wait(pid); }
     // E21: the demos are over, so the cone stands down (sensing continues).
     rt::call3(SYS_SENSE, 11, 0, 0);
-    if leftovers.is_empty() { rt::print("shell: demo fleet finished\n"); }
+    if leftovers.is_empty() { rt::print("demos: finished\n"); }
     else {
         let names: Vec<&str> = leftovers.iter().map(|(_, name)| name.as_str()).collect();
-        rt::print_args(format_args!("shell: demo fleet finished (ended after 60 s: {})\n", names.join(", ")));
+        rt::print_args(format_args!("demos: finished (ended after 60 s: {})\n", names.join(", ")));
     }
-    // The fleet has run: mark the boot, forever after interactive.
-    let fd = rt::open("boot.done");
-    if fd != ERROR { rt::write(fd, b"fleet ran\n"); rt::close(fd); }
-    interactive();
 }
 
-fn interactive() -> ! {
+fn main() {
+    rt::print("ATOM OS kernel shell\n");
+    heap_test(); bench();
+    rt::print("shell: ready (type 'demos' to run the security demo fleet)\n");
     // Boot into the desktop when this is the console shell on a machine with
     // a display. A shell inside a desktop terminal has a piped stdin and
     // never gets here with a free display.
-    if rt::args_string().is_empty() && rt::call(SYS_GETPID, 0, 0) == 1 && rt::call(SYS_DISPLAY_PRESENT, 0, 0) == 1 {
+    if rt::args().len() == 1 && rt::call(SYS_GETPID, 0, 0) == 1 && rt::call(SYS_DISPLAY_PRESENT, 0, 0) == 1 {
         run_desktop();
     }
     loop { prompt(); let command = line(); execute(command.trim()); }

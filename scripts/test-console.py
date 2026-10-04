@@ -53,9 +53,7 @@ def main():
                 return read_until(expected, offset=offset)
 
             try:
-                read_until(r"10,000 SYS_YIELDs took \(CPU cycles\): \d+\n")
-                # A new disk's first boot runs the demo fleet before the prompt.
-                read_until(r"shell: demo fleet (finished|already ran)[^\n]*\n/> ", seconds=180)
+                read_until(r"10,000 SYS_YIELDs took \(CPU cycles\): \d+\nshell: ready[^\n]*\n/> ", seconds=60)
                 send("help", "commands:")
                 if number == 1:
                     text = send('spawn worker.elf --args "two words" \'\' a\\ b', 'ARG 4 len=3 a b\\n')

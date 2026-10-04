@@ -25,10 +25,10 @@ def checksum(data):
 
 
 def prepare_disk(path):
-    # Use the shell's existing persistent marker to select interactive mode.
-    # The background attack demos would otherwise compete for the same slots.
-    # This affects only this newly created test disk, never the user's disk.
-    name, data = b"boot.done", b"userspace import acceptance\n"
+    # A disk in the earlier snapshot format (ATOMFS01, folder-tree payload) with
+    # one file, so every run also exercises the importer. This affects only
+    # this newly created test disk, never the user's disk.
+    name, data = b"imported.txt", b"userspace import acceptance\n"
     payload = b"ATOMFST2" + struct.pack("<I", 1)
     payload += struct.pack("<BHI", 2, len(name), len(data)) + name + data
     header = bytearray(512)
@@ -55,7 +55,7 @@ def main():
     image = source / "target/x86_64-os/release/bootimage-x86_64-kernel.bin"
     result = {"success": False, "acceleration": args.accel, "nonce": token,
               "image_sha256": hashlib.sha256(image.read_bytes()).hexdigest(),
-              "fixture": "isolated v2 disk with boot.done; existing interactive mode", "checks": {}}
+              "fixture": "isolated ATOMFS01 v2 disk with one file (imported on boot)", "checks": {}}
     guest = None
     started = time.monotonic()
     def passed(name):
@@ -64,7 +64,7 @@ def main():
     try:
         guest = boot.Guest(source, out / "first", disk, args.accel)
         result["qmp_kvm"] = guest.kvm
-        guest.wait("shell: demo fleet already ran")
+        guest.wait("shell: ready")
         guest.wait(r"STORAGE_READY generation=\d+")
         passed("BOOT_INTERACTIVE_CURRENT_IMAGE")
         match = guest.command("spawn worker.elf --ipc-test", r"spawned pid (\d+)")
@@ -84,7 +84,7 @@ def main():
         guest.command("sync", "SYNC_OK")
         guest.close(); guest = None
         guest = boot.Guest(source, out / "cold", disk, args.accel)
-        guest.wait("shell: demo fleet already ran")
+        guest.wait("shell: ready")
         guest.command("cat imports/note", re.escape(token) + r"\n")
         passed("DIRECTORY_FILE_COLD_BOOT_PERSISTENCE")
         match = guest.command("spawn hello.elf", r"spawned pid (\d+)")

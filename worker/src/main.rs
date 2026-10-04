@@ -9,9 +9,9 @@ user_rt::entry!(main);
 
 fn main() {
     // Child mode for the pipe check below: echo the arguments to stdout.
-    let args = rt::args_string();
-    if let Some(text) = args.strip_prefix("pipe-child ") {
-        rt::print(text);
+    let args = rt::args();
+    if args.get(1).map(alloc::string::String::as_str) == Some("pipe-child") {
+        rt::print(&args[2..].join(" "));
         rt::print("\n");
         rt::exit(7);
     }
@@ -61,7 +61,7 @@ fn main() {
     assert!(rt::remove(&moved) && !rt::remove(&moved));
     for i in 0..32 { assert!(rt::remove(&alloc::format!("growth{}-{}.txt", pid % 16, i))); }
     let mut ours = false;
-    for process in rt::process_list() { if process.pid as u64 == pid && process.name() == "worker.elf" { ours = true; } }
+    for process in rt::processes().unwrap() { if process.pid == pid && process.name() == "worker.elf" { ours = true; } }
     assert!(ours);
     assert!(!rt::kill(0));
 

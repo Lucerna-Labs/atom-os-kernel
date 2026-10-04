@@ -59,7 +59,7 @@ def main():
    except Exception as e:
     if not stop.is_set():errors.append(str(e))
   thread=threading.Thread(target=reader,daemon=True);thread.start()
-  guest.wait('shell: demo fleet already ran');guest.wait(r'STORAGE_READY generation=\d+')
+  guest.wait('shell: ready');guest.wait(r'STORAGE_READY generation=\d+')
   match=guest.command('spawn worker.elf --lightcone-test',r'spawned pid (\d+)');pid=int(match[1]);guest.wait('LIGHTCONE_READY')
   fixtures=[frame(b'hello'),frame(b'ATLC1 node=export authorize=true'),frame(b'unknown',eth=0x88b5),frame(b'fragment',fragment=0x2000),frame(b'bad-length',bad=True)]
   for f in fixtures:send(f);time.sleep(.15)

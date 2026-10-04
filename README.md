@@ -344,6 +344,7 @@ repository when you want its latest improvements.
 | `ps` | Snapshot PID, parent PID, state and program name; uncollected exits remain visible |
 | `kill PID` | Immediately terminate a live process; its parent can collect status **137** with `wait` |
 | `proctest` | Exercise argument limits, bad pointers, exec, process inspection, kill/wait and cleanup |
+| `demos` | Run the security demo fleet (E21–E38) and return when it is done (at most 60 s); once per boot, since the demo keys have one life per boot |
 | `selftest`, `pairtest` | Run one worker or two concurrent workers and check their exits |
 | `churn 48` | Exercise repeated process creation/reaping and compare free-frame counts |
 | `fstest` | Exercise file lifecycle and full-capacity checks on an empty filesystem with a disk |
@@ -369,12 +370,14 @@ are typed normally. The numpad `+` key still enters `>`, as before.
 Use the actual PID printed by `spawn` in place of `4`. `worker.elf --args` prints
 its arguments and exits with status 41; `--sleep` is a long-lived diagnostic.
 `exec` replaces the shell; `run` and `spawn` keep the prompt. Invalid quoting or
-arguments are rejected. The packed-argv ABI accepts at most 16 UTF-8 arguments
+arguments are rejected. A process has one argv: at most 16 UTF-8 arguments
 including the executable name (`argv[0]`), and 1024 bytes including NUL
-separators; userspace reads them with `user_rt::args()`. Programs started with an
-argument string (`spawn_with`, the desktop) read it with `user_rt::args_string()`;
-the kernel keeps both forms for every process. Arguments are copied into the
-kernel before launch, and rejected exec requests leave the old image intact.
+separators, read with `user_rt::args()`. `spawn_with` (which also chooses the
+child's stdin and stdout, as the desktop terminal does) takes the arguments as
+one string and the kernel splits it with the shell's quoting rules; a string
+that would exceed the argv limits is refused rather than truncated. Arguments
+are copied into the kernel before launch, and rejected exec requests leave the
+old image intact.
 
 `ps` uses one validated, fixed-capacity snapshot; states are ready, running,
 sleeping, waiting, exited, or trapped. `kill` is immediate termination, not a

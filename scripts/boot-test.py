@@ -106,10 +106,7 @@ class Guest:
         return self.wait(expected, offset, seconds)
 
     def ready(self, offset=0):
-        # The prompt follows the boot benchmark and the shell's demo-fleet line
-        # (the fleet runs on a disk's first boot and finishes before the prompt).
-        self.wait(r"10,000 SYS_YIELDs took \(CPU cycles\): \d+\n", offset)
-        self.wait(r"shell: demo fleet (finished|already ran)[^\n]*\n/[^\n]*> ", offset, 180)
+        self.wait(r"10,000 SYS_YIELDs took \(CPU cycles\): \d+\nshell: ready[^\n]*\n/[^\n]*> ", offset, 60)
         self.wait(r"HEAP_OK", offset)
         self.wait(r"STORAGE_READY generation=\d+", offset)
 
@@ -274,6 +271,15 @@ def main():
         guest.command("faulttest", "FAULT_ISOLATION_OK status=142"); passed("USER_FAULT_CONTAINED")
         guest.command("sync", "SYNC_OK", 120)
         guest.command("df", r"Everything is saved"); passed("VIRTIO_FLUSH_COMMIT")
+        # The security demo fleet runs on request; its keys have one life per boot.
+        offset = len(guest.serial())
+        guest.command("demos", r"demos: finished[^\n]*\n", 150)
+        fleet = guest.serial()[offset:]
+        for marker in ["E22 PASS", "E23 PASS", "E24 PASS", "E25 PASS", "E31 PASS", "E34 PASS", "E35 PASS",
+                       "E36 PASS", "E37 PASS", "E38 PASS"]:
+            assert marker in fleet, (marker, fleet[-3000:])
+        guest.command("demos", "demos: already ran this boot")
+        passed("SECURITY_DEMO_FLEET")
         offset = len(guest.serial())
         guest.keys("reboot\n")
         guest.ready(offset)

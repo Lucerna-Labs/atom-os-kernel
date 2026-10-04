@@ -56,7 +56,7 @@ def main():
    except Exception as e:
     if not stop.is_set():reader_errors.append(repr(e))
   thread=threading.Thread(target=reader,daemon=True);thread.start()
-  guest.wait('shell: demo fleet already ran');guest.wait('STORAGE_READY generation=1')
+  guest.wait('shell: ready');guest.wait('STORAGE_READY generation=1')
   pid=int(guest.command('spawn worker.elf --lightcone-ingress-audit',r'spawned pid (\d+)')[1]);guest.wait('AUDIT_INGRESS_READY');cases=fixtures()
   for _,b,_ in cases:send(b);time.sleep(.2)
   guest.wait('AUDIT_INGRESS_DONE',seconds=90);guest.command(f'wait {pid}',rf'wait pid={pid} status=0',90)

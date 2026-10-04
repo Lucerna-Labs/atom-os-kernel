@@ -68,7 +68,7 @@ def latest_snapshot(disk):
 
 
 def probe_files(files, nonce):
-    """Only the storage probe's files (the disk also holds e.g. boot.done)."""
+    """Only the storage probe's files (the disk can hold other files)."""
     return {name: content for name, content in files.items() if name.startswith(f"r-{nonce}-")}
 
 
