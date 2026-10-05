@@ -17,8 +17,9 @@ web and the egress cone are composed over the dispatcher the same way.
   point: each missing function found becomes one composed layer.
 - `scripts/atomfs-pack.py` builds an ATOMFS02 data disk holding files from the
   host, so test programs can be booted with `scripts/run.py --disk`.
-- An unfinished local draft may exist in `kernel-linux/`. It is not committed
-  and not in the workspace. Finish it or start again.
+- An unfinished draft is in `kernel-linux/`. It does not compile yet and is
+  not in the workspace, so it does not affect the build. Finish it or start
+  again.
 
 ## To finish
 
