@@ -7,7 +7,17 @@ use crate::system::System;
 
 pub use crate::abi::*;
 
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU64, AtomicU8, Ordering};
+use crate::conversation;
+
+/// E21: how the shadow web's sites are keyed, chosen at the edge (SYS_SENSE
+/// sub 14). 0 = the program's identity and the raw first argument (the
+/// keying since 0139d12); 1 = the conversation itself: one shared identity
+/// and the partner the call addresses (`conversation::partner`), so every
+/// program shares the kernel's learned vocabulary. Blame lands on the pid
+/// under both. Default 0 until the measurement in docs/E21-ARMING.md says
+/// otherwise.
+static SENSE_KEYING: AtomicU8 = AtomicU8::new(0);
 static SENSOR_CYCLES: AtomicU64 = AtomicU64::new(0);
 static SENSOR_CALLS: AtomicU64 = AtomicU64::new(0);
 
@@ -224,7 +234,11 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
     // primitive is trusted live: the honest cost of feeling.
     {
         let started = unsafe { core::arch::x86_64::_rdtsc() };
-        kernel_sense::record_from(context.identity, pid as u64, number, arg, 1.0);
+        if SENSE_KEYING.load(Ordering::Relaxed) == 1 {
+            kernel_sense::record_from(conversation::SHARED_IDENTITY, pid as u64, number, conversation::partner(number, arg), 1.0);
+        } else {
+            kernel_sense::record_from(context.identity, pid as u64, number, arg, 1.0);
+        }
         SENSOR_CYCLES.fetch_add(unsafe { core::arch::x86_64::_rdtsc() } - started, Ordering::Relaxed);
         SENSOR_CALLS.fetch_add(1, Ordering::Relaxed);
     }
@@ -773,6 +787,8 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         //   2 = foreign budget of pid `arg1` (x 1e6, truncated)
         //   11 = disarm (condemned pids are scheduled again), 12 = armed?
         //   13 = reset the web to pre-learning (the demos replay a clean boot)
+        //   4 = normal-map word arg1 (0/1), 14/15 = set/read the keying,
+        //   16/17 = set/read the learning horizon (see docs/E21-ARMING.md)
         let sub = arg;
         if sub == 0 {
             let (trained, events, raised, _readable) = kernel_sense::status();
@@ -817,6 +833,17 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         } else if sub == 13 {
             kernel_sense::reset();
             frame.rax = 0;
+        } else if sub == 4 {
+            frame.rax = kernel_sense::normal_map_words()[(arg1 & 1) as usize];
+        } else if sub == 14 {
+            if arg1 <= 1 { SENSE_KEYING.store(arg1 as u8, Ordering::Relaxed); frame.rax = 0; }
+        } else if sub == 15 {
+            frame.rax = SENSE_KEYING.load(Ordering::Relaxed) as u64;
+        } else if sub == 16 {
+            kernel_sense::set_horizon(arg1);
+            frame.rax = 0;
+        } else if sub == 17 {
+            frame.rax = kernel_sense::horizon();
         } else if sub == 3 {
             // T3: average cycles per sensor record() call.
             let calls = SENSOR_CALLS.load(Ordering::Relaxed);

@@ -1,6 +1,6 @@
 # E21: can the shadow web arm itself at boot?
 
-Status: PRECOMMITTED (2026-10-06)
+Status: MEASURED (2026-10-06); P4 FAILED, see below
 
 ## Problem
 
@@ -70,4 +70,60 @@ Results are recorded below as MEASURED / FAILED / UNRUN; failures are kept.
 
 ## Results
 
-UNRUN.
+Three KVM boots of one image (commit after ea20302), 512 MiB, the driver and
+raw logs kept outside the repo. The demo fleet ran first in every boot, then
+the web was reset and retrained on `bench`, armed, and the shell sequence run
+with `sense` after each command. Budgets are the foreign budget at the moment
+`sense` ran (they decay 1.3 per second); episodes are the judge's count of
+condemnations.
+
+**P1 MEASURED (held).** Keying 0. After `bench` the map admits 6 of 128 sites
+and the shell already carries 1.55 of its 2.0 budget. Armed, the shell is
+condemned on every command (episodes 2, 4, 6, 8, 11, 13, 17, 19 through
+`spawn`), finishing each only through the thermodynamic release. The spawned
+worker reaches 9.45 and never finishes: `wait` timed out at 120 s.
+
+**P2 MEASURED (held).** Keying 1. Same picture to the digit: map 6 sites,
+shell 1.55 after `bench`, episodes 2, 4, 6, 8, 11, 14, 17, 19, the worker
+at 7.47 and `wait` timed out. The target fix changes nothing while the map is
+the benchmark's.
+
+**P3 MEASURED (held).** Under both keyings every fleet marker (E22 to E38)
+printed and the spider saw the rogue's budget cross the bar. Keying 1 does not
+weaken the rogue's condemnation.
+
+**P4 FAILED.** Keying 1, horizon open through `bench` plus the whole shell
+sequence (280,000 events, 200,000 of them `churn`), then frozen and armed: the
+map admits 47 sites. The second pass ran to completion, but the shell was
+condemned 19 times during the first eight commands (budget 0.6, 1.1, 1.5, 1.9,
+then 2.2 to 2.5 with episodes 5, 8, 12, 15, 16, 19 through `run hello.elf`)
+and was clean for the last five (`churn`, `proctest`, `msg`, `selftest`,
+`fstest`: budget 0.2 to 0.6, no new episodes). The worker reached 2.56 and one
+episode but finished.
+
+Why: the map is not a union over the session. Erosion relaxes every site by
+0.18 % per 16 events, so a site's depth is its recent equilibrium; after the
+200,000 `churn` events, everything trained before `churn` had relaxed to the
+floor, and only the conversations of the last ten to twenty thousand events
+were readable at the freeze. That is the law working as written: the map
+admits *sustained* conversations (about 900 events to reach readable depth),
+so a conversation a shell uses a few times per command can never be learned
+by it, whatever the window. The budget then charges every low-rate legitimate
+conversation at 0.02 per event, and anything issuing more than about 100
+foreign syscalls faster than the decay (65 per second) is condemned.
+
+## What this means for arming at boot
+
+- Both input gaps are real and are now fixed or selectable at the edge, but
+  neither is the blocker. The blocker is that the equilibrium law cannot
+  represent low-rate vocabulary, and the shell, file and process calls are
+  low-rate vocabulary.
+- The partner keying (keying 1) is the right input and costs nothing, but it
+  measured equal, so it stays off by default until something depends on it.
+- Next step, not built here: a second admission law beside the equilibrium
+  cone (a co-engine), for vocabulary rather than rate: a conversation
+  admitted because a trusted session used it at all, carried into the boot
+  image the way `network-lightcone` carries its world. The equilibrium cone
+  keeps its job (sustained foreign conversation, the rogue), and the two are
+  measured alone and together, with chaos tried on the admission law first.
+  `sense` and `SYS_SENSE` 4/14/16 give the measurements that step needs.

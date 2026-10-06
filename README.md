@@ -412,6 +412,7 @@ repository when you want its latest improvements.
 | `kill PID` | Immediately terminate a live process; its parent can collect status **137** with `wait` |
 | `proctest` | Exercise argument limits, bad pointers, exec, process inspection, kill/wait and cleanup |
 | `demos` | Run the security demo fleet (E21–E38) and return when it is done (at most 60 s); once per boot, since the demo keys have one life per boot |
+| `sense` | Shadow-web state and every live process's foreign budget; `sense arm`, `disarm`, `reset`, `keying 0` or `1`, `horizon N` set its knobs (see [docs/E21-ARMING.md](docs/E21-ARMING.md)) |
 | `selftest`, `pairtest` | Run one worker or two concurrent workers and check their exits |
 | `churn 48` | Exercise repeated process creation/reaping and compare free-frame counts |
 | `fstest` | Exercise file lifecycle and full-capacity checks on an empty filesystem with a disk |

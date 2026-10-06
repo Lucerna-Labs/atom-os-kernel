@@ -71,7 +71,12 @@ pub const SYS_KILL: u64 = 43;
 /// E21 shadow web: status / freeze the normality cone / query foreign budget.
 /// Sub 1 (freeze) also ARMS the cone: condemned pids are starved until sub 11
 /// disarms it (sub 12 reports whether it is armed). Sub 13 resets the web to
-/// its pre-learning state (used by the shell's `demos` command).
+/// its pre-learning state (used by the shell's `demos` command). Sub 4 reads
+/// word arg1 (0 or 1) of the normal map; sub 14 selects how sites are keyed
+/// (arg1: 0 = program identity and raw argument, 1 = the conversation's
+/// partner under one shared identity) and sub 15 reads it; sub 16 sets the
+/// learning horizon in events (arg1; u64::MAX keeps learning open until an
+/// explicit freeze) and sub 17 reads it.
 pub const SYS_SENSE: u64 = 44;
 /// E22 fail-dead key: sub=arg, see syscall handler (init/maintain/read/status).
 pub const SYS_KEY: u64 = 45;

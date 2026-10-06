@@ -29,7 +29,12 @@
 //!   verdicts all run) but does not arm it, because a map learned from
 //!   a few boot processes condemns nearly every later program. (Interim
 //!   policy from the desktop merge, 2026-10-03; the shell's `demos`
-//!   command arms it through the spider and disarms it after.)
+//!   command arms it through the spider and disarms it after. Measured on
+//!   2026-10-06, docs/E21-ARMING.md: the map holds only SUSTAINED
+//!   conversations, since erosion relaxes every site to its recent
+//!   equilibrium, so low-rate vocabulary such as the shell's file and
+//!   process calls cannot be learned by this law at any window; arming at
+//!   boot waits for a second admission law beside this one.)
 //!
 //! no_std + core only (f32 via hardware SSE in task context). State
 //! lives behind a tiny spin lock touched only from syscall/scheduler
@@ -318,6 +323,9 @@ struct Sensor {
     armed: bool,
     normal_map: [bool; SITES],
     events: u64,
+    /// Events recorded before the automatic freeze (HISTORY unless the
+    /// edge chose otherwise through `set_horizon`; u64::MAX = never).
+    horizon: u64,
     /// Scheduler ticks (advanced by tick(); the rhythm's clock).
     ticks: u64,
     rhythm: [RhythmSlot; RHYTHM_SLOTS],
@@ -331,6 +339,7 @@ static SENSOR: Lock<Sensor> = Lock::new(Sensor {
     armed: false,
     normal_map: [false; SITES],
     events: 0,
+    horizon: HISTORY as u64,
     ticks: 0,
     rhythm: [RhythmSlot::EMPTY; RHYTHM_SLOTS],
     judge: [JudgeSlot::EMPTY; MAX_TRACKED],
@@ -447,7 +456,7 @@ pub fn record_from(identity: u64, pid: u64, syscall: u64, target: u64, weight: f
     }
 
     if !sensor.trained {
-        if events >= HISTORY as u64 {
+        if events >= sensor.horizon {
             let map = learned_map(&sensor.permeability);
             if let Some(map) = map {
                 sensor.normal_map = map;
@@ -597,6 +606,30 @@ pub fn status() -> (bool, u64, usize, usize) {
         .count();
     let readable = sensor.permeability.iter().filter(|&&p| p > READABLE).count();
     (sensor.trained, sensor.events, raised, readable)
+}
+
+/// The normal map as two 64-bit words (site s is bit s % 64 of word
+/// s / 64): what the learning phase admitted, readable from the edge so a
+/// trained map can be inspected or carried out of a trusted session.
+pub fn normal_map_words() -> [u64; 2] {
+    let sensor = SENSOR.lock();
+    let mut words = [0u64; 2];
+    for (site, &normal) in sensor.normal_map.iter().enumerate() {
+        if normal { words[site / 64] |= 1 << (site % 64); }
+    }
+    words
+}
+
+/// How many events the automatic freeze waits for. The learning window is a
+/// capacity, not a law: the edge chooses it (u64::MAX keeps learning open
+/// until an explicit `freeze`). A knob, so `reset` leaves it alone.
+pub fn set_horizon(events: u64) {
+    SENSOR.lock().horizon = events;
+}
+
+/// The current learning horizon in events.
+pub fn horizon() -> u64 {
+    SENSOR.lock().horizon
 }
 
 /// Scheduler-tick maintenance: erodes foreign budgets with wall
@@ -943,6 +976,46 @@ mod tests {
         // A program never seen, talking as a new pid, is still foreign.
         for _ in 0..400 { record_from(999, 160, 15, 7, 1.0); }
         assert!(quarantined(160));
+    }
+
+    #[test]
+    fn gate_s1c_horizon_is_the_edges_choice() {
+        reset();
+        set_horizon(u64::MAX);
+        // Far past the default horizon the web is still learning, so a late
+        // conversation joins the map instead of being foreign.
+        clean_boot(HISTORY * 2);
+        assert!(learning());
+        for _ in 0..1000 { record(4, 15, 9, 1.0); }
+        freeze();
+        assert!(!learning());
+        for _ in 0..400 { record(4, 15, 9, 1.0); }
+        assert_eq!(foreign_budget(4), 0.0, "a conversation learned late is not foreign");
+        // The knob survives reset; put it back for the other gates.
+        reset();
+        assert_eq!(horizon(), u64::MAX);
+        set_horizon(HISTORY as u64);
+        clean_boot(HISTORY + 10);
+        assert!(!learning(), "the default horizon freezes automatically");
+    }
+
+    #[test]
+    fn gate_s1d_map_words_mirror_the_map() {
+        reset();
+        set_horizon(HISTORY as u64);
+        assert_eq!(normal_map_words(), [0, 0]);
+        clean_boot(2000);
+        freeze();
+        let words = normal_map_words();
+        let bits = words[0].count_ones() + words[1].count_ones();
+        let (_t, _e, _raised, readable) = status();
+        assert!(bits as usize >= readable && readable > 0, "map {bits} bits, {readable} readable sites");
+        // Every admitted site is a set bit and vice versa.
+        for site in 0..SITES {
+            let set = words[site / 64] >> (site % 64) & 1 == 1;
+            let admitted = { let s = SENSOR.lock(); s.normal_map[site] };
+            assert_eq!(set, admitted, "site {site}");
+        }
     }
 
     #[test]

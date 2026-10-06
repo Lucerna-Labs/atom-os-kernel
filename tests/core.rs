@@ -5,6 +5,7 @@ extern crate alloc;
 extern crate kernel_kit;
 use kernel_kit::{context, elf, fs, keyboard, memory, slab};
 #[path = "../kernel-orchestrator/src/scheduler.rs"] mod scheduler;
+#[path = "../kernel-orchestrator/src/conversation.rs"] mod conversation;
 
 use std::alloc::{alloc_zeroed, dealloc, Layout};
 
@@ -860,4 +861,15 @@ fn process_snapshot_states_names_and_zeroed_unused_records() {
     scheduler.task_mut(99).unwrap().exit_code = KILLED_STATUS;
     assert_eq!(scheduler.snapshot().0[0].state, PROCESS_EXITED);
     assert_eq!(scheduler.snapshot().0[0].exit_code, KILLED_STATUS);
+}
+
+#[test]
+fn conversation_partner_is_the_pid_or_sub_function_and_nothing_else() {
+    use kernel_kit::abi::*;
+    assert_eq!(conversation::partner(SYS_IPC_SEND, 99), 99);
+    assert_eq!(conversation::partner(SYS_WAIT, 4), 4);
+    assert_eq!(conversation::partner(SYS_SENSE, 2), 2);
+    assert_eq!(conversation::partner(SYS_WRITE_BUFFER, 0x1000), 0);
+    assert_eq!(conversation::partner(SYS_FILE_WRITE, 3), 0);
+    assert_ne!(conversation::SHARED_IDENTITY, 0, "0 would mean 'use the pid' to the sensor");
 }

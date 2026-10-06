@@ -287,7 +287,7 @@ fn execute(command: &str) {
     let here = |p: &str| if p.is_empty() { String::from(".") } else { String::from(p) };
     match verb {
         "" => {}
-        "help" => rt::print("commands: help ls cd pwd mkdir rmdir cat edit echo cp rm mv df status fill sum clear msg desktop demos bench heaptest stats spawn run exec wait ps kill proctest selftest pairtest churn faulttest fstest storageprobe sync reboot ping\nuserspace: run hello.elf / sysinfo.elf / netstat.elf / calc.elf 2+3*4 / udpsend.elf <msg>\n"),
+        "help" => rt::print("commands: help ls cd pwd mkdir rmdir cat edit echo cp rm mv df status fill sum clear msg desktop demos sense bench heaptest stats spawn run exec wait ps kill proctest selftest pairtest churn faulttest fstest storageprobe sync reboot ping\nuserspace: run hello.elf / sysinfo.elf / netstat.elf / calc.elf 2+3*4 / udpsend.elf <msg>\n"),
         "ls" => list(&here(argument)),
         "clear" => { rt::call(SYS_CLEAR, 0, 0); }
         "bench" => bench(),
@@ -384,6 +384,7 @@ fn execute(command: &str) {
             Err(()) => rt::print("ps failed\n"),
         },
         "demos" => demos(),
+        "sense" => sense(argument),
         "kill" => match argument.parse::<u64>() {
             Ok(pid) => if rt::kill(pid) { rt::print_args(format_args!("killed pid {}\n", pid)); }
                        else { rt::print("kill failed: no live process with that PID\n"); },
@@ -429,6 +430,46 @@ fn execute(command: &str) {
         _ => rt::print("Unknown command\n"),
     }
 }
+/// E21 shadow-web diagnostics: `sense` prints the web's state and every
+/// live process's foreign budget and condemnation episodes; the verbs set the
+/// edge's knobs (see docs/E21-ARMING.md). `keying` and `horizon` reset the
+/// web, so learning restarts under the new choice.
+fn sense(argument: &str) {
+    let (verb, value) = argument.split_once(' ').unwrap_or((argument, ""));
+    match (verb, value.trim().parse::<u64>()) {
+        ("", _) => {
+            let packed = rt::call3(SYS_SENSE, 0, 0, 0);
+            rt::print_args(format_args!("SENSE trained={} armed={} events={} raised={} keying={} horizon={}\n",
+                packed >> 63, rt::call3(SYS_SENSE, 12, 0, 0), (packed >> 32) & 0x7FFF_FFFF, packed & 0xFFFF_FFFF,
+                rt::call3(SYS_SENSE, 15, 0, 0), rt::call3(SYS_SENSE, 17, 0, 0)));
+            rt::print_args(format_args!("MAP {:016x} {:016x}\n", rt::call3(SYS_SENSE, 4, 1, 0), rt::call3(SYS_SENSE, 4, 0, 0)));
+            if let Ok(tasks) = rt::processes() {
+                for task in tasks.iter().filter(|t| t.state != PROCESS_EXITED) {
+                    let docket = rt::call3(SYS_SENSE, 8, task.pid, 0);
+                    rt::print_args(format_args!("PID {} {} budget={} episodes={}\n",
+                        task.pid, task.name(), rt::call3(SYS_SENSE, 2, task.pid, 0), docket & 0xFF));
+                }
+            }
+        }
+        ("arm", _) => {
+            rt::call3(SYS_SENSE, 1, 0, 0);
+            if rt::call3(SYS_SENSE, 12, 0, 0) == 1 { rt::print("sense: cone frozen and armed\n"); }
+            else { rt::print("sense: nothing readable to freeze on; still learning, not armed\n"); }
+        }
+        ("disarm", _) => { rt::call3(SYS_SENSE, 11, 0, 0); rt::print("sense: cone disarmed\n"); }
+        ("reset", _) => { rt::call3(SYS_SENSE, 13, 0, 0); rt::print("sense: web reset, learning\n"); }
+        ("keying", Ok(keying)) if keying <= 1 => {
+            rt::call3(SYS_SENSE, 14, keying, 0); rt::call3(SYS_SENSE, 13, 0, 0);
+            rt::print_args(format_args!("sense: keying {}, web reset, learning\n", keying));
+        }
+        ("horizon", Ok(events)) => {
+            rt::call3(SYS_SENSE, 16, events, 0); rt::call3(SYS_SENSE, 13, 0, 0);
+            rt::print_args(format_args!("sense: horizon {}, web reset, learning\n", events));
+        }
+        _ => rt::print("usage: sense [arm|disarm|reset|keying 0|1|horizon events]\n"),
+    }
+}
+
 /// The security demo fleet (E21-E38), on request. The demos print as they
 /// run and the command returns when they are done (bounded, so a demo that
 /// hangs cannot keep the shell). Their keys have one life per boot, so a
