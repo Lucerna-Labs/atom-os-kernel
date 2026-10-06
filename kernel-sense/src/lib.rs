@@ -9,8 +9,10 @@
 //!   target) collected at dispatch — never payloads, only behavior.
 //! - **Scars**: a small substrate field (128 sites). Activity raises
 //!   permeability where it lands; erosion relaxes it unconditionally.
-//!   Site = mix(pid, target) — the field learns WHO TALKS TO WHOM as
-//!   material state. Quiet misuse accumulates a budget; quiet time
+//!   Site = mix(who, target, syscall) — the field learns WHO TALKS TO
+//!   WHOM as material state. "Who" is the program's stable identity
+//!   when the kernel supplies one (`record_from`), so a program keeps
+//!   its learned conversations across runs; blame lands on the pid. Quiet misuse accumulates a budget; quiet time
 //!   erases it (thermodynamic forgetting).
 //! - **The cone**: a normal site map trained from a clean-boot
 //!   learning phase (E20's lightcone discipline: train on normality,
@@ -346,7 +348,15 @@ pub fn site_for(pid: u64, target: u64, syscall: u64) -> usize {
 /// the whole field every event (the substrate law decays everywhere,
 /// not only where events land), which is 128 f32 steps.
 pub fn record(pid: u64, syscall: u64, target: u64, weight: f32) {
-    let site = site_for(pid, target, syscall);
+    record_from(pid, pid, syscall, target, weight);
+}
+
+/// `record` with the conversation's site keyed on `identity` (a stable
+/// program identity, e.g. a hash of its name) instead of the pid, so the
+/// same program keeps its place in the map from one run to the next.
+/// Budgets, rhythm and verdicts stay per pid. Identity 0 means "use the pid".
+pub fn record_from(identity: u64, pid: u64, syscall: u64, target: u64, weight: f32) {
+    let site = site_for(if identity == 0 { pid } else { identity }, target, syscall);
     let mut sensor = SENSOR.lock();
     let energy = weight * ENERGY_PER_UNIT;
     let growth = FORMATION * energy.min(1.0) * (1.0 - sensor.permeability[site]);
@@ -910,6 +920,29 @@ mod tests {
             assert_eq!(foreign_budget(pid), 0.0, "clean pid {pid} flagged");
             assert!(!quarantined(pid));
         }
+    }
+
+    #[test]
+    fn gate_s1b_same_program_new_pid_is_still_admitted() {
+        reset();
+        // Three programs, each with a stable identity, learn their partners.
+        for i in 0..2000 {
+            let program = (i % 3) as u64 + 100;
+            record_from(program, program, if i % 2 == 0 { 15 } else { 5 }, ((i / 3) % 2) as u64 + 1, 1.0);
+        }
+        freeze();
+        // The same programs run again as new pids: nothing is foreign.
+        for i in 0..2000 {
+            let program = (i % 3) as u64 + 100;
+            record_from(program, program + 50, if i % 2 == 0 { 15 } else { 5 }, ((i / 3) % 2) as u64 + 1, 1.0);
+        }
+        for pid in 150..=152 {
+            assert_eq!(foreign_budget(pid), 0.0, "rerun pid {pid} flagged");
+            assert!(!quarantined(pid));
+        }
+        // A program never seen, talking as a new pid, is still foreign.
+        for _ in 0..400 { record_from(999, 160, 15, 7, 1.0); }
+        assert!(quarantined(160));
     }
 
     #[test]

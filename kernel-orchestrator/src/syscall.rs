@@ -217,12 +217,14 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
     // E21 shadow web: every syscall is a vibration at the kernel's
     // single chokepoint. The sensor learns who talks to whom; after
     // its cone freezes, foreign conversations spend quarantine budget.
-    // Never a payload — class, pid, target, weight only. The rdtsc
+    // Never a payload — class, pid, target, weight only. The site is keyed
+    // on the program's identity, so a program keeps its learned
+    // conversations across runs; blame still lands on the pid. The rdtsc
     // pair is the T3 measurement the design doc requires before any
     // primitive is trusted live: the honest cost of feeling.
     {
         let started = unsafe { core::arch::x86_64::_rdtsc() };
-        kernel_sense::record(pid as u64, number, arg, 1.0);
+        kernel_sense::record_from(context.identity, pid as u64, number, arg, 1.0);
         SENSOR_CYCLES.fetch_add(unsafe { core::arch::x86_64::_rdtsc() } - started, Ordering::Relaxed);
         SENSOR_CALLS.fetch_add(1, Ordering::Relaxed);
     }
@@ -597,7 +599,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                     context.page_table_root = space.root;
                     context.space = Some(space);
                     context.arguments = packed;
-                    context.name = name;
+                    context.set_name(name);
                     context.open_files = [(0, 0); 16]; context.readonly_files = 0; context.fs_error = 0;
                     *frame = TrapFrame::new_user(entry, STACK_TOP);
                     unsafe { crate::process::reset_fpu(rsp); }

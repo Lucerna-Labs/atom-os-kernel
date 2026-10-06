@@ -59,7 +59,7 @@ pub fn create(pid: usize, parent: usize, name: &str, arguments: alloc::vec::Vec<
     unsafe { *(rsp as *mut TrapFrame) = TrapFrame::new_user(entry, STACK_TOP); reset_fpu(rsp); }
     let mut context = Context::new(pid, rsp, top, space.root);
     context.parent = parent;
-    context.name = alloc::string::String::from(name);
+    context.set_name(alloc::string::String::from(name));
     context.arguments = arguments;
     context.space = Some(space);
     context.kernel_stack_phys = phys;

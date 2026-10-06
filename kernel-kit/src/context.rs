@@ -36,6 +36,9 @@ pub struct Context {
     pub arguments: Vec<u8>,
     /// Name of the executable image, for process listings.
     pub name: String,
+    /// Stable identity of the program (a hash of its name): the same program
+    /// gets the same identity every time it runs, unlike its pid. 0 = unnamed.
+    pub identity: u64,
     /// Standard input and output: None is the console.
     pub stdin: Option<PipeEnd>,
     pub stdout: Option<PipeEnd>,
@@ -52,8 +55,13 @@ impl Context {
             open_files: [(0, 0); 16], readonly_files: 0, fs_error: 0, cwd: String::new(), space: None,
             kernel_stack_phys: 0, kernel_stack_pages: 0, parent: 0,
             wait_for: None, sleep_until: 0, exit_code: 0, waited: false,
-            mailbox: VecDeque::new(), arguments: Vec::new(), name: String::new(),
+            mailbox: VecDeque::new(), arguments: Vec::new(), name: String::new(), identity: 0,
             stdin: None, stdout: None, pipes: [const { (None, None) }; MAX_PIPES] }
+    }
+    /// Names the process and derives its identity (FNV-1a of the name).
+    pub fn set_name(&mut self, name: String) {
+        self.identity = name.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3));
+        self.name = name;
     }
     pub fn set_state(&mut self, state: TaskState) { self.state = state; }
 
