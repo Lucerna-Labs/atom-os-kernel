@@ -24,6 +24,13 @@ for crate in kernel-kit kernel-sense kernel-key kernel-instant kernel-egress ker
     "$root/$crate/src/lib.rs" -L "dependency=$out" "${deps[@]}" \
     -o "$out/lib$name.rlib" 2>> "$out/compile.log"
   deps+=(--extern "$name=$out/lib$name.rlib")
+  # Each crate's own unit tests (the gates it was built against).
+  if grep -q '#\[test\]' "$root/$crate/src/lib.rs"; then
+    rustc +"$toolchain" --edition=2024 --test --cfg 'feature="std"' \
+      "$root/$crate/src/lib.rs" -L "dependency=$out" "${deps[@]}" \
+      -o "$out/$name-tests" 2>> "$out/compile.log"
+    "$out/$name-tests" --test-threads=1
+  fi
 done
 rustc +"$toolchain" --edition=2021 --test "$root/tests/core.rs" \
   -L "dependency=$out" "${deps[@]}" -o "$out/core-tests" 2>> "$out/compile.log"

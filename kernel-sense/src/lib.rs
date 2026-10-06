@@ -902,7 +902,7 @@ mod tests {
         freeze();
         assert!(learning() == false);
         let (trained, events, raised, _readable) = status();
-        assert!(trained && events == 600 && raised > 0);
+        assert!(trained && events == 2000 && raised > 0);
         // Post-freeze, the SAME clean conversations accumulate no
         // foreign budget for anyone.
         clean_boot(4000);
