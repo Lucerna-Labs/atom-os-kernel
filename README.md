@@ -579,7 +579,8 @@ snapshots) are imported and converted by the next save.
 
 ## Next milestones
 
-These are proposed work, not currently implemented features:
+These are proposed work, not currently implemented features. The full pick-up
+list, with evidence and next steps per item, is [docs/TODO.md](docs/TODO.md).
 
 - Define and enforce the immutable-atom composition boundary before relying on
   it for the proposed network security architecture.
