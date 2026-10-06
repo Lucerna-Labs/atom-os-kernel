@@ -140,6 +140,7 @@ impl Scheduler {
                     if task.parent == 0 || task.waited {
                         // E21: the reaped pid leaves the shadow web's tables.
                         kernel_sense::forget(task.id as u64);
+                        kernel_egress::forget(task.id as u64);
                         self.tasks[index] = None;
                     }
                 }

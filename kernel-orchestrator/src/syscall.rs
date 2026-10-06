@@ -264,7 +264,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         if arg1 <= 4096 {
             if let Some(bytes) = copy_from_user(context, arg, arg1 as usize) {
                 // E24 egress cone: the console is the display channel too.
-                if kernel_egress::gate(&bytes) {
+                if kernel_egress::egress(pid as u64, &bytes) {
                     let mut writer = kernel_kit::vga::VgaWriter::new();
                     for &byte in &bytes { writer.write_byte(byte); }
                     frame.rax = arg1;
@@ -272,7 +272,9 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             }
         }
     } else if is(number, SYS_WRITE) || is(number, 14) {
-        frame.rax = stdout_write(context, &[arg as u8]);
+        // E24: one byte joins the process's stream; the cone scores it
+        // with its neighbours when their window fills.
+        if kernel_egress::egress(pid as u64, &[arg as u8]) { frame.rax = stdout_write(context, &[arg as u8]); }
     } else if is(number, SYS_WRITE_BUFFER) {
         if arg1 <= 4096 {
             if let Some(bytes) = copy_from_user(context, arg, arg1 as usize) {
@@ -280,7 +282,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                 // display channel — prose passes, key-shaped data does
                 // not, encoded keys fail the structure profile. It holds
                 // whether stdout is the console or a terminal's pipe.
-                if kernel_egress::gate(&bytes) { frame.rax = stdout_write(context, &bytes); }
+                if kernel_egress::egress(pid as u64, &bytes) { frame.rax = stdout_write(context, &bytes); }
             }
         }
     } else if is(number, SYS_OPEN) || is(number, SYS_OPEN_EXISTING) {
@@ -654,11 +656,14 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         let len = (arg2 as usize).min(4096);
         if let Some((_, Some(end))) = context.pipes.get(arg as usize) {
             if let Some(bytes) = copy_from_user(context, arg1, len) {
-                frame.rax = match end.write(&bytes) {
-                    kernel_kit::pipe::Write::Wrote(count) => count as u64,
-                    kernel_kit::pipe::Write::WouldBlock => WOULD_BLOCK,
-                    kernel_kit::pipe::Write::Broken => ERROR,
-                };
+                // E24: a pipe is an outbound channel like stdout.
+                if kernel_egress::egress(pid as u64, &bytes) {
+                    frame.rax = match end.write(&bytes) {
+                        kernel_kit::pipe::Write::Wrote(count) => count as u64,
+                        kernel_kit::pipe::Write::WouldBlock => WOULD_BLOCK,
+                        kernel_kit::pipe::Write::Broken => ERROR,
+                    };
+                }
             }
         }
     } else if is(number, SYS_PROCESSES) {
@@ -689,7 +694,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
     } else if is(number, SYS_IPC_SEND) {
         if let Ok(message) = user_string(context, arg1, 256) {
             // E24 egress cone: IPC is an outbound channel too.
-            if !kernel_egress::gate(message.as_bytes()) {
+            if !kernel_egress::egress(pid as u64, message.as_bytes()) {
             } else if let Some(target) = system.scheduler.task_mut(arg as usize) {
                 if target.state != TaskState::Terminated && target.mailbox.len() < 4 {
                     target.mailbox.push_back(message.into_bytes()); frame.rax = 0;

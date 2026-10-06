@@ -25,9 +25,20 @@
 //! smuggling; it does NOT stop slow steganographic drip (a few
 //! hex chars hidden per valid sentence) — bandwidth-limited
 //! attackers always eventually win; the gate is a rate-and-cost
-//! wall, not an absolute. Small writes (< 32 bytes) pass ungated
-//! (that drip hole, labeled). Storage writes are out of scope (v1
-//! gates the two OUTBOUND channels: display buffer and IPC).
+//! wall, not an absolute.
+//!
+//! `gate` scores one buffer and lets windows under 32 bytes through
+//! (the drip hole). `egress` composes a per-process STREAM over it:
+//! short writes and short tails accumulate in the process's own
+//! 64-byte window and are scored when it fills, so a byte-at-a-time
+//! loop is scored exactly like one 64-byte write. Bytes that left
+//! before the window filled are gone (the stream refuses the write
+//! that completes a bad window, not the ones before it) — the wall
+//! is per 64 bytes, labeled. Storage writes are out of scope (v1
+//! gates the OUTBOUND channels: console, stdout, pipes and IPC).
+//! The desktop's pixel framebuffer is not a prose channel and is not
+//! gated; only the display owner (the bundled desktop) can map it,
+//! and windowed programs reach the screen through gated text.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -131,6 +142,71 @@ pub fn gate(bytes: &[u8]) -> bool {
     true
 }
 
+/// Per-process accumulators: one window per live pid (the task cap).
+pub const STREAMS: usize = 16;
+
+struct Stream { pid: u64, len: usize, window: [u8; WINDOW] }
+
+static STREAM_LOCK: AtomicBool = AtomicBool::new(false);
+static mut STREAM_TABLE: [Stream; STREAMS] = [const { Stream { pid: 0, len: 0, window: [0; WINDOW] } }; STREAMS];
+
+fn with_streams<R>(f: impl FnOnce(&mut [Stream; STREAMS]) -> R) -> R {
+    while STREAM_LOCK.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
+        core::hint::spin_loop();
+    }
+    // Single-core kernel: the lock is the only path to the table.
+    let result = f(unsafe { &mut *core::ptr::addr_of_mut!(STREAM_TABLE) });
+    STREAM_LOCK.store(false, Ordering::Release);
+    result
+}
+
+/// The gate for a process's outbound write. Full windows are scored
+/// as `gate` scores them; the short remainder joins the process's
+/// stream and is scored when 64 bytes have accumulated. Returns false
+/// when the write is refused (a violation). A process with no free
+/// stream slot is held to the buffer rule alone (the table has one
+/// slot per possible task, so this only happens if `forget` is missed).
+pub fn egress(pid: u64, bytes: &[u8]) -> bool {
+    let full = bytes.len() - bytes.len() % WINDOW;
+    if full > 0 && !gate(&bytes[..full]) {
+        return false;
+    }
+    let tail = &bytes[full..];
+    if tail.is_empty() {
+        return true;
+    }
+    with_streams(|streams| {
+        let slot = match streams.iter().position(|s| s.pid == pid && s.len > 0)
+            .or_else(|| streams.iter().position(|s| s.len == 0)) {
+            Some(slot) => slot,
+            None => return gate(tail),
+        };
+        let stream = &mut streams[slot];
+        stream.pid = pid;
+        for &byte in tail {
+            stream.window[stream.len] = byte;
+            stream.len += 1;
+            if stream.len == WINDOW {
+                let window = stream.window;
+                stream.len = 0;
+                if !gate(&window) {
+                    return false;
+                }
+            }
+        }
+        true
+    })
+}
+
+/// A reaped pid's pending window is dropped.
+pub fn forget(pid: u64) {
+    with_streams(|streams| {
+        for stream in streams.iter_mut() {
+            if stream.pid == pid { stream.len = 0; stream.pid = 0; }
+        }
+    });
+}
+
 /// Status: (frozen, trained windows, distinct max, violations, passed).
 pub fn status() -> (bool, u64, u64, u64, u64) {
     (
@@ -150,6 +226,68 @@ pub fn reset() {
     DISTINCT_MAX.store(0, Ordering::Release);
     VIOLATIONS.store(0, Ordering::Release);
     PASSED.store(0, Ordering::Release);
+    with_streams(|streams| for s in streams.iter_mut() { s.len = 0; s.pid = 0; });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const KEY: [u8; 64] = [
+        0x8d, 0x20, 0xfb, 0x62, 0x5f, 0x6f, 0x5c, 0xc4, 0x68, 0x08, 0xd7, 0x0f, 0x37, 0x2e, 0xc4, 0xad,
+        0x91, 0x7c, 0x3b, 0xa4, 0xe2, 0xf1, 0x55, 0x19, 0x0d, 0xc2, 0x7e, 0x41, 0xb8, 0x9d, 0x02, 0x51,
+        0xf7, 0x30, 0xa1, 0xcc, 0x6e, 0x19, 0x4b, 0x8a, 0x2d, 0x76, 0x03, 0xc9, 0xaa, 0x5e, 0x71, 0xf0,
+        0x44, 0x2b, 0xbe, 0x87, 0xd6, 0x12, 0xc4, 0x99, 0x37, 0xe5, 0x8c, 0x21, 0x0b, 0x74, 0xde, 0x66,
+    ];
+    const PROSE: &[u8] = b"status report: all systems nominal, the door out is prose-shaped and this passes. ";
+
+    fn trained() { reset(); force_freeze(); }
+
+    #[test]
+    fn gate_e1_buffer_rule_unchanged() {
+        trained();
+        assert!(gate(PROSE));
+        assert!(!gate(&KEY));
+        assert!(gate(&KEY[..31]), "short buffers pass the buffer rule (the labeled drip hole)");
+    }
+
+    #[test]
+    fn gate_e2_byte_at_a_time_key_is_refused_at_the_window() {
+        trained();
+        let mut refused_at = None;
+        for (i, &b) in KEY.iter().enumerate() {
+            if !egress(7, &[b]) { refused_at = Some(i); break; }
+        }
+        assert_eq!(refused_at, Some(63), "the write that completes the window is refused");
+    }
+
+    #[test]
+    fn gate_e3_byte_at_a_time_prose_passes() {
+        trained();
+        for _ in 0..3 { for &b in PROSE { assert!(egress(8, &[b])); } }
+    }
+
+    #[test]
+    fn gate_e4_short_tails_of_long_writes_are_scored() {
+        trained();
+        // 33-byte writes: a 33-byte buffer is one short window under the
+        // buffer rule alone. Streamed, the tails fill a window of key bytes.
+        let mut refused = false;
+        for chunk in KEY.iter().cycle().take(33 * 4).copied().collect::<Vec<u8>>().chunks(33) {
+            if !egress(9, chunk) { refused = true; break; }
+        }
+        assert!(refused);
+    }
+
+    #[test]
+    fn gate_e5_streams_are_per_pid_and_forgotten_on_reap() {
+        trained();
+        for &b in &KEY[..40] { assert!(egress(10, &[b])); }
+        for &b in PROSE { assert!(egress(11, &[b])); }
+        forget(10);
+        // A fresh pid 10 starts a clean window: 40 key bytes fit again.
+        for &b in &KEY[..40] { assert!(egress(10, &[b])); }
+    }
 }
 
 #[cfg(feature = "std")]
