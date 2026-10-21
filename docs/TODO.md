@@ -39,6 +39,30 @@ are removed, not struck through; git history keeps them.
    keys for the rest of the boot. Revisit once arming is real: the judge's
    evidence rules were designed against the demo rogue only.
 
+7. **Close the kernel trust gap for secrets** (discussed 2026-10-21; the
+   possibilities, evidence and code references are in
+   [IDEA-KERNEL-TRUST-GAP.md](IDEA-KERNEL-TRUST-GAP.md)). Today every key
+   (E22 `kernel-key`, the E23 shares, the E35 master key) is a RAM static, the
+   kernel is monolithic with drivers in ring 0, and there is no IOMMU, TPM or
+   register-resident key, so a RAM snapshot or a compromised kernel gets the
+   keys. Next steps, one at a time, each precommitted:
+   - a. **E35 v2, registers-only key** (TRESOR-style: debug or vector
+     registers, AES-NI in the CPU, the scheduler leaves those registers alone).
+   - b. **TPM root share**: seal one E23 share, or the E35 root, in the
+     machine's TPM 2.0 (`/dev/tpm0`).
+   - c. **Conserved shares**: E23 rebuilt on Imperium's no-copy algebra
+     (`encrypted key protection/`), so shares move instead of sitting copyable.
+   - d. **Shares spread across places** (registers, Arc VRAM, TPM, a second
+     machine), so no single snapshot holds them all.
+   - e. **A ratchet**, so a copied state goes stale, with one verified lineage.
+   - f. **A thermal PUF test on the Arc** (is its heat response chip-unique and
+     stable?), from the synthetic-brain SENSE-1 and BEAT-1 stacks.
+   - g. **A smaller trust base**: the secret lifecycle onto
+     redox-kernel-audit's AuthorityWall capabilities, or drivers out of ring 0,
+     plus IOMMU confinement.
+   - h. **Standard crypto (AES-NI) and a real entropy source** for real
+     secrets; the custom cipher stays for experiments.
+
 ## Network and Lightcone (last)
 
 7. **Network Lightcone generalization.** Fresh v3 holdouts pass the frozen
