@@ -106,3 +106,48 @@ is a possibility, with what is known and where the evidence is.
    - add IOMMU confinement so devices cannot read arbitrary RAM.
 8. **Standard crypto for real secrets:** keep the custom cipher for experiments, and use AES-NI
    (and a real entropy source) where secrets matter.
+
+## Jesse's direction (2026-10-21): protect the front door, not RAM
+
+> "Not worried about ram, the key here is to protect the front door."
+
+**The architecture he means:** a **synthetic brain**, immutable, acting as both kernel security and
+network security. It is the **boundary organ** that decides what may **enter** and what may
+**leave**. The RAM possibilities above are kept for reference, but they are not the goal.
+
+**Why the front door is the right target:** if nothing leaves without the brain's judgment, a secret
+sitting in RAM cannot be carried out by a remote attacker.
+
+**What the immutable brain brings to the door:**
+- **Immutable laws and identity:** its judgment cannot be rewritten. A change is a disturbance it
+  returns from (HOMEO-1's law, scaled up), so there are no rules or thresholds for an attacker to
+  edit.
+- **Perception, not rule-matching:** sense → perceive (a named hypothesis: "a key-shaped payload
+  leaving", "a new conversation") → judge, for every crossing.
+- **A memory of normal:** scars of the machine's usual conversations, kept alive by use (SCAR-1's
+  maintain-or-erase). The unfamiliar has no scar.
+- **Temperature as vigilance:** T6's base temperature sets how rigid or how forgetful memory is,
+  here a dial between "adapt to new normal" and "hold the line".
+- **Both directions in one organ.**
+
+**The pieces that already exist:**
+- in this kernel: E24's egress cone, E25's key lane with honey, E37's network ingress ceremony,
+  `kernel-net` with `kernel-lightcone`, and kernel-sense quarantine;
+- elsewhere: atom-coder's HOMEO-2 (it beat a last-writer ARP cache against spoofers), and
+  Imperium's VPN path with its no-copy observers.
+
+**The open problems:**
+1. **Covert channels:** data can leave through timing, or through heat (synthetic-brain BEAT-1 sent
+   bits through the Arc's temperature). The door must sense side channels, not only packets.
+2. **Encrypted traffic is opaque:** judge by behaviour (who, when, how much, what rhythm), not
+   content.
+3. **False positives:** E21's armed cone condemned the shell, so judgment must spare legitimate
+   work.
+4. **Learning against immutability (a question for Jesse):** are only the laws and identity
+   immutable, with a learning part for new normal, or is the whole state fixed?
+
+**In the field's words:**
+- a *reference monitor* (one unbypassable judge for every crossing);
+- *artificial immune systems* (Forrest, 1994: self against non-self);
+- *data loss prevention* (egress control of secrets);
+- the *blood–brain barrier* (a biological boundary organ).

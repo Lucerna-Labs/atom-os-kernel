@@ -62,6 +62,16 @@ are removed, not struck through; git history keeps them.
      plus IOMMU confinement.
    - h. **Standard crypto (AES-NI) and a real entropy source** for real
      secrets; the custom cipher stays for experiments.
+8. **The front door: an immutable synthetic brain as the boundary organ**
+   (Jesse, 2026-10-21: "protect the front door, not RAM"; see the last section
+   of [IDEA-KERNEL-TRUST-GAP.md](IDEA-KERNEL-TRUST-GAP.md)). One organ decides
+   what may enter and what may leave, for kernel and network: sense, perceive,
+   judge every crossing, with immutable laws, scars of normal traffic, and
+   temperature as vigilance. It builds on E24, E25 and E37, kernel-sense, and
+   atom-coder's HOMEO-2.
+   - Open problems: covert channels (timing, heat), encrypted traffic (judge
+     behaviour), false positives (the E21 lesson), and which part is immutable.
+   - This takes priority over item 7's RAM steps.
 
 ## Network and Lightcone (last)
 
