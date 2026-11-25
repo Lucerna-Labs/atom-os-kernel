@@ -19,6 +19,26 @@ pub fn call3(number: u64, arg: u64, arg1: u64, arg2: u64) -> u64 {
     }
     result
 }
+#[inline]
+pub fn fast_call(number: u64, arg: u64, arg1: u64) -> u64 {
+    let result: u64;
+    unsafe {
+        core::arch::asm!(
+            "syscall",
+            inout("rax") number => result,
+            in("rdi") arg,
+            in("rsi") arg1,
+            lateout("rcx") _,
+            lateout("r11") _,
+            options(nostack)
+        );
+    }
+    result
+}
+#[inline]
+pub fn rdtsc() -> u64 {
+    unsafe { core::arch::x86_64::_rdtsc() }
+}
 pub fn yield_now() {
     call(SYS_YIELD, 0, 0);
 }
@@ -341,6 +361,10 @@ pub fn sync() -> bool { sync_status().is_ok() }
 pub fn sync_status() -> Result<(), FsError> { status(call(SYS_SYNC, 0, 0)) }
 pub fn time() -> u64 { call(SYS_TIME, 0, 0) }
 pub fn ticks() -> u64 { call(SYS_TICKS, 0, 0) }
+pub fn perf() -> Option<PerfStats> {
+    let mut stats = PerfStats::default();
+    (call(SYS_PERF, &mut stats as *mut PerfStats as u64, 0) == 0).then_some(stats)
+}
 
 // ---- processes -------------------------------------------------------------
 

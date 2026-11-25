@@ -740,6 +740,9 @@ fn clock_strings(unix: u64) -> (String, String) {
 
 /// Screen size as `width << 16 | height`, for apps that report it.
 pub static SCREEN: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+pub static LAST_FRAME_US: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+pub static AVG_FRAME_US: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+pub static FRAME_COUNT: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 
 /// The screen size the kernel gave the desktop.
 pub fn screen_size() -> (u32, u32) {
@@ -776,6 +779,8 @@ fn main() {
     let mut last_clock = String::new();
     let mut toast_shown = false;
     let mut frames = 0u64;
+    let mut total_frame_us = 0u64;
+    let mut tsc_khz = rt::perf().map_or(0, |p| p.tsc_khz);
     while !desktop.quit {
         let count = rt::call(SYS_INPUT_POLL, events.as_mut_ptr() as u64, events.len() as u64);
         let count = if count == ERROR { 0 } else { count as usize };
@@ -788,6 +793,9 @@ fn main() {
             }
         }
         let ticks = rt::ticks();
+        if tsc_khz == 0 {
+            tsc_khz = rt::perf().map_or(0, |p| p.tsc_khz);
+        }
         for i in 0..desktop.windows.len() {
             if i >= desktop.windows.len() { break; }
             let id = desktop.windows[i].id;
@@ -801,12 +809,19 @@ fn main() {
         if !desktop.damage.is_empty() {
             let damage = core::mem::take(&mut desktop.damage);
             let started = rt::ticks();
+            let t0 = rt::rdtsc();
             desktop.render(damage);
-            frames += 1;
-            if frames <= 3 || frames % 50 == 0 {
-                rt::console_print(&alloc::format!("FRAME {} render_ms={}\n", frames, (rt::ticks() - started) * 10));
-            }
             desktop.present(damage);
+            let elapsed_cycles = rt::rdtsc().saturating_sub(t0);
+            let render_us = if tsc_khz > 0 { elapsed_cycles * 1000 / tsc_khz } else { (rt::ticks() - started) * 10_000 };
+            frames += 1;
+            total_frame_us = total_frame_us.saturating_add(render_us);
+            LAST_FRAME_US.store(render_us, core::sync::atomic::Ordering::Relaxed);
+            AVG_FRAME_US.store(total_frame_us / frames, core::sync::atomic::Ordering::Relaxed);
+            FRAME_COUNT.store(frames, core::sync::atomic::Ordering::Relaxed);
+            if frames <= 3 || frames % 50 == 0 {
+                rt::console_print(&alloc::format!("FRAME {} render_ms={} render_us={}\n", frames, (rt::ticks() - started) * 10, render_us));
+            }
             desktop.draw_cursor();
         } else if moved {
             desktop.draw_cursor();

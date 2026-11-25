@@ -102,10 +102,16 @@ pub struct ProcessInfo {
     pub parent: u64,
     pub state: u64,
     pub exit_code: u64,
+    pub cpu_ticks: u64,
+    pub mem_frames: u64,
+    pub syscalls: u64,
     pub name: [u8; 64],
 }
 impl ProcessInfo {
-    pub const EMPTY: Self = Self { pid: 0, parent: 0, state: 0, exit_code: 0, name: [0; 64] };
+    pub const EMPTY: Self = Self {
+        pid: 0, parent: 0, state: 0, exit_code: 0,
+        cpu_ticks: 0, mem_frames: 0, syscalls: 0, name: [0; 64],
+    };
     /// The program name (argv[0]).
     pub fn name(&self) -> &str {
         let end = self.name.iter().position(|&b| b == 0).unwrap_or(self.name.len());
@@ -256,6 +262,30 @@ pub const SYS_STAT: u64 = 78;
 pub const SYS_READ_DIR: u64 = 79;
 /// rdi = FsInfo to fill.
 pub const SYS_FS_INFO: u64 = 80;
+/// rdi = PerfStats pointer to fill; returns 0 on success.
+pub const SYS_PERF: u64 = 81;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PerfStats {
+    pub ticks: u64,
+    pub busy_ticks: u64,
+    pub idle_ticks: u64,
+    pub context_switches: u64,
+    pub syscalls: u64,
+    pub tsc_khz: u64,
+    pub phys_total_frames: u64,
+    pub phys_free_frames: u64,
+    pub heap_used_bytes: u64,
+    pub heap_capacity_bytes: u64,
+    pub slab_hits: u64,
+    pub slab_misses: u64,
+    pub disk_reads: u64,
+    pub disk_writes: u64,
+    pub disk_flushes: u64,
+    pub disk_read_bytes: u64,
+    pub disk_write_bytes: u64,
+}
 pub const PATH_MAX: usize = 1024;
 /// Largest file (1 GiB).
 pub const FILE_MAX: u64 = 1 << 30;

@@ -375,6 +375,20 @@ impl BumpAllocator {
 
 use crate::memory::Spinlock;
 
+static GLOBAL_HEAP_USED: AtomicUsize = AtomicUsize::new(0);
+static GLOBAL_HEAP_CAPACITY: AtomicUsize = AtomicUsize::new(0);
+static GLOBAL_SLAB_HITS: AtomicUsize = AtomicUsize::new(0);
+static GLOBAL_SLAB_MISSES: AtomicUsize = AtomicUsize::new(0);
+
+pub fn global_metrics() -> (usize, usize, usize, usize) {
+    (
+        GLOBAL_HEAP_USED.load(Ordering::Relaxed),
+        GLOBAL_HEAP_CAPACITY.load(Ordering::Relaxed),
+        GLOBAL_SLAB_HITS.load(Ordering::Relaxed),
+        GLOBAL_SLAB_MISSES.load(Ordering::Relaxed),
+    )
+}
+
 pub struct SlabLocked {
     // We use a Spinlock (not IrqSpinlock) here because the heap is
     // never touched from IRQ context in the current kernel design —
@@ -397,6 +411,9 @@ unsafe impl GlobalAlloc for SlabLocked {
         // self-referential borrow the checker rejected.
         let SlabHeapInner { heap, bump } = inner;
         let ptr = heap.alloc(layout, bump);
+        GLOBAL_HEAP_USED.store(bump.next.saturating_sub(bump.heap_start), Ordering::Relaxed);
+        GLOBAL_SLAB_HITS.store(heap.slab_hits.load(Ordering::Relaxed), Ordering::Relaxed);
+        GLOBAL_SLAB_MISSES.store(heap.slab_misses.load(Ordering::Relaxed), Ordering::Relaxed);
         self.inner.unlock();
         ptr
     }
@@ -422,6 +439,8 @@ impl SlabLocked {
     pub fn init(&self, start: usize, size: usize) {
         let inner = self.inner.lock();
         inner.bump.init(start, size);
+        GLOBAL_HEAP_CAPACITY.store(size, Ordering::Relaxed);
+        GLOBAL_HEAP_USED.store(0, Ordering::Relaxed);
         self.inner.unlock();
     }
 

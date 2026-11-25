@@ -7,10 +7,21 @@ pub struct Scheduler {
     pub(crate) current: Option<usize>,
     pub idle_rsp: u64,
     pub ticks: u64,
+    pub busy_ticks: u64,
+    pub idle_ticks: u64,
+    pub context_switches: u64,
+    pub syscalls: u64,
+    pub tsc_khz: u64,
+    tsc_origin: u64,
+    tsc_origin_tick: u64,
 }
 impl Scheduler {
     pub const fn new() -> Self {
-        Self { tasks: [const { None }; MAX_TASKS], current: None, idle_rsp: 0, ticks: 0 }
+        Self {
+            tasks: [const { None }; MAX_TASKS], current: None, idle_rsp: 0, ticks: 0,
+            busy_ticks: 0, idle_ticks: 0, context_switches: 0, syscalls: 0,
+            tsc_khz: 0, tsc_origin: 0, tsc_origin_tick: 0,
+        }
     }
     pub fn current_task(&self) -> Option<&Context> { self.current.and_then(|i| self.tasks[i].as_ref()) }
     pub fn current_task_mut(&mut self) -> Option<&mut Context> { self.current.and_then(|i| self.tasks[i].as_mut()) }
@@ -42,6 +53,7 @@ impl Scheduler {
         Err(ctx)
     }
     pub fn switch_context(&mut self, old_rsp: u64) -> u64 {
+        let prev = self.current;
         let start = self.current.map_or(MAX_TASKS - 1, |i| i);
         if let Some(task) = self.current_task_mut() {
             task.rsp = old_rsp;
@@ -53,11 +65,13 @@ impl Scheduler {
                 if task.state == TaskState::Ready {
                     task.state = TaskState::Running;
                     self.current = Some(index);
-                    return task.rsp;
+                    if self.current != prev { self.context_switches = self.context_switches.wrapping_add(1); }
+                    return self.tasks[index].as_ref().unwrap().rsp;
                 }
             }
         }
         self.current = None;
+        if self.current != prev { self.context_switches = self.context_switches.wrapping_add(1); }
         assert_ne!(self.idle_rsp, 0, "idle context must be captured before running tasks");
         self.idle_rsp
     }
@@ -65,6 +79,30 @@ impl Scheduler {
         self.ticks = self.ticks.wrapping_add(1);
         kernel_kit::io::INPUT_CLOCK.store(self.ticks as u32, core::sync::atomic::Ordering::Relaxed);
         kernel_net::heartbeat();
+        if let Some(index) = self.current {
+            if let Some(task) = &mut self.tasks[index] {
+                self.busy_ticks = self.busy_ticks.wrapping_add(1);
+                task.cpu_ticks = task.cpu_ticks.wrapping_add(1);
+            } else {
+                self.idle_ticks = self.idle_ticks.wrapping_add(1);
+            }
+        } else {
+            self.idle_ticks = self.idle_ticks.wrapping_add(1);
+        }
+        #[cfg(target_arch = "x86_64")]
+        {
+            let now = unsafe { core::arch::x86_64::_rdtsc() };
+            if self.tsc_origin == 0 {
+                self.tsc_origin = now;
+                self.tsc_origin_tick = self.ticks;
+            } else {
+                let dt = self.ticks.saturating_sub(self.tsc_origin_tick);
+                if dt >= 5 {
+                    let khz = now.saturating_sub(self.tsc_origin) / (dt * 10);
+                    if khz > 0 { self.tsc_khz = khz; }
+                }
+            }
+        }
         for task in self.tasks.iter_mut().flatten() {
             if task.state == TaskState::Blocked && task.wait_for.is_none() && task.sleep_until <= self.ticks {
                 task.state = TaskState::Ready;
@@ -96,6 +134,9 @@ impl Scheduler {
             let info = &mut records[count]; count += 1;
             info.pid = task.id as u64; info.parent = task.parent as u64;
             info.exit_code = if task.state == TaskState::Terminated { task.exit_code } else { 0 };
+            info.cpu_ticks = task.cpu_ticks;
+            info.mem_frames = task.space.as_ref().map_or(0, |s| s.frame_count() as u64) + task.kernel_stack_pages as u64;
+            info.syscalls = task.syscalls;
             info.state = match task.state {
                 TaskState::Ready => PROCESS_READY, TaskState::Running => PROCESS_RUNNING,
                 TaskState::Blocked if task.wait_for.is_some() => PROCESS_WAITING,

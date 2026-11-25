@@ -33,6 +33,8 @@ pub struct Context {
     pub sleep_until: u64,
     pub exit_code: u64,
     pub waited: bool,
+    pub cpu_ticks: u64,
+    pub syscalls: u64,
     pub mailbox: VecDeque<Vec<u8>>,
     /// Packed argv (name NUL arg NUL ...), returned by SYS_ARGS.
     pub arguments: Vec<u8>,
@@ -57,6 +59,7 @@ impl Context {
             open_files: [(0, 0); 16], readonly_files: 0, fs_error: 0, cwd: String::new(), space: None,
             kernel_stack_phys: 0, kernel_stack_pages: 0, parent: 0, owner: id,
             wait_for: None, sleep_until: 0, exit_code: 0, waited: false,
+            cpu_ticks: 0, syscalls: 0,
             mailbox: VecDeque::new(), arguments: Vec::new(), name: String::new(), identity: 0,
             stdin: None, stdout: None, pipes: [const { (None, None) }; MAX_PIPES] }
     }

@@ -220,6 +220,113 @@ fn bench() {
     let cycles = unsafe { core::arch::x86_64::_rdtsc() } - start;
     rt::print(&format!("10,000 SYS_YIELDs took (CPU cycles): {}\n", cycles));
 }
+fn perf_bench() {
+    let mut tsc_khz = 0u64;
+    for _ in 0..10 {
+        tsc_khz = rt::perf().map_or(0, |p| p.tsc_khz);
+        if tsc_khz > 0 { break; }
+        rt::sleep(2);
+    }
+    let cyc_to_ns = |cyc: u64, ops: u64| -> u64 {
+        if tsc_khz > 0 && ops > 0 { ((cyc as u128 * 1_000_000) / (tsc_khz as u128 * ops as u128)) as u64 } else { 0 }
+    };
+    let cyc_to_us = |cyc: u64, ops: u64| -> u64 {
+        if tsc_khz > 0 && ops > 0 { ((cyc as u128 * 1_000) / (tsc_khz as u128 * ops as u128)) as u64 } else { 0 }
+    };
+    let bytes_to_kibs = |bytes: u64, cyc: u64| -> u64 {
+        if cyc > 0 && tsc_khz > 0 { ((bytes as u128 * tsc_khz as u128 * 1000) / (1024u128 * cyc as u128)) as u64 } else { 0 }
+    };
+
+    const N: u64 = 10_000;
+    let t0 = rt::rdtsc();
+    for _ in 0..N { let _ = rt::call(SYS_GETPID, 0, 0); }
+    let int80_ns = cyc_to_ns(rt::rdtsc().saturating_sub(t0), N);
+
+    let t0 = rt::rdtsc();
+    for _ in 0..N { let _ = rt::fast_call(SYS_GETPID, 0, 0); }
+    let syscall_ns = cyc_to_ns(rt::rdtsc().saturating_sub(t0), N);
+
+    let t0 = rt::rdtsc();
+    for _ in 0..N { let _ = rt::call(SYS_YIELD, 0, 0); }
+    let yield_int80_ns = cyc_to_ns(rt::rdtsc().saturating_sub(t0), N);
+
+    let t0 = rt::rdtsc();
+    for _ in 0..N { let _ = rt::fast_call(SYS_YIELD, 0, 0); }
+    let yield_syscall_ns = cyc_to_ns(rt::rdtsc().saturating_sub(t0), N);
+
+    let t0 = rt::rdtsc();
+    for _ in 0..32 {
+        let ptr = rt::call(SYS_ALLOC, 256 * 1024, 4096);
+        assert_ne!(ptr, ERROR);
+        for page in 0..64 {
+            unsafe { core::ptr::write_volatile((ptr as *mut u8).add(page * 4096), page as u8); }
+        }
+        assert_eq!(rt::call(SYS_FREE, ptr, 0), 0);
+    }
+    let alloc_us = cyc_to_us(rt::rdtsc().saturating_sub(t0), 32);
+
+    let t0 = rt::rdtsc();
+    for _ in 0..10 {
+        let handle = rt::pipe().unwrap();
+        let pid = rt::spawn_with("hello.elf", "", STDIO_CONSOLE, handle);
+        assert_ne!(pid, ERROR);
+        rt::pipe_close(handle, PIPE_WRITE_END);
+        let mut sink = [0u8; 64];
+        loop {
+            match rt::pipe_read(handle, &mut sink) {
+                Some(0) => break,
+                Some(_) => {}
+                None => rt::yield_now(),
+            }
+        }
+        rt::wait(pid);
+        rt::pipe_close(handle, PIPE_BOTH);
+    }
+    let spawn_us = cyc_to_us(rt::rdtsc().saturating_sub(t0), 10);
+
+    let chunk = alloc::vec![0x5au8; 16 * 1024];
+    let mut rbuf = alloc::vec![0u8; 16 * 1024];
+    let fd = rt::open("/perf.tmp");
+    assert_ne!(fd, ERROR);
+    let _ = rt::call(SYS_TRUNCATE, fd, 0);
+    let tw = rt::rdtsc();
+    for _ in 0..16 { assert!(rt::file_write_all(fd, &chunk).is_ok()); }
+    let file_w_kibs = bytes_to_kibs(256 * 1024, rt::rdtsc().saturating_sub(tw));
+    let _ = rt::seek(fd, 0);
+    let tr = rt::rdtsc();
+    let mut got = 0usize;
+    while got < 256 * 1024 {
+        let n = rt::file_read(fd, &mut rbuf).unwrap_or(0);
+        if n == 0 { break; }
+        got += n;
+    }
+    let file_r_kibs = bytes_to_kibs(got as u64, rt::rdtsc().saturating_sub(tr));
+    rt::close(fd);
+    let _ = rt::remove("/perf.tmp");
+
+    let stats = rt::perf().unwrap_or_default();
+    let phys_used_kib = stats.phys_total_frames.saturating_sub(stats.phys_free_frames) * 4;
+    let phys_total_kib = stats.phys_total_frames * 4;
+    let slab_total = stats.slab_hits + stats.slab_misses;
+    let slab_hit_pct = if slab_total > 0 { stats.slab_hits * 100 / slab_total } else { 100 };
+    rt::print_args(format_args!(
+        "PERF_CPU tsc_mhz={} busy_ticks={} idle_ticks={} syscalls={} ctx_switches={}\n",
+        stats.tsc_khz / 1000, stats.busy_ticks, stats.idle_ticks, stats.syscalls, stats.context_switches
+    ));
+    rt::print_args(format_args!(
+        "PERF_MEM phys_used_kib={} phys_total_kib={} heap_used_kib={} heap_cap_kib={} slab_hit_pct={}\n",
+        phys_used_kib, phys_total_kib, stats.heap_used_bytes / 1024, stats.heap_capacity_bytes / 1024, slab_hit_pct
+    ));
+    rt::print_args(format_args!(
+        "PERF_IO disk_reads={} disk_writes={} disk_flushes={} disk_read_kib={} disk_write_kib={}\n",
+        stats.disk_reads, stats.disk_writes, stats.disk_flushes, stats.disk_read_bytes / 1024, stats.disk_write_bytes / 1024
+    ));
+    rt::print_args(format_args!(
+        "PERF_BENCH int80_ns={} syscall_ns={} yield_int80_ns={} yield_syscall_ns={} alloc_us={} spawn_us={} file_w_kibs={} file_r_kibs={}\n",
+        int80_ns, syscall_ns, yield_int80_ns, yield_syscall_ns, alloc_us, spawn_us, file_w_kibs, file_r_kibs
+    ));
+    rt::print("PERF_OK\n");
+}
 fn heap_test() {
     let mut values = Vec::new();
     for n in 0..4096u64 { values.push(n ^ 0x1234); }
@@ -287,10 +394,11 @@ fn execute(command: &str) {
     let here = |p: &str| if p.is_empty() { String::from(".") } else { String::from(p) };
     match verb {
         "" => {}
-        "help" => rt::print("commands: help ls cd pwd mkdir rmdir cat edit echo cp rm mv df status fill sum clear msg desktop bench heaptest stats spawn run exec wait ps kill proctest selftest pairtest churn faulttest fstest storageprobe sync reboot ping\nuserspace: run hello.elf / sysinfo.elf / netstat.elf / calc.elf 2+3*4 / udpsend.elf <msg>\n"),
+        "help" => rt::print("commands: help ls cd pwd mkdir rmdir cat edit echo cp rm mv df status fill sum clear msg desktop bench perf heaptest stats spawn run exec wait ps kill proctest selftest pairtest churn faulttest fstest storageprobe sync reboot ping\nuserspace: run hello.elf / sysinfo.elf / netstat.elf / calc.elf 2+3*4 / udpsend.elf <msg>\n"),
         "ls" => list(&here(argument)),
         "clear" => { rt::call(SYS_CLEAR, 0, 0); }
         "bench" => bench(),
+        "perf" => perf_bench(),
         "heaptest" => heap_test(),
         "cat" => match read_file(&here(argument)) {
             Ok(bytes) => { if let Ok(text) = core::str::from_utf8(&bytes) { rt::print(text); } else { rt::print("binary file"); } rt::print("\n"); }

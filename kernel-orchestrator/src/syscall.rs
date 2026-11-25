@@ -182,7 +182,9 @@ fn file_open(system: &System, ino: Ino) -> bool {
 pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
     system.scheduler.collect();
     let ticks = system.scheduler.ticks;
+    system.scheduler.syscalls = system.scheduler.syscalls.wrapping_add(1);
     let Some(context) = system.scheduler.current_task_mut() else { return rsp; };
+    context.syscalls = context.syscalls.wrapping_add(1);
     context.rsp = rsp;
     let pid = context.id;
     let frame = unsafe { &mut *(rsp as *mut TrapFrame) };
@@ -702,6 +704,38 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         frame.rax = system.scheduler.tasks.iter().flatten().filter(|t| t.state != TaskState::Terminated).count() as u64;
     } else if is(number, SYS_TICKS) {
         frame.rax = system.scheduler.ticks;
+    } else if is(number, SYS_PERF) {
+        let (total_frames, free_frames) = {
+            let (pool, flags) = kernel_kit::memory::FRAME_ALLOCATOR.lock();
+            let counts = (pool.total_count() as u64, pool.free_count() as u64);
+            kernel_kit::memory::FRAME_ALLOCATOR.unlock(flags);
+            counts
+        };
+        let (heap_used, heap_cap, slab_hits, slab_misses) = kernel_kit::slab::global_metrics();
+        let (disk_reads, disk_writes, disk_flushes, disk_read_bytes, disk_write_bytes) = kernel_kit::virtio_blk::io_stats();
+        let stats = PerfStats {
+            ticks: system.scheduler.ticks,
+            busy_ticks: system.scheduler.busy_ticks,
+            idle_ticks: system.scheduler.idle_ticks,
+            context_switches: system.scheduler.context_switches,
+            syscalls: system.scheduler.syscalls,
+            tsc_khz: system.scheduler.tsc_khz,
+            phys_total_frames: total_frames,
+            phys_free_frames: free_frames,
+            heap_used_bytes: heap_used as u64,
+            heap_capacity_bytes: heap_cap as u64,
+            slab_hits: slab_hits as u64,
+            slab_misses: slab_misses as u64,
+            disk_reads,
+            disk_writes,
+            disk_flushes,
+            disk_read_bytes,
+            disk_write_bytes,
+        };
+        let context = system.scheduler.current_task().unwrap();
+        if copy_to_user(context, arg, as_bytes(&stats)) {
+            frame.rax = 0;
+        }
     } else if is(number, SYS_NET) {
         // Network stack: sub = arg:
         //   0=status, 1=recv (to RECV_BASE),

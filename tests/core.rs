@@ -270,6 +270,39 @@ fn scheduler_uses_idle_when_all_tasks_are_blocked() {
 }
 
 #[test]
+fn scheduler_tracks_busy_idle_context_switches_and_per_task_metrics() {
+    let mut s = scheduler::Scheduler::new();
+    let mut t1 = context::Context::new(1, 0x1000, 0x2000, 0x3000);
+    t1.kernel_stack_pages = 4;
+    t1.syscalls = 7;
+    s.spawn(t1).unwrap();
+    // idle -> task 1 counts as 1 context switch.
+    assert_eq!(s.switch_context(0x9000), 0x1000);
+    assert_eq!(s.context_switches, 1);
+    // Repeated switch with same task running does not count as an extra switch.
+    assert_eq!(s.switch_context(0x1080), 0x1080);
+    assert_eq!(s.context_switches, 1);
+    // Tick while task 1 is running increments busy_ticks and task 1's cpu_ticks.
+    let _ = s.timer_tick(0x1080);
+    assert_eq!(s.busy_ticks, 1);
+    assert_eq!(s.idle_ticks, 0);
+    assert_eq!(s.task(1).unwrap().cpu_ticks, 1);
+    // Block task 1 -> switch to idle increments context_switches; tick increments idle_ticks.
+    s.current_task_mut().unwrap().state = context::TaskState::Blocked;
+    s.current_task_mut().unwrap().sleep_until = 5;
+    assert_eq!(s.switch_context(0x1100), 0x9000);
+    assert_eq!(s.context_switches, 2);
+    assert_eq!(s.timer_tick(0x9100), 0x9100);
+    assert_eq!(s.idle_ticks, 1);
+    assert_eq!(s.busy_ticks, 1);
+    let (rows, count) = s.snapshot();
+    assert_eq!(count, 1);
+    assert_eq!(rows[0].cpu_ticks, 1);
+    assert_eq!(rows[0].mem_frames, 4);
+    assert_eq!(rows[0].syscalls, 7);
+}
+
+#[test]
 fn frame_allocator_spans_multiple_regions_up_to_8_gib() {
     let mut frames = Box::new(memory::FrameAllocator::new());
     // QEMU with 8 GiB: about 3 GiB below the PCI hole, 5 GiB above 4 GiB.

@@ -1,10 +1,26 @@
 //! Legacy/transitional virtio PCI block transport, single in-flight request.
 //! Split-ring layout and FLUSH follow OASIS Virtio 1.2, sections 2.7, 4.1, 5.2.
 use core::ptr::{read_volatile, write_volatile};
-use core::sync::atomic::{fence, Ordering};
+use core::sync::atomic::{fence, AtomicU64, Ordering};
 use crate::address_space::{frames_allocate, frames_free};
 use crate::io::Port;
 use crate::paging::phys_to_virt;
+
+static DISK_READS: AtomicU64 = AtomicU64::new(0);
+static DISK_WRITES: AtomicU64 = AtomicU64::new(0);
+static DISK_FLUSHES: AtomicU64 = AtomicU64::new(0);
+static DISK_READ_BYTES: AtomicU64 = AtomicU64::new(0);
+static DISK_WRITE_BYTES: AtomicU64 = AtomicU64::new(0);
+
+pub fn io_stats() -> (u64, u64, u64, u64, u64) {
+    (
+        DISK_READS.load(Ordering::Relaxed),
+        DISK_WRITES.load(Ordering::Relaxed),
+        DISK_FLUSHES.load(Ordering::Relaxed),
+        DISK_READ_BYTES.load(Ordering::Relaxed),
+        DISK_WRITE_BYTES.load(Ordering::Relaxed),
+    )
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiskError { Missing, Unsupported, Memory, Bounds, Timeout, Io, Corrupt, Full }
@@ -142,6 +158,20 @@ impl VirtioBlock {
             // A completed request with an I/O error still returned its queue
             // entry. Preserve the usable queue so a transient error can retry.
             if read_volatile(request.add(1024)) != 0 { return Err(DiskError::Io); }
+        }
+        match kind {
+            0 => {
+                DISK_READS.fetch_add(1, Ordering::Relaxed);
+                DISK_READ_BYTES.fetch_add(len as u64, Ordering::Relaxed);
+            }
+            1 => {
+                DISK_WRITES.fetch_add(1, Ordering::Relaxed);
+                DISK_WRITE_BYTES.fetch_add(len as u64, Ordering::Relaxed);
+            }
+            4 => {
+                DISK_FLUSHES.fetch_add(1, Ordering::Relaxed);
+            }
+            _ => {}
         }
         Ok(())
     }
