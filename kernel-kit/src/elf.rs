@@ -48,31 +48,45 @@ pub const IMAGE_LIMIT: u64 = IMAGE_BASE + 2 * 1024 * 1024;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ElfError { Header, Bounds, Segment, Permissions, Entry }
 
-pub struct Image<'a> {
+pub struct Image {
     pub entry: u64,
     pub start: u64,
     pub end: u64,
     pub segments: alloc::vec::Vec<Elf64_Phdr>,
-    pub bytes: &'a [u8],
 }
 
-impl<'a> Image<'a> {
-    pub fn parse(bytes: &'a [u8]) -> Result<Self, ElfError> {
-        if bytes.len() < 64 { return Err(ElfError::Header); }
-        let h = unsafe { core::ptr::read_unaligned(bytes.as_ptr() as *const Elf64_Ehdr) };
+impl Image {
+    pub fn parse(bytes: &[u8]) -> Result<Self, ElfError> {
+        Self::parse_from(bytes.len() as u64, |offset, out| {
+            let Ok(start) = usize::try_from(offset) else { return 0; };
+            if start >= bytes.len() { return 0; }
+            let count = out.len().min(bytes.len() - start);
+            out[..count].copy_from_slice(&bytes[start..start + count]);
+            count
+        })
+    }
+
+    pub fn parse_from(file_len: u64, mut read_at: impl FnMut(u64, &mut [u8]) -> usize) -> Result<Self, ElfError> {
+        if file_len < 64 { return Err(ElfError::Header); }
+        let mut hdr_buf = [0u8; 64];
+        if read_at(0, &mut hdr_buf) != 64 { return Err(ElfError::Header); }
+        let h = unsafe { core::ptr::read_unaligned(hdr_buf.as_ptr() as *const Elf64_Ehdr) };
         if !h.is_valid() || h.e_phnum == 0 || h.e_phnum > 16 { return Err(ElfError::Header); }
-        let phoff = usize::try_from(h.e_phoff).map_err(|_| ElfError::Bounds)?;
-        let end = phoff.checked_add(h.e_phnum as usize * 56).ok_or(ElfError::Bounds)?;
-        if phoff < 64 || end > bytes.len() { return Err(ElfError::Bounds); }
+        let ph_bytes = h.e_phnum as u64 * 56;
+        let end = h.e_phoff.checked_add(ph_bytes).ok_or(ElfError::Bounds)?;
+        if h.e_phoff < 64 || end > file_len { return Err(ElfError::Bounds); }
+        let mut ph_buf = [0u8; 16 * 56];
+        let ph_slice = &mut ph_buf[..ph_bytes as usize];
+        if read_at(h.e_phoff, ph_slice) != ph_slice.len() { return Err(ElfError::Bounds); }
         let mut result = Self { entry: h.e_entry, start: u64::MAX, end: 0,
-            segments: alloc::vec::Vec::new(), bytes };
+            segments: alloc::vec::Vec::new() };
         for i in 0..h.e_phnum as usize {
-            let p = unsafe { core::ptr::read_unaligned(bytes.as_ptr().add(phoff + 56 * i) as *const Elf64_Phdr) };
+            let p = unsafe { core::ptr::read_unaligned(ph_slice.as_ptr().add(56 * i) as *const Elf64_Phdr) };
             if p.p_type != 1 { continue; }
             if p.p_memsz == 0 { continue; }
             let vend = p.p_vaddr.checked_add(p.p_memsz).ok_or(ElfError::Bounds)?;
             let fend = p.p_offset.checked_add(p.p_filesz).ok_or(ElfError::Bounds)?;
-            if p.p_vaddr < IMAGE_BASE || vend > IMAGE_LIMIT || p.p_filesz > p.p_memsz || fend > bytes.len() as u64 {
+            if p.p_vaddr < IMAGE_BASE || vend > IMAGE_LIMIT || p.p_filesz > p.p_memsz || fend > file_len {
                 return Err(ElfError::Bounds);
             }
             if p.p_align > 1 && (!p.p_align.is_power_of_two() || p.p_vaddr % p.p_align != p.p_offset % p.p_align) {

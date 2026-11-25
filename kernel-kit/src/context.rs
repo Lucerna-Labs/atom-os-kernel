@@ -27,6 +27,8 @@ pub struct Context {
     pub kernel_stack_phys: u64,
     pub kernel_stack_pages: usize,
     pub parent: usize,
+    /// Process-tree ownership used for kill authorization (preserved if orphaned).
+    pub owner: usize,
     pub wait_for: Option<usize>,
     pub sleep_until: u64,
     pub exit_code: u64,
@@ -53,7 +55,7 @@ impl Context {
     pub const fn new(id: usize, rsp: u64, kernel_stack: u64, page_table_root: u64) -> Self {
         Self { id, rsp, kernel_stack, page_table_root, state: TaskState::Ready,
             open_files: [(0, 0); 16], readonly_files: 0, fs_error: 0, cwd: String::new(), space: None,
-            kernel_stack_phys: 0, kernel_stack_pages: 0, parent: 0,
+            kernel_stack_phys: 0, kernel_stack_pages: 0, parent: 0, owner: id,
             wait_for: None, sleep_until: 0, exit_code: 0, waited: false,
             mailbox: VecDeque::new(), arguments: Vec::new(), name: String::new(), identity: 0,
             stdin: None, stdout: None, pipes: [const { (None, None) }; MAX_PIPES] }

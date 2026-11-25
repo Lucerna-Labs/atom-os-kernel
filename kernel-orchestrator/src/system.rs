@@ -37,6 +37,13 @@ impl System {
     fn parent_stdio(&self, parent: usize) -> (Option<PipeEnd>, Option<PipeEnd>) {
         self.scheduler.task(parent).map(|p| (p.stdin.clone(), p.stdout.clone())).unwrap_or((None, None))
     }
+    pub fn owner_for_spawn(&self, parent: usize, pid: usize) -> usize {
+        if parent == 0 || parent == 1 || self.display_owner == Some(parent) {
+            pid
+        } else {
+            self.scheduler.task(parent).map_or(pid, |p| if p.owner != 0 { p.owner } else { parent })
+        }
+    }
     fn spawn_inner(&mut self, parent: usize, name: &str, arguments: alloc::vec::Vec<u8>,
                    stdin: Option<PipeEnd>, stdout: Option<PipeEnd>) -> Result<usize, ()> {
         self.scheduler.collect();
@@ -46,6 +53,7 @@ impl System {
         let pid = self.next_pid;
         let next = pid.checked_add(1).ok_or(())?;
         let mut context = crate::process::create(pid, parent, name, arguments, self.kernel_root).map_err(|_| ())?;
+        context.owner = self.owner_for_spawn(parent, pid);
         context.stdin = stdin;
         context.stdout = stdout;
         if let Err(mut context) = self.scheduler.spawn(context) {
@@ -61,6 +69,30 @@ impl System {
     }
     pub fn exit_current(&mut self, code: u64) {
         if let Some(pid) = self.scheduler.current_task().map(|t| t.id) { let _ = self.terminate(pid, code); }
+    }
+    /// Returns whether `caller` is authorized to terminate `target`.
+    pub fn can_kill(&self, caller: usize, target: usize) -> bool {
+        let Some(victim) = self.scheduler.task(target) else { return false; };
+        if caller == target
+            || caller == 1
+            || (self.display_owner == Some(caller) && target != 1)
+            || (victim.owner == caller && caller != 0)
+        {
+            return true;
+        }
+        let mut parent = victim.parent;
+        for _ in 0..crate::abi::MAX_PROCESSES {
+            if parent == 0 { return false; }
+            if parent == caller { return true; }
+            let Some(ancestor) = self.scheduler.task(parent) else { return false; };
+            parent = ancestor.parent;
+        }
+        false
+    }
+    /// Terminates `target` only when `caller` has authority over it.
+    pub fn kill_from(&mut self, caller: usize, target: usize) -> Result<(), ()> {
+        if !self.can_kill(caller, target) { return Err(()); }
+        self.kill(target)
     }
     /// Ends another live process with KILLED_STATUS. Its resources are
     /// reclaimed by `collect` once it is not the running task; its parent can

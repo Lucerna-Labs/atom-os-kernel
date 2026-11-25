@@ -114,7 +114,7 @@ fn test(original: &[String]) {
     assert_eq!(rt::wait(launch(&["--exec-check"])), 43);
     rt::print("ARGUMENT_LIMITS_EXEC_OK\n");
 
-    assert!(!rt::kill(0)); assert!(!rt::kill(u64::MAX));
+    assert!(!rt::kill(0)); assert!(!rt::kill(1)); assert!(!rt::kill(2)); assert!(!rt::kill(u64::MAX));
     assert_eq!(rt::wait(launch(&["--selfkill"])), KILLED_STATUS);
     let sleeper = launch(&["--sleep"]); state(sleeper, PROCESS_SLEEPING);
     assert!(rt::kill(sleeper)); assert!(!rt::kill(sleeper));

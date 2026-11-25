@@ -3,8 +3,10 @@
 #![allow(dead_code, unused_imports, unused_variables)]
 extern crate alloc;
 extern crate kernel_kit;
-use kernel_kit::{context, elf, fs, keyboard, memory, slab};
+use kernel_kit::{abi, context, elf, fs, keyboard, memory, slab};
 #[path = "../kernel-orchestrator/src/scheduler.rs"] mod scheduler;
+#[path = "../kernel-orchestrator/src/process.rs"] mod process;
+#[path = "../kernel-orchestrator/src/system.rs"] mod system;
 
 use std::alloc::{alloc_zeroed, dealloc, Layout};
 
@@ -218,6 +220,40 @@ fn elf_loader_checks_offsets_lengths_and_permissions() {
     }
     let mut wx = valid.clone(); wx[68..72].copy_from_slice(&7u32.to_le_bytes());
     assert!(elf::Image::parse(&wx).is_err());
+}
+
+#[test]
+fn elf_streaming_parse_matches_slice_and_handles_large_file_len() {
+    let valid = executable();
+    let expected = elf::Image::parse(&valid).unwrap();
+    let mut reads = 0usize;
+    let streamed = elf::Image::parse_from(32u64 << 20, |offset, out| {
+        reads += 1;
+        let Ok(start) = usize::try_from(offset) else { return 0; };
+        if start >= valid.len() { return 0; }
+        let count = out.len().min(valid.len() - start);
+        out[..count].copy_from_slice(&valid[start..start + count]);
+        count
+    }).unwrap();
+    assert_eq!(reads, 2);
+    assert_eq!((streamed.entry, streamed.start, streamed.end, streamed.segments.len()),
+               (expected.entry, expected.start, expected.end, expected.segments.len()));
+    assert!(elf::Image::parse_from(valid.len() as u64, |_, _| 0).is_err());
+    assert!(elf::Image::parse_from(valid.len() as u64 - 1, |offset, out| {
+        let start = offset as usize;
+        if start >= valid.len() { return 0; }
+        let count = out.len().min(valid.len() - start);
+        out[..count].copy_from_slice(&valid[start..start + count]);
+        count
+    }).is_err());
+    let mut wx = valid.clone();
+    wx[68..72].copy_from_slice(&7u32.to_le_bytes());
+    assert!(elf::Image::parse_from(wx.len() as u64, |offset, out| {
+        let start = offset as usize;
+        let count = out.len().min(wx.len().saturating_sub(start));
+        out[..count].copy_from_slice(&wx[start..start + count]);
+        count
+    }).is_err());
 }
 
 
@@ -860,4 +896,65 @@ fn process_snapshot_states_names_and_zeroed_unused_records() {
     scheduler.task_mut(99).unwrap().exit_code = KILLED_STATUS;
     assert_eq!(scheduler.snapshot().0[0].state, PROCESS_EXITED);
     assert_eq!(scheduler.snapshot().0[0].exit_code, KILLED_STATUS);
+}
+
+fn dummy_ctx(id: usize, parent: usize, owner: usize) -> context::Context {
+    let mut ctx = context::Context::new(id, 0, 0, 0);
+    ctx.parent = parent;
+    ctx.owner = owner;
+    ctx
+}
+
+#[test]
+fn kill_authorization_isolates_system_and_sibling_processes() {
+    let mut sys = system::System::new(0);
+    sys.display_owner = Some(3);
+    assert_eq!(sys.owner_for_spawn(0, 1), 1);
+    sys.scheduler.spawn(dummy_ctx(1, 0, 1)).unwrap();
+    sys.scheduler.spawn(dummy_ctx(2, 0, 2)).unwrap();
+    sys.scheduler.spawn(dummy_ctx(3, 1, 3)).unwrap();
+    let app1_owner = sys.owner_for_spawn(3, 4);
+    assert_eq!(app1_owner, 4);
+    sys.scheduler.spawn(dummy_ctx(4, 3, app1_owner)).unwrap();
+    let child_owner = sys.owner_for_spawn(4, 5);
+    assert_eq!(child_owner, 4);
+    sys.scheduler.spawn(dummy_ctx(5, 4, child_owner)).unwrap();
+    let grand_owner = sys.owner_for_spawn(5, 6);
+    assert_eq!(grand_owner, 4);
+    sys.scheduler.spawn(dummy_ctx(6, 5, grand_owner)).unwrap();
+    let app2_owner = sys.owner_for_spawn(3, 7);
+    assert_eq!(app2_owner, 7);
+    sys.scheduler.spawn(dummy_ctx(7, 3, app2_owner)).unwrap();
+
+    for protected in [1, 2, 3, 7] {
+        assert!(!sys.can_kill(4, protected), "app 4 must not kill pid {protected}");
+        assert!(sys.kill_from(4, protected).is_err());
+    }
+    assert!(!sys.can_kill(5, 4));
+    assert!(!sys.can_kill(6, 5));
+    assert!(!sys.can_kill(6, 4));
+    assert!(!sys.can_kill(6, 1));
+
+    assert!(!sys.can_kill(3, 1));
+    assert!(sys.can_kill(3, 2));
+    assert!(sys.can_kill(3, 4));
+    assert!(sys.can_kill(3, 7));
+
+    assert!(sys.can_kill(7, 7));
+    assert!(sys.can_kill(1, 2));
+    assert!(sys.can_kill(1, 3));
+    assert!(sys.can_kill(1, 7));
+
+    assert!(sys.can_kill(5, 6));
+
+    assert!(sys.kill_from(4, 5).is_ok());
+    assert_eq!(sys.scheduler.task(6).unwrap().parent, 0);
+    assert!(!sys.can_kill(7, 6));
+    assert!(sys.kill_from(4, 6).is_ok());
+    assert_eq!(sys.scheduler.task(6).unwrap().state, context::TaskState::Terminated);
+    assert!(sys.kill_from(7, 7).is_ok());
+    assert!(sys.kill_from(3, 2).is_ok());
+    // Clear display_owner before killing PID 3 so host tests do not trigger VGA port I/O.
+    sys.display_owner = None;
+    assert!(sys.kill_from(1, 3).is_ok());
 }

@@ -404,6 +404,39 @@ pub unsafe fn rdmsr(msr: u32) -> u64 {
     (low as u64) | ((high as u64) << 32)
 }
 
+unsafe fn enable_cpu_protections() -> (bool, bool, bool, bool) {
+    use core::arch::x86_64::__cpuid_count;
+
+    let mut cr0: u64;
+    core::arch::asm!("mov {}, cr0", out(reg) cr0, options(nomem, nostack, preserves_flags));
+    cr0 |= 1 << 16; // CR0.WP: enforce read-only pages in Ring 0.
+    core::arch::asm!("mov cr0, {}", in(reg) cr0, options(nomem, nostack, preserves_flags));
+    let wp = true;
+
+    let max_ext = __cpuid_count(0x8000_0000, 0).eax;
+    let nxe = max_ext >= 0x8000_0001 && (__cpuid_count(0x8000_0001, 0).edx & (1 << 20)) != 0;
+    if nxe {
+        let efer = rdmsr(0xC000_0080) | (1 << 11); // IA32_EFER.NXE
+        wrmsr(0xC000_0080, efer);
+    }
+
+    let max_std = __cpuid_count(0, 0).eax;
+    let (smep, smap) = if max_std >= 7 {
+        let ebx = __cpuid_count(7, 0).ebx;
+        ((ebx & (1 << 7)) != 0, (ebx & (1 << 20)) != 0)
+    } else {
+        (false, false)
+    };
+    if smep || smap {
+        let mut cr4: u64;
+        core::arch::asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack, preserves_flags));
+        if smep { cr4 |= 1 << 20; }
+        if smap { cr4 |= 1 << 21; }
+        core::arch::asm!("mov cr4, {}", in(reg) cr4, options(nomem, nostack, preserves_flags));
+    }
+    (wp, nxe, smep, smap)
+}
+
 unsafe fn setup_syscall_msr() {
     let efer_addr: u32 = 0xC0000080;
     let mut efer = rdmsr(efer_addr);
@@ -412,7 +445,7 @@ unsafe fn setup_syscall_msr() {
     let star: u64 = (0x08u64 << 32) | (0x13u64 << 48);
     wrmsr(0xC0000081, star);
     wrmsr(0xC0000082, syscall_entry as u64);
-    let fmask: u64 = (1 << 9) | (1 << 8);
+    let fmask: u64 = (1 << 9) | (1 << 8) | (1 << 10) | (1 << 18); // Clear IF, TF, DF, AC.
     wrmsr(0xC0000084, fmask);
 }
 
@@ -738,9 +771,14 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
         cr4 |= 1 << 10;   // Set OSXMMEXCPT
         core::arch::asm!("mov cr4, {}", in(reg) cr4);
     }
+    let (wp, nxe, smep, smap) = unsafe { enable_cpu_protections() };
     let (obj, sif_1) = kernel_kit::serial::SERIAL1.lock();
     obj.init();
     kernel_kit::serial::SERIAL1.unlock(sif_1);
+    {
+        use core::fmt::Write;
+        let _ = writeln!(EmergencySerial, "CPU_PROTECT wp={} nxe={} smep={} smap={}", wp as u8, nxe as u8, smep as u8, smap as u8);
+    }
 
     let (obj, sif_2) = kernel_kit::serial::SERIAL1.lock();
 

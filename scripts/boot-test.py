@@ -15,7 +15,7 @@ import uuid
 
 
 class Guest:
-    def __init__(self, source, output, disk, accel, memory="128M", *, blkdebug=None, netdev=None):
+    def __init__(self, source, output, disk, accel, memory="128M", *, blkdebug=None, netdev=None, cpu=None):
         self.output = output
         output.mkdir()
         self.control = tempfile.TemporaryDirectory(prefix="atom-qmp-")
@@ -24,14 +24,17 @@ class Guest:
         self.disk = disk
         image = source / "target/x86_64-os/release/bootimage-x86_64-kernel.bin"
         disk_source = str(disk) if blkdebug is None else f"blkdebug:{blkdebug}:{disk}"
-        command = ["qemu-system-x86_64", "-accel", accel, "-m", memory, "-smp", "1",
-                   "-drive", f"format=raw,file={image},snapshot=on",
-                   "-drive", f"if=none,format=raw,file={disk_source},id=atomdata,cache=writeback,werror=report,rerror=report",
-                   "-device", "virtio-blk-pci,drive=atomdata,disable-modern=on",
-                   "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
-                   "-display", "none", "-vga", "none", "-nic", "none", "-serial", f"file:{output / 'serial.log'}",
-                   "-qmp", f"unix:{self.qmp_path},server=on,wait=off", "-pidfile", str(self.pidfile),
-                   "-no-shutdown", "-d", "guest_errors", "-D", str(output / "guest-errors.log")]
+        command = ["qemu-system-x86_64", "-accel", accel]
+        if cpu is not None:
+            command.extend(["-cpu", cpu])
+        command.extend(["-m", memory, "-smp", "1",
+                        "-drive", f"format=raw,file={image},snapshot=on",
+                        "-drive", f"if=none,format=raw,file={disk_source},id=atomdata,cache=writeback,werror=report,rerror=report",
+                        "-device", "virtio-blk-pci,drive=atomdata,disable-modern=on",
+                        "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
+                        "-display", "none", "-vga", "none", "-nic", "none", "-serial", f"file:{output / 'serial.log'}",
+                        "-qmp", f"unix:{self.qmp_path},server=on,wait=off", "-pidfile", str(self.pidfile),
+                        "-no-shutdown", "-d", "guest_errors", "-D", str(output / "guest-errors.log")])
         if netdev is not None:
             i = command.index("-nic")
             command[i:i+2] = ["-netdev", netdev, "-device", "virtio-net-pci,netdev=lcnet,disable-modern=on,mac=52:54:00:12:34:56"]
@@ -166,6 +169,7 @@ def main():
     parser.add_argument("--accel", choices=["kvm", "tcg"], default="tcg")
     parser.add_argument("--rounds", type=int, default=48)
     parser.add_argument("--memory", default="8G", help="guest RAM, in QEMU -m syntax (default 8G)")
+    parser.add_argument("--cpu", default=None, help="QEMU -cpu model (e.g. host, max)")
     args = parser.parse_args()
     output = args.output.resolve(); output.mkdir(parents=True, exist_ok=False)
     source = args.source.resolve()
@@ -183,9 +187,15 @@ def main():
         print(name + " PASS", flush=True)
 
     try:
-        guest = Guest(source, output / "first", disk, args.accel, args.memory)
+        guest = Guest(source, output / "first", disk, args.accel, args.memory, cpu=args.cpu)
         result["qmp_kvm"] = guest.kvm
         guest.ready(); passed("BOOT_HEAP_BENCH")
+        match = guest.wait(r"CPU_PROTECT wp=(\d) nxe=(\d) smep=(\d) smap=(\d)")
+        assert match[1] == "1" and match[2] == "1", match[0]
+        if args.cpu in ("host", "max"):
+            assert match[3] == "1" and match[4] == "1", match[0]
+        result["cpu_protect"] = {"wp": int(match[1]), "nxe": int(match[2]), "smep": int(match[3]), "smap": int(match[4])}
+        passed("CPU_PROTECTIONS")
         match = guest.wait(r"MEMORY_READY frames=(\d+) mib=(\d+) regions=(\d+) top=(0x[0-9a-f]+) probe=ok")
         guest_mib = guest.qmp("query-memory-size-summary")["base-memory"] >> 20
         result["memory_ready"] = {"frames": int(match[1]), "mib": int(match[2]), "regions": int(match[3]), "top": match[4], "guest_mib": guest_mib}
@@ -288,7 +298,7 @@ def main():
         guest.command("sync", "SYNC_OK")
         guest.close(); guest = None
         result["disk_sha256_after_save"] = hashlib.sha256(disk.read_bytes()).hexdigest()
-        guest = Guest(source, output / "cold", disk, args.accel, args.memory)
+        guest = Guest(source, output / "cold", disk, args.accel, args.memory, cpu=args.cpu)
         guest.ready()
         guest.command("cat durable.txt", re.escape(token + "\n" + second + "\n")); passed("COLD_BOOT_EXACT_CONTENT")
         offset = len(guest.serial())

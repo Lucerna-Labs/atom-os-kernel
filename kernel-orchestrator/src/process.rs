@@ -21,20 +21,35 @@ pub fn load_image(name: &str, kernel_root: u64) -> Result<(AddressSpace, u64), M
         let ino = find_program(fs, name).ok_or(MapError::Address)?;
         kernel_kit::storage::ensure_loaded(fs, ino).map_err(|_| MapError::Address)?;
         let file = fs.node(ino).and_then(|n| n.file()).ok_or(MapError::Address)?;
-        let owned;
-        let bytes: &[u8] = match &file.content {
-            kernel_kit::fs::Content::Builtin(bytes) => bytes,
-            kernel_kit::fs::Content::Data(data) if data.len() <= PROGRAM_MAX => { owned = data.to_vec(); &owned }
+        let image = match &file.content {
+            kernel_kit::fs::Content::Builtin(bytes) => Image::parse(bytes).map_err(|_| MapError::Address)?,
+            kernel_kit::fs::Content::Data(data) if data.len() <= PROGRAM_MAX => {
+                Image::parse_from(data.len(), |offset, out| data.read_at(offset, out))
+                    .map_err(|_| MapError::Address)?
+            }
             _ => return Err(MapError::Address),
         };
-        let image = Image::parse(bytes).map_err(|_| MapError::Address)?;
         let mut space = AddressSpace::new(kernel_root)?;
         let pages = ((image.end - image.start) / 4096) as usize;
         let phys = space.allocate_region(image.start, pages, false)?;
         for segment in &image.segments {
-            unsafe {
-                core::ptr::copy_nonoverlapping(bytes.as_ptr().add(segment.p_offset as usize),
-                    (phys_to_virt(phys) + segment.p_vaddr - image.start) as *mut u8, segment.p_filesz as usize);
+            let len = segment.p_filesz as usize;
+            if len == 0 { continue; }
+            let dst = unsafe {
+                core::slice::from_raw_parts_mut(
+                    (phys_to_virt(phys) + segment.p_vaddr - image.start) as *mut u8,
+                    len,
+                )
+            };
+            match &file.content {
+                kernel_kit::fs::Content::Builtin(bytes) => {
+                    let start = segment.p_offset as usize;
+                    dst.copy_from_slice(&bytes[start..start + len]);
+                }
+                kernel_kit::fs::Content::Data(data) => {
+                    if data.read_at(segment.p_offset, dst) != len { return Err(MapError::Address); }
+                }
+                kernel_kit::fs::Content::Unloaded => return Err(MapError::Address),
             }
         }
         for page in (image.start..image.end).step_by(4096) {

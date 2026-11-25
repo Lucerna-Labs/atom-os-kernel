@@ -92,6 +92,19 @@ write step of a save), the text suite **23 checks passed** (folders, a 3 MB file
 written, copied, checksummed and read back after a reboot) and the desktop suite
 **11 checks passed** (saving into a folder and browsing folders in the picker).
 
+**Standalone OS & hardening update (November 25, 2026):** removed the
+experimental brain / Lightcone / E-series crates and hardened the standalone x86-64 OS
+with streaming disk ELF parsing, `CR0.WP` / `EFER.NXE` / `CR4.SMEP` / `CR4.SMAP`,
+`SYSCALL` `FMASK` flag hardening, full `copy_from_user` syscall isolation, and
+process-tree kill authorization. Across the full local suite on image SHA-256
+`99c2f96b...`: native suite **46 passed, 0 failed** (`kernel-net`: 2, `core-tests`: 37,
+`ui-intent`: 7), userspace host suite **4 passed, 0 failed** plus **10 ELF preflight
+cases**, `boot-test.py` **27 checks passed** on both KVM (`--cpu host`, confirming
+`wp=1 nxe=1 smep=1 smap=1`) and TCG (`wp=1 nxe=1`), `desktop-test.py` **13 checks passed**
+on KVM, `test-userspace-imports.py` **7 checks passed** on KVM, `test-console.py`
+**2 sessions passed** on KVM, and `test-storage-recovery.py` **9 recovery cases passed**
+on KVM.
+
 
 The acceptance suite also exercises keyboard input, file reads/writes, exact IPC
 delivery, concurrent processes, invalid-pointer/ELF rejection, fast syscalls,
@@ -147,7 +160,7 @@ Authenticate with an account that has access to this private repository before
 cloning:
 
 ```sh
-git clone https://github.com/Rekonquest/atom-os-kernel.git
+git clone https://github.com/Lucerna-Labs/atom-os-kernel.git
 cd atom-os-kernel
 
 bash scripts/build.sh
@@ -311,8 +324,7 @@ per text line, so they never hit the wire's line cap.
 The vocabulary is [`ui-intent`](ui-intent/src/lib.rs), a zero-dependency crate with
 no renderer types; the desktop's bridge to the kit lives only in
 [`desktop/src/apps/remote.rs`](desktop/src/apps/remote.rs). On the wire it is
-readable text, one node per line, so a window description passes the E24 egress cone
-like any prose and shows up legibly in logs:
+readable text, one node per line, so a window description shows up legibly in logs:
 
 ```text
 window 300 440: Calculator
@@ -408,8 +420,6 @@ repository when you want its latest improvements.
 | `ps` | Snapshot PID, parent PID, state and program name; uncollected exits remain visible |
 | `kill PID` | Immediately terminate a live process; its parent can collect status **137** with `wait` |
 | `proctest` | Exercise argument limits, bad pointers, exec, process inspection, kill/wait and cleanup |
-| `demos` | Run the security demo fleet (E21–E38) and return when it is done (at most 60 s); once per boot, since the demo keys have one life per boot |
-| `sense` | Shadow-web state and every live process's foreign budget; `sense arm`, `disarm`, `reset`, `keying 0` or `1`, `horizon N` set its knobs (see [docs/E21-ARMING.md](docs/E21-ARMING.md)) |
 | `selftest`, `pairtest` | Run one worker or two concurrent workers and check their exits |
 | `churn 48` | Exercise repeated process creation/reaping and compare free-frame counts |
 | `fstest` | Exercise file lifecycle and full-capacity checks on an empty filesystem with a disk |
@@ -587,7 +597,9 @@ list, with evidence and next steps per item, is [docs/TODO.md](docs/TODO.md).
   windowed programs, and add list, scroll and text-area elements to `ui-intent`.
 - A way to put new program files on the disk: manifests in `/apps` can name any path,
   but program files still arrive only with the boot image.
-- Kernel hardening (SMEP/SMAP, user permissions) and multiprocessor support.
+- Kernel hardening (`CR0.WP`, `EFER.NXE`, `CR4.SMEP`, `CR4.SMAP`, `copy_from_user`
+  syscall isolation, and process-tree kill authorization are implemented;
+  multiprocessor support and broader capability/user permissions remain open).
 - **TODO (handed to another coder):** run unmodified Linux programs by composing what
   they lack over them from the outside. See
   [docs/parked/linux-programs.md](docs/parked/linux-programs.md).
@@ -595,10 +607,10 @@ list, with evidence and next steps per item, is [docs/TODO.md](docs/TODO.md).
 ## CI and preserved history
 
 The [Test OS workflow](.github/workflows/test.yml) builds all bundled programs
-and the boot image. It runs native regressions, the network causal-world tests,
-the text acceptance suite, interrupted-storage recovery, the interactive console
-and the desktop acceptance suite under TCG, and keeps their logs and screenshots
-as artifacts. Check [GitHub Actions](https://github.com/Rekonquest/atom-os-kernel/actions)
+and the boot image. It runs native regressions, the text acceptance suite,
+interrupted-storage recovery, the interactive console and the desktop acceptance
+suite under TCG, and keeps their logs and screenshots as artifacts. Check
+[GitHub Actions](https://github.com/Lucerna-Labs/atom-os-kernel/actions)
 for the status of a particular commit.
 
 Selected reports and raw logs are committed under [`test-results/`](test-results),
@@ -606,12 +618,3 @@ including the [original failed baseline](test-results/20260905T202917Z/REPORT.md
 Generated images, test data disks, caches and large trace archives remain local.
 [BACKUP.md](BACKUP.md) explains the backup scope and the inherited, unused
 `atom-3d-engine` Git link.
-
-## Network causal-world Lightcone
-
-The separate network Lightcone uses sourced typed relationships and trained
-48D geometry, with passive admission on ingress and successful egress. It
-preserves provenance and emits read-only receipts; it is not the substrate or
-the existing egress filter. The current embedded world is a **local diagnostic**;
-TPU acceptance, broad coverage and long-term reliability remain open.
-See [construction, build, evidence and limits](network-lightcone/README.md).

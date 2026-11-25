@@ -615,7 +615,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             if copy_to_user(context, arg, raw) { frame.rax = count as u64; }
         }
     } else if is(number, SYS_KILL) {
-        if system.kill(arg as usize).is_ok() {
+        if system.kill_from(pid, arg as usize).is_ok() {
             frame.rax = 0; switch = arg == pid as u64;
         }
     } else if is(number, SYS_WAIT) {
@@ -724,14 +724,15 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                 }
             }
         } else if sub == 2 {
-            if arg2 <= 1500 && context.space.as_ref().unwrap().valid_user_range(arg1, arg2 as usize, false) {
-                let bytes = unsafe { core::slice::from_raw_parts(arg1 as *const u8, arg2 as usize) };
-                let transmit = &mut |out: &[u8]| kernel_net::send_raw(out);
-                frame.rax = match kernel_net::send_probed(bytes, transmit) {
-                    Ok(()) => 1,
-                    Err(kernel_net::SendCause::NoRoute) => 3,
-                    Err(kernel_net::SendCause::Driver) => 4,
-                };
+            if arg2 <= 1500 {
+                if let Some(bytes) = copy_from_user(context, arg1, arg2 as usize) {
+                    let transmit = &mut |out: &[u8]| kernel_net::send_raw(out);
+                    frame.rax = match kernel_net::send_probed(&bytes, transmit) {
+                        Ok(()) => 1,
+                        Err(kernel_net::SendCause::NoRoute) => 3,
+                        Err(kernel_net::SendCause::Driver) => 4,
+                    };
+                }
             }
         } else if sub == 3 {
             kernel_net::heartbeat();
@@ -742,19 +743,19 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             frame.rax = u64::from(kernel_net::bind(arg1 as u16));
         } else if sub == 6 {
             // Buffer = [4B dst ip BE | 2B dst port BE | 2B src port BE | data...].
-            if arg2 >= 8 && arg2 <= 8 + 512
-                && context.space.as_ref().unwrap().valid_user_range(arg1, arg2 as usize, false) {
-                let bytes = unsafe { core::slice::from_raw_parts(arg1 as *const u8, arg2 as usize) };
-                let mut ip = [0u8; 4];
-                ip.copy_from_slice(&bytes[0..4]);
-                let dst_port = u16::from_be_bytes([bytes[4], bytes[5]]);
-                let src_port = u16::from_be_bytes([bytes[6], bytes[7]]);
-                let transmit = &mut |out: &[u8]| kernel_net::send_raw(out);
-                frame.rax = match kernel_net::udp_send(ip, dst_port, src_port, &bytes[8..], transmit) {
-                    Ok(()) => 1,
-                    Err(kernel_net::UdpCause::NoRoute) => 3,
-                    Err(kernel_net::UdpCause::Driver) => 4,
-                };
+            if (8..=8 + 512).contains(&arg2) {
+                if let Some(bytes) = copy_from_user(context, arg1, arg2 as usize) {
+                    let mut ip = [0u8; 4];
+                    ip.copy_from_slice(&bytes[0..4]);
+                    let dst_port = u16::from_be_bytes([bytes[4], bytes[5]]);
+                    let src_port = u16::from_be_bytes([bytes[6], bytes[7]]);
+                    let transmit = &mut |out: &[u8]| kernel_net::send_raw(out);
+                    frame.rax = match kernel_net::udp_send(ip, dst_port, src_port, &bytes[8..], transmit) {
+                        Ok(()) => 1,
+                        Err(kernel_net::UdpCause::NoRoute) => 3,
+                        Err(kernel_net::UdpCause::Driver) => 4,
+                    };
+                }
             }
         } else if sub == 7 {
             if let Some(space) = context.space.as_ref() {
