@@ -5,6 +5,7 @@ use kernel_kit::pipe::PipeEnd;
 
 pub struct System {
     pub scheduler: Scheduler,
+    pub bus: crate::bus::SpiderwebBus,
     pub kernel_root: u64,
     next_pid: usize,
     /// Process that owns the framebuffer and receives all input.
@@ -12,7 +13,13 @@ pub struct System {
 }
 impl System {
     pub const fn new(kernel_root: u64) -> Self {
-        Self { scheduler: Scheduler::new(), kernel_root, next_pid: 1, display_owner: None }
+        Self {
+            scheduler: Scheduler::new(),
+            bus: crate::bus::SpiderwebBus::new(),
+            kernel_root,
+            next_pid: 1,
+            display_owner: None,
+        }
     }
     /// Starts `name` with the parent's standard input and output.
     pub fn spawn_program(&mut self, parent: usize, name: &str) -> Result<usize, ()> {
@@ -60,11 +67,15 @@ impl System {
             context.release_resources();
             return Err(());
         }
+        if let Some(slot) = self.scheduler.slot_of(pid) {
+            self.bus.on_strand_spawn(slot, self.scheduler.ticks);
+        }
         self.next_pid = next;
         Ok(pid)
     }
     pub fn schedule_tick(&mut self, rsp: u64) -> u64 {
         self.scheduler.collect();
+        self.bus.advance_tick(self.scheduler.ticks);
         self.scheduler.timer_tick(rsp)
     }
     pub fn exit_current(&mut self, code: u64) {
@@ -101,8 +112,12 @@ impl System {
         self.terminate(pid, crate::abi::KILLED_STATUS)
     }
     pub fn terminate(&mut self, pid: usize, code: u64) -> Result<(), ()> {
+        let slot = self.scheduler.slot_of(pid);
         let current = self.scheduler.task(pid).ok_or(())?;
         if current.state == TaskState::Terminated { return Err(()); }
+        if let Some(s) = slot {
+            self.bus.on_strand_exit(s, self.scheduler.ticks);
+        }
         if self.display_owner == Some(pid) { self.release_display(); }
         let current = self.scheduler.task_mut(pid).ok_or(())?;
         current.exit_code = code;

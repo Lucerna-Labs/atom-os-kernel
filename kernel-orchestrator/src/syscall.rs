@@ -225,12 +225,34 @@ fn file_open(system: &System, ino: Ino) -> bool {
     system.scheduler.tasks.iter().flatten().any(|task| task.open_files.iter().any(|entry| entry.0 == ino as u64 + 1))
 }
 
+#[inline(always)]
+fn syscall_bin(number: u64) -> u8 {
+    match number {
+        SYS_IPC_SEND | SYS_IPC_RECV => 1,
+        SYS_READ | SYS_WRITE | 14 | SYS_STDIN_READ | SYS_CONSOLE_WRITE | SYS_WRITE_BUFFER
+        | SYS_PIPE | SYS_PIPE_CLOSE | SYS_PIPE_READ | SYS_PIPE_WRITE => 2,
+        SYS_ALLOC | SYS_FREE => 3,
+        SYS_OPEN | SYS_OPEN_EXISTING | SYS_READ_FILE | SYS_WRITE_FILE
+        | SYS_WRITE_FILE_BUFFER | SYS_REPLACE_FILE | SYS_FILE_READ | SYS_FILE_WRITE
+        | SYS_SEEK | SYS_CLOSE | SYS_TRUNCATE | SYS_STAT | SYS_READ_DIR | SYS_FS_INFO
+        | SYS_FS_STAT | SYS_FS_ERROR | SYS_LIST_DIR | SYS_LIST_FILES | SYS_REMOVE
+        | SYS_RENAME | SYS_MKDIR | SYS_CHDIR | SYS_PWD | SYS_SYNC => 4,
+        SYS_EXEC | SYS_EXEC_ARGS | SYS_SPAWN | SYS_SPAWN_ARGS | SYS_SPAWN_WITH | SYS_EXIT
+        | SYS_KILL | SYS_WAIT | SYS_PROCESSES | SYS_ARGS => 5,
+        SYS_NET => 6,
+        SYS_DISPLAY_PRESENT | SYS_DISPLAY_OPEN | SYS_DISPLAY_CLOSE | SYS_INPUT_POLL
+        | SYS_VGA => 7,
+        _ => 0,
+    }
+}
+
 /// Called with interrupts disabled and the actual interrupted frame registered
 /// in the current context. Never dispatch through an earlier saved frame.
 pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
     system.scheduler.collect();
     let ticks = system.scheduler.ticks;
     system.scheduler.syscalls = system.scheduler.syscalls.wrapping_add(1);
+    let slot = system.scheduler.current_slot();
     let Some(context) = system.scheduler.current_task_mut() else { return rsp; };
     context.syscalls = context.syscalls.wrapping_add(1);
     context.rsp = rsp;
@@ -241,6 +263,9 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
     let arg1 = frame.rsi;
     let arg2 = frame.rdx;
     frame.rax = ERROR;
+    if let Some(s) = slot {
+        system.bus.record_event(s, syscall_bin(number), atom_web_fp::SCALE >> 4, 0, ticks);
+    }
     let mut switch = false;
     if is(number, SYS_YIELD) {
         frame.rax = 0; switch = true;
@@ -293,7 +318,13 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                 let piped = context.stdout.is_some();
                 let out = stdout_write(context, &bytes);
                 frame.rax = out;
-                if piped && out > 0 && out < BROKEN_PIPE { system.wake_display_owner(); }
+                if out == WOULD_BLOCK {
+                    if let Some(s) = slot {
+                        system.bus.record_event(s, 2, 0, atom_web_fp::SCALE, ticks);
+                    }
+                } else if piped && out > 0 && out < BROKEN_PIPE {
+                    system.wake_display_owner();
+                }
             }
         }
     } else if is(number, SYS_OPEN) || is(number, SYS_OPEN_EXISTING) {
@@ -643,7 +674,12 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             let wrote = matches!(result, kernel_kit::pipe::Write::Wrote(count) if count > 0);
             frame.rax = match result {
                 kernel_kit::pipe::Write::Wrote(count) => count as u64,
-                kernel_kit::pipe::Write::WouldBlock => WOULD_BLOCK,
+                kernel_kit::pipe::Write::WouldBlock => {
+                    if let Some(s) = slot {
+                        system.bus.record_event(s, 2, 0, atom_web_fp::SCALE, ticks);
+                    }
+                    WOULD_BLOCK
+                }
                 kernel_kit::pipe::Write::Broken => ERROR,
             };
             if wrote { system.wake_display_owner(); }
@@ -675,12 +711,23 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         frame.rax = pid as u64;
     } else if is(number, SYS_IPC_SEND) {
         if let Ok(message) = user_string(context, arg1, 256) {
+            let target_slot = system.scheduler.slot_of(arg as usize);
             if let Some(target) = system.scheduler.task_mut(arg as usize) {
                 if target.state != TaskState::Terminated && target.mailbox.len() < 4 {
                     target.mailbox.push_back(message.into_bytes());
+                    let q_len = target.mailbox.len() as i64;
                     if target.state == TaskState::Blocked && target.wait_for.is_none() {
                         target.state = TaskState::Ready;
                         target.sleep_until = 0;
+                    }
+                    if let Some(ts) = target_slot {
+                        system.bus.record_event(
+                            ts,
+                            1,
+                            atom_web_fp::SCALE >> 3,
+                            q_len * (atom_web_fp::SCALE >> 2),
+                            ticks,
+                        );
                     }
                     frame.rax = 0;
                 }
@@ -778,6 +825,12 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             disk_read_bytes,
             disk_write_bytes,
         };
+        let context = system.scheduler.current_task().unwrap();
+        if copy_to_user(context, arg, as_bytes(&stats)) {
+            frame.rax = 0;
+        }
+    } else if is(number, SYS_WEB) {
+        let stats = system.bus.snapshot();
         let context = system.scheduler.current_task().unwrap();
         if copy_to_user(context, arg, as_bytes(&stats)) {
             frame.rax = 0;

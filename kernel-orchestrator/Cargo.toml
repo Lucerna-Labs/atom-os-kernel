@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+atom-web-fp = { path = "../atom-web-fp" }
+atom-web-engine = { path = "../atom-web-engine" }
 kernel-kit = { path = "../kernel-kit" }
 kernel-net = { path = "../kernel-net" }

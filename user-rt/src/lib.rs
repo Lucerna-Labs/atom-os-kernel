@@ -370,6 +370,10 @@ pub fn perf() -> Option<PerfStats> {
     let mut stats = PerfStats::default();
     (call(SYS_PERF, &mut stats as *mut PerfStats as u64, 0) == 0).then_some(stats)
 }
+pub fn web_stats() -> Option<WebStats> {
+    let mut stats = WebStats::default();
+    (call(SYS_WEB, &mut stats as *mut WebStats as u64, 0) == 0).then_some(stats)
+}
 
 // ---- processes -------------------------------------------------------------
 

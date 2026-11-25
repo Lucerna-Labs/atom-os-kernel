@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "atom-web-fp", "atom-web-engine",
     "daemon", "user-rt", "worker", "desktop", "ui-intent", "atom-window", "gui-apps",
     "kernel-kit", "kernel-orchestrator", "kernel-net", "payload",
     "x86_64-kernel",

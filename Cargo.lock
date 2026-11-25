@@ -3,6 +3,17 @@
 version = 4
 
 [[package]]
+name = "atom-web-engine"
+version = "0.1.0"
+dependencies = [
+ "atom-web-fp",
+]
+
+[[package]]
+name = "atom-web-fp"
+version = "0.1.0"
+
+[[package]]
 name = "atom-window"
 version = "0.1.0"
 dependencies = [
@@ -64,6 +75,8 @@ dependencies = [
 name = "kernel-orchestrator"
 version = "0.1.0"
 dependencies = [
+ "atom-web-engine",
+ "atom-web-fp",
  "kernel-kit",
  "kernel-net",
 ]

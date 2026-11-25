@@ -1,0 +1,7 @@
+[package]
+name = "atom-web-engine"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+atom-web-fp = { path = "../atom-web-fp" }

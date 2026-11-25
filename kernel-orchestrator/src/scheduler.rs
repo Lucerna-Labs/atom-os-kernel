@@ -26,6 +26,10 @@ impl Scheduler {
     }
     pub fn current_task(&self) -> Option<&Context> { self.current.and_then(|i| self.tasks[i].as_ref()) }
     pub fn current_task_mut(&mut self) -> Option<&mut Context> { self.current.and_then(|i| self.tasks[i].as_mut()) }
+    pub fn current_slot(&self) -> Option<usize> { self.current }
+    pub fn slot_of(&self, pid: usize) -> Option<usize> {
+        self.tasks.iter().position(|t| t.as_ref().is_some_and(|task| task.id == pid))
+    }
     pub fn task(&self, pid: usize) -> Option<&Context> { self.tasks.iter().flatten().find(|t| t.id == pid) }
     pub fn task_mut(&mut self, pid: usize) -> Option<&mut Context> { self.tasks.iter_mut().flatten().find(|t| t.id == pid) }
     pub fn has_slot(&self) -> bool { self.tasks.iter().any(|t| t.is_none()) }

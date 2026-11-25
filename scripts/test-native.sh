@@ -7,14 +7,14 @@ out=${ATOM_TEST_OUT:-"$root/target/native-tests"}
 mkdir -p "$out"
 deps=()
 : > "$out/compile.log"
-for crate in kernel-kit kernel-net; do
+for crate in atom-web-fp atom-web-engine kernel-kit kernel-net; do
   name=${crate//-/_}
   rustc +"$toolchain" --edition=2024 --crate-name "$name" --crate-type rlib \
     "$root/$crate/src/lib.rs" -L "dependency=$out" "${deps[@]}" \
     -o "$out/lib$name.rlib" 2>> "$out/compile.log"
   deps+=(--extern "$name=$out/lib$name.rlib")
   # Each crate's own unit tests.
-  if grep -q '#\[test\]' "$root/$crate/src/lib.rs"; then
+  if grep -rq '#\[test\]' "$root/$crate/src"; then
     rustc +"$toolchain" --edition=2024 --test --cfg 'feature="std"' \
       "$root/$crate/src/lib.rs" -L "dependency=$out" "${deps[@]}" \
       -o "$out/$name-tests" 2>> "$out/compile.log"

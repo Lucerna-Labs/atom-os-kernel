@@ -2,8 +2,11 @@
 // No privileged IRQ, port-I/O, or paging instruction is executed here.
 #![allow(dead_code, unused_imports, unused_variables)]
 extern crate alloc;
+extern crate atom_web_engine;
+extern crate atom_web_fp;
 extern crate kernel_kit;
 use kernel_kit::{abi, context, elf, fs, keyboard, memory, slab};
+#[path = "../kernel-orchestrator/src/bus.rs"] mod bus;
 #[path = "../kernel-orchestrator/src/scheduler.rs"] mod scheduler;
 #[path = "../kernel-orchestrator/src/process.rs"] mod process;
 #[path = "../kernel-orchestrator/src/system.rs"] mod system;
@@ -1044,4 +1047,50 @@ fn kill_authorization_isolates_system_and_sibling_processes() {
     // Clear display_owner before killing PID 3 so host tests do not trigger VGA port I/O.
     sys.display_owner = None;
     assert!(sys.kill_from(1, 3).is_ok());
+}
+
+#[test]
+fn spiderweb_bus_monotonic_generations_never_reset_on_reuse() {
+    let mut b = bus::SpiderwebBus::new();
+    b.on_strand_spawn(4, 1);
+    assert_eq!(b.snapshot().strand_gen[4], 1);
+    b.on_strand_exit(4, 2);
+    assert_eq!(b.snapshot().strand_gen[4], 1);
+    b.on_strand_spawn(4, 3);
+    assert_eq!(b.snapshot().strand_gen[4], 2);
+    b.on_strand_exit(4, 4);
+    b.on_strand_spawn(4, 5);
+    assert_eq!(b.snapshot().strand_gen[4], 3);
+}
+
+#[test]
+fn spiderweb_bus_live_invariants_and_cross_web_vibration() {
+    let mut b = bus::SpiderwebBus::new();
+    for t in 0..64u64 {
+        b.record_event(1, (t & 1) as u8, atom_web_fp::SCALE >> 3, 0, t);
+        b.advance_tick(t);
+    }
+    for t in 64..128u64 {
+        b.record_event(7, 6, atom_web_fp::SCALE, atom_web_fp::SCALE, t);
+        b.advance_tick(t);
+    }
+    let stats = b.snapshot();
+    assert_eq!(stats.steps, 128);
+    assert!(stats.max_norm_err_q30 <= atom_web_fp::SCALE / 10_000);
+    assert_eq!(stats.max_chem_err_q30, 0);
+    assert_eq!(stats.max_antisym_err_q30, 0);
+    assert!(stats.min_temp_q30 >= atom_web_fp::T_MIN);
+    assert!(
+        stats.strand_response_q30.iter().enumerate().any(|(i, &r)| i != 7 && r > 0),
+        "expected cross-web propagation onto remote strands: {:?}",
+        stats.strand_response_q30
+    );
+}
+
+#[test]
+fn spiderweb_bus_config_sealed_and_orderb_x1early() {
+    let b = bus::SpiderwebBus::new();
+    let stats = b.snapshot();
+    assert_eq!(stats.config_tag, abi::WEB_CONFIG_ORDERB_X1EARLY);
+    assert_eq!(stats.active_obs_mask, 0x0FFF);
 }

@@ -279,6 +279,15 @@ def main():
         result["large_file_sum"] = big_sum
         passed("LARGE_FILE_BULK_IO")
         guest.command("faulttest", "FAULT_ISOLATION_OK status=142"); passed("USER_FAULT_CONTAINED")
+        match = guest.command("web", r"WEB_BUS steps=(\d+) events=(\d+) cfg=0x0b010001 norm_err=(\d+) chem_err=(\d+) antisym=(\d+) min_t=(\d+)")
+        assert int(match[1]) > 0 and int(match[2]) > 0, match[0]
+        assert int(match[3]) <= 107374 and int(match[4]) == 0 and int(match[5]) == 0 and int(match[6]) >= 268435456, match[0]
+        result["spiderweb_bus"] = {
+            "steps": int(match[1]), "events": int(match[2]),
+            "norm_err": int(match[3]), "chem_err": int(match[4]),
+            "antisym": int(match[5]), "min_t": int(match[6]),
+        }
+        passed("SPIDERWEB_BUS")
         guest.command("sync", "SYNC_OK", 120)
         guest.command("df", r"Everything is saved"); passed("VIRTIO_FLUSH_COMMIT")
         offset = len(guest.serial())

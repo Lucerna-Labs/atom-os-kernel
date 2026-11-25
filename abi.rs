@@ -264,6 +264,27 @@ pub const SYS_READ_DIR: u64 = 79;
 pub const SYS_FS_INFO: u64 = 80;
 /// rdi = PerfStats pointer to fill; returns 0 on success.
 pub const SYS_PERF: u64 = 81;
+/// rdi = WebStats pointer to fill; returns 0 on success.
+pub const SYS_WEB: u64 = 82;
+
+pub const WEB_CONFIG_ORDERB_X1EARLY: u32 = 0x0B01_0001;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct WebStats {
+    pub steps: u64,
+    pub events_total: u64,
+    pub active_obs_mask: u32,
+    pub config_tag: u32,
+    pub max_norm_err_q30: i64,
+    pub max_chem_err_q30: i64,
+    pub max_antisym_err_q30: i64,
+    pub min_temp_q30: i64,
+    pub x1_spread_q30: i64,
+    pub scalars_q30: [i64; 12],
+    pub strand_response_q30: [i64; MAX_PROCESSES],
+    pub strand_gen: [u64; MAX_PROCESSES],
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]

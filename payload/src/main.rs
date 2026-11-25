@@ -327,6 +327,37 @@ fn perf_bench() {
     ));
     rt::print("PERF_OK\n");
 }
+fn web_report() {
+    let Some(s) = rt::web_stats() else {
+        rt::print("web: SYS_WEB unavailable\n");
+        return;
+    };
+    let to_milli = |q30: i64| -> i64 { ((q30 as i128 * 1000) >> 30) as i64 };
+    rt::print_args(format_args!(
+        "WEB_BUS steps={} events={} cfg={:#010x} norm_err={} chem_err={} antisym={} min_t={}\n",
+        s.steps, s.events_total, s.config_tag, s.max_norm_err_q30,
+        s.max_chem_err_q30, s.max_antisym_err_q30, s.min_temp_q30
+    ));
+    rt::print_args(format_args!(
+        "  domains(mQ30): q_coh={} q_born={} q_chiral={} mech_e={} mech_j={} th_sig={} th_ex={} info_kl={} info_s={} chem_b={} chem_c={} cog_fe={} x1_chaos={}\n",
+        to_milli(s.scalars_q30[0]), to_milli(s.scalars_q30[1]), to_milli(s.scalars_q30[2]),
+        to_milli(s.scalars_q30[3]), to_milli(s.scalars_q30[4]),
+        to_milli(s.scalars_q30[5]), to_milli(s.scalars_q30[6]),
+        to_milli(s.scalars_q30[7]), to_milli(s.scalars_q30[8]),
+        to_milli(s.scalars_q30[9]), to_milli(s.scalars_q30[10]),
+        to_milli(s.scalars_q30[11]), to_milli(s.x1_spread_q30)
+    ));
+    for slot in 0..MAX_PROCESSES {
+        let resp = s.strand_response_q30[slot];
+        let generation = s.strand_gen[slot];
+        if generation != 0 || resp != 0 {
+            rt::print_args(format_args!(
+                "  strand[{slot}]: gen={generation} resp_mQ30={}\n",
+                to_milli(resp)
+            ));
+        }
+    }
+}
 fn heap_test() {
     let mut values = Vec::new();
     for n in 0..4096u64 { values.push(n ^ 0x1234); }
@@ -394,11 +425,12 @@ fn execute(command: &str) {
     let here = |p: &str| if p.is_empty() { String::from(".") } else { String::from(p) };
     match verb {
         "" => {}
-        "help" => rt::print("commands: help ls cd pwd mkdir rmdir cat edit echo cp rm mv df status fill sum clear msg desktop bench perf heaptest stats spawn run exec wait ps kill proctest selftest pairtest churn faulttest fstest storageprobe sync reboot ping\nuserspace: run hello.elf / sysinfo.elf / netstat.elf / calc.elf 2+3*4 / udpsend.elf <msg>\n"),
+        "help" => rt::print("commands: help ls cd pwd mkdir rmdir cat edit echo cp rm mv df status fill sum clear msg desktop bench perf web heaptest stats spawn run exec wait ps kill proctest selftest pairtest churn faulttest fstest storageprobe sync reboot ping\nuserspace: run hello.elf / sysinfo.elf / netstat.elf / calc.elf 2+3*4 / udpsend.elf <msg>\n"),
         "ls" => list(&here(argument)),
         "clear" => { rt::call(SYS_CLEAR, 0, 0); }
         "bench" => bench(),
         "perf" => perf_bench(),
+        "web" => web_report(),
         "heaptest" => heap_test(),
         "cat" => match read_file(&here(argument)) {
             Ok(bytes) => { if let Ok(text) = core::str::from_utf8(&bytes) { rt::print(text); } else { rt::print("binary file"); } rt::print("\n"); }

@@ -563,6 +563,10 @@ pub extern "C" fn exception_handler(frame: *const u64, vector: u64) -> u64 {
             if cs & 3 == 3 { "USER_FAULT" } else { "KERNEL_EXCEPTION" }, vector, error, rip, rsp, cr2);
         if cs & 3 == 3 {
             if let Some(sys) = &mut *(&raw mut SYSTEM) {
+                if let Some(slot) = sys.scheduler.current_slot() {
+                    let ticks = sys.scheduler.ticks;
+                    sys.bus.record_event(slot, 7, 1 << 30, 1 << 30, ticks);
+                }
                 sys.exit_current(128 + vector);
                 let next = sys.scheduler.switch_context(frame as u64);
                 activate(sys);
