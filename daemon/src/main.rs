@@ -27,6 +27,6 @@ fn main() {
             if tasks == 1 { rt::print_args(format_args!("[Daemon] Heartbeat... tasks={}\n", tasks)); }
             heartbeat = ticks;
         }
-        rt::sleep(5);
+        rt::sleep(50);
     }
 }

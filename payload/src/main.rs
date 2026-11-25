@@ -239,19 +239,19 @@ fn perf_bench() {
 
     const N: u64 = 10_000;
     let t0 = rt::rdtsc();
-    for _ in 0..N { let _ = rt::call(SYS_GETPID, 0, 0); }
+    for _ in 0..N { let _ = rt::int80_call(SYS_GETPID, 0, 0); }
     let int80_ns = cyc_to_ns(rt::rdtsc().saturating_sub(t0), N);
 
     let t0 = rt::rdtsc();
-    for _ in 0..N { let _ = rt::fast_call(SYS_GETPID, 0, 0); }
+    for _ in 0..N { let _ = rt::call(SYS_GETPID, 0, 0); }
     let syscall_ns = cyc_to_ns(rt::rdtsc().saturating_sub(t0), N);
 
     let t0 = rt::rdtsc();
-    for _ in 0..N { let _ = rt::call(SYS_YIELD, 0, 0); }
+    for _ in 0..N { let _ = rt::int80_call(SYS_YIELD, 0, 0); }
     let yield_int80_ns = cyc_to_ns(rt::rdtsc().saturating_sub(t0), N);
 
     let t0 = rt::rdtsc();
-    for _ in 0..N { let _ = rt::fast_call(SYS_YIELD, 0, 0); }
+    for _ in 0..N { let _ = rt::call(SYS_YIELD, 0, 0); }
     let yield_syscall_ns = cyc_to_ns(rt::rdtsc().saturating_sub(t0), N);
 
     let t0 = rt::rdtsc();

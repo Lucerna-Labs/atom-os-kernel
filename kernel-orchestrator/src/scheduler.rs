@@ -12,6 +12,7 @@ pub struct Scheduler {
     pub context_switches: u64,
     pub syscalls: u64,
     pub tsc_khz: u64,
+    pub has_terminated: bool,
     tsc_origin: u64,
     tsc_origin_tick: u64,
 }
@@ -20,7 +21,7 @@ impl Scheduler {
         Self {
             tasks: [const { None }; MAX_TASKS], current: None, idle_rsp: 0, ticks: 0,
             busy_ticks: 0, idle_ticks: 0, context_switches: 0, syscalls: 0,
-            tsc_khz: 0, tsc_origin: 0, tsc_origin_tick: 0,
+            tsc_khz: 0, has_terminated: false, tsc_origin: 0, tsc_origin_tick: 0,
         }
     }
     pub fn current_task(&self) -> Option<&Context> { self.current.and_then(|i| self.tasks[i].as_ref()) }
@@ -29,12 +30,17 @@ impl Scheduler {
     pub fn task_mut(&mut self, pid: usize) -> Option<&mut Context> { self.tasks.iter_mut().flatten().find(|t| t.id == pid) }
     pub fn has_slot(&self) -> bool { self.tasks.iter().any(|t| t.is_none()) }
     pub fn spawn(&mut self, ctx: Context) -> Result<(), Context> {
+        let is_terminated = ctx.state == TaskState::Terminated;
         let current_slot = self.current;
         for (index, slot) in self.tasks.iter_mut().enumerate() {
             // Resource-free orphans can release their slot immediately.
             if slot.as_ref().is_some_and(|t| t.state == TaskState::Terminated && t.parent == 0
                 && t.space.is_none() && t.kernel_stack_pages == 0) { *slot = None; }
-            if slot.is_none() { *slot = Some(ctx); return Ok(()); }
+            if slot.is_none() {
+                *slot = Some(ctx);
+                if is_terminated { self.has_terminated = true; }
+                return Ok(());
+            }
         }
         // Pressure reaping: an exited child whose parent never waits
         // still holds a slot; under a FULL table, the oldest such
@@ -47,6 +53,7 @@ impl Scheduler {
         }) {
             if Some(index) != current_slot {
                 self.tasks[index] = Some(ctx);
+                if is_terminated { self.has_terminated = true; }
                 return Ok(());
             }
         }
@@ -111,10 +118,16 @@ impl Scheduler {
         self.switch_context(rsp)
     }
     pub fn collect(&mut self) {
+        if !self.has_terminated { return; }
+        let mut remaining = false;
         for index in 0..MAX_TASKS {
-            if Some(index) == self.current { continue; }
+            let is_current = Some(index) == self.current;
             if let Some(task) = &mut self.tasks[index] {
                 if task.state == TaskState::Terminated {
+                    if is_current {
+                        remaining = true;
+                        continue;
+                    }
                     task.release_resources();
                     if task.parent == 0 || task.waited {
                         self.tasks[index] = None;
@@ -122,6 +135,7 @@ impl Scheduler {
                 }
             }
         }
+        self.has_terminated = remaining;
     }
 }
 

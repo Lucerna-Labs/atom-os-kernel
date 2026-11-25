@@ -119,7 +119,29 @@ impl System {
             if task.parent == pid { task.parent = 0; }
         }
         if waited { self.scheduler.task_mut(pid).unwrap().waited = true; }
+        self.scheduler.has_terminated = true;
+        self.wake_display_owner();
         Ok(())
+    }
+    /// Wakes a sleeping task (Blocked with no wait target).
+    pub fn wake_task(&mut self, pid: usize) -> bool {
+        if let Some(task) = self.scheduler.task_mut(pid) {
+            if task.state == TaskState::Blocked && task.wait_for.is_none() {
+                task.state = TaskState::Ready;
+                task.sleep_until = 0;
+                return true;
+            }
+        }
+        false
+    }
+    /// Wakes the active desktop display owner when new input, pipe output,
+    /// or process state changes arrive.
+    pub fn wake_display_owner(&mut self) -> bool {
+        if let Some(owner) = self.display_owner {
+            self.wake_task(owner)
+        } else {
+            false
+        }
     }
     /// Returns the screen to text mode and input to the console. The owner's
     /// framebuffer mapping disappears with its address space.
@@ -135,7 +157,9 @@ impl System {
         if child.parent != parent || child.waited { return Err(()); }
         if child.state == TaskState::Terminated {
             child.waited = true;
-            return Ok(Some(child.exit_code));
+            let exit_code = child.exit_code;
+            self.scheduler.has_terminated = true;
+            return Ok(Some(exit_code));
         }
         let caller = self.scheduler.current_task_mut().unwrap();
         caller.wait_for = Some(pid);

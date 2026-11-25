@@ -1,5 +1,9 @@
 //! CMOS real-time clock, read as UTC seconds since the Unix epoch.
+use core::sync::atomic::{AtomicU64, Ordering};
 use crate::io::Port;
+
+static BASE_EPOCH: AtomicU64 = AtomicU64::new(0);
+static BASE_TICKS: AtomicU64 = AtomicU64::new(0);
 
 fn register(index: u8) -> u8 { Port::new(0x70).write(index); Port::new(0x71).read() }
 
@@ -35,4 +39,23 @@ pub fn now() -> u64 {
     let mut sample = read();
     loop { let next = read(); if next == sample { break; } sample = next; }
     to_unix(sample, register(0x0b))
+}
+
+/// Latches CMOS wall time against the kernel tick counter (100 Hz).
+pub fn sync_from_hardware(ticks: u64) -> u64 {
+    let epoch = now();
+    BASE_EPOCH.store(epoch, Ordering::Relaxed);
+    BASE_TICKS.store(ticks, Ordering::Relaxed);
+    epoch
+}
+
+/// Returns wall-clock epoch derived from cached base time + elapsed ticks,
+/// resyncing from CMOS hardware every 60 seconds (6000 ticks).
+pub fn cached_now(ticks: u64) -> u64 {
+    let base = BASE_EPOCH.load(Ordering::Relaxed);
+    let base_ticks = BASE_TICKS.load(Ordering::Relaxed);
+    if base == 0 || ticks.saturating_sub(base_ticks) >= 6000 {
+        return sync_from_hardware(ticks);
+    }
+    base + ticks.saturating_sub(base_ticks) / 100
 }

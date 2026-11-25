@@ -14,24 +14,29 @@ pub fn call(number: u64, arg: u64, arg1: u64) -> u64 {
 pub fn call3(number: u64, arg: u64, arg1: u64, arg2: u64) -> u64 {
     let result: u64;
     unsafe {
-        core::arch::asm!("int 0x80", inout("rax") number => result,
-        in("rdi") arg, in("rsi") arg1, in("rdx") arg2, options(nostack, preserves_flags));
-    }
-    result
-}
-#[inline]
-pub fn fast_call(number: u64, arg: u64, arg1: u64) -> u64 {
-    let result: u64;
-    unsafe {
         core::arch::asm!(
             "syscall",
             inout("rax") number => result,
             in("rdi") arg,
             in("rsi") arg1,
+            in("rdx") arg2,
             lateout("rcx") _,
             lateout("r11") _,
             options(nostack)
         );
+    }
+    result
+}
+#[inline]
+pub fn fast_call(number: u64, arg: u64, arg1: u64) -> u64 {
+    call3(number, arg, arg1, 0)
+}
+#[inline]
+pub fn int80_call(number: u64, arg: u64, arg1: u64) -> u64 {
+    let result: u64;
+    unsafe {
+        core::arch::asm!("int 0x80", inout("rax") number => result,
+        in("rdi") arg, in("rsi") arg1, in("rdx") 0u64, options(nostack, preserves_flags));
     }
     result
 }

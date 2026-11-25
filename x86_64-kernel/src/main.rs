@@ -504,15 +504,16 @@ unsafe fn activate(sys: &System) {
 #[no_mangle]
 pub extern "C" fn timer_interrupt_handler(rsp: u64) -> u64 {
     let tick = TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
-    // E41: the taskbar clock beats once a second.
-    if tick % 100 == 0 {
-        kernel_kit::vga::taskbar_update((tick + 1) as u64);
-    }
     let mut next = rsp;
     unsafe {
         if let Some(sys) = &mut *(&raw mut SYSTEM) {
+            if tick % 100 == 0 && sys.display_owner.is_none() {
+                kernel_kit::vga::taskbar_update((tick + 1) as u64);
+            }
             next = sys.schedule_tick(rsp);
             activate(sys);
+        } else if tick % 100 == 0 {
+            kernel_kit::vga::taskbar_update((tick + 1) as u64);
         }
         PICS.notify_end_of_interrupt(32);
     }
@@ -614,14 +615,25 @@ pub extern "C" fn keyboard_interrupt_handler(rsp: u64) -> u64 {
     unsafe {
         // Queue presses and releases alike: releases carry modifier state
         // (Shift, Ctrl, Alt). Bytes from the auxiliary port belong to IRQ12.
+        let mut pushed = false;
         if kernel_kit::io::Port::new(0x64).read() & 0x20 == 0 {
             if let Some(scancode) = KEYBOARD.read_scancode() {
                 let (buffer, kb_sif) = kernel_kit::io::KEYBOARD_BUFFER.lock();
                 buffer.push(scancode, kernel_kit::io::input_clock());
                 kernel_kit::io::KEYBOARD_BUFFER.unlock(kb_sif);
+                pushed = true;
             }
         }
         PICS.notify_end_of_interrupt(33);
+        if pushed {
+            if let Some(sys) = &mut *(&raw mut SYSTEM) {
+                if sys.wake_display_owner() && sys.scheduler.current_task().is_none() {
+                    let next = sys.scheduler.switch_context(rsp);
+                    activate(sys);
+                    return next;
+                }
+            }
+        }
     }
     rsp
 }
@@ -629,14 +641,25 @@ pub extern "C" fn keyboard_interrupt_handler(rsp: u64) -> u64 {
 #[no_mangle]
 pub extern "C" fn mouse_interrupt_handler(rsp: u64) -> u64 {
     unsafe {
+        let mut pushed = false;
         let status = kernel_kit::io::Port::new(0x64).read();
         if status & 0x21 == 0x21 {
             let byte = kernel_kit::io::Port::new(0x60).read();
             let (buffer, sif) = kernel_kit::io::MOUSE_BUFFER.lock();
             buffer.push(byte, kernel_kit::io::input_clock());
             kernel_kit::io::MOUSE_BUFFER.unlock(sif);
+            pushed = true;
         }
         PICS.notify_end_of_interrupt(44);
+        if pushed {
+            if let Some(sys) = &mut *(&raw mut SYSTEM) {
+                if sys.wake_display_owner() && sys.scheduler.current_task().is_none() {
+                    let next = sys.scheduler.switch_context(rsp);
+                    activate(sys);
+                    return next;
+                }
+            }
+        }
     }
     rsp
 }
@@ -987,6 +1010,7 @@ pub extern "C" fn _start(boot_info: &'static BootInfo) -> ! {
     }
 
     // Runtime loader and boot loader use the same validated ownership path.
+    let _ = kernel_kit::rtc::sync_from_hardware(0);
     unsafe {
         if let Some(sys) = &mut *(&raw mut SYSTEM) {
             sys.spawn_program(0, "shell.elf").expect("load shell");

@@ -303,6 +303,60 @@ fn scheduler_tracks_busy_idle_context_switches_and_per_task_metrics() {
 }
 
 #[test]
+fn scheduler_collect_fast_path_reclaims_zombies_and_clears_flag() {
+    let mut sys = system::System::new(0);
+    let mut parent = context::Context::new(1, 0x1000, 0x2000, 0x3000);
+    parent.state = context::TaskState::Ready;
+    sys.scheduler.spawn(parent).unwrap();
+    let mut child = context::Context::new(2, 0x1100, 0x2100, 0x3000);
+    child.parent = 1;
+    child.owner = 2;
+    sys.scheduler.spawn(child).unwrap();
+    assert!(!sys.scheduler.has_terminated);
+
+    // Terminating child marks has_terminated; collect frees resources while waiting for parent wait().
+    assert!(sys.kill_from(1, 2).is_ok());
+    assert!(sys.scheduler.has_terminated);
+    sys.scheduler.collect();
+    // After releasing resources once while awaiting parent wait(), collect clears the scan flag.
+    assert!(!sys.scheduler.has_terminated);
+    assert!(sys.scheduler.task(2).is_some());
+
+    // Simulate parent calling wait() while parent is current: collect removes waited zombie slot.
+    assert_eq!(sys.scheduler.switch_context(0x9000), 0x1000);
+    assert_eq!(sys.wait(2), Ok(Some(abi::KILLED_STATUS)));
+    assert!(sys.scheduler.has_terminated);
+    sys.scheduler.collect();
+    assert!(!sys.scheduler.has_terminated);
+    assert!(sys.scheduler.task(2).is_none());
+}
+
+#[test]
+fn system_wake_task_only_wakes_sleeping_tasks() {
+    let mut sys = system::System::new(0);
+    let mut sleeping = context::Context::new(10, 0x1000, 0x2000, 0x3000);
+    sleeping.state = context::TaskState::Blocked;
+    sleeping.sleep_until = 500;
+    sys.scheduler.spawn(sleeping).unwrap();
+
+    let mut waiting = context::Context::new(11, 0x1100, 0x2100, 0x3000);
+    waiting.state = context::TaskState::Blocked;
+    waiting.wait_for = Some(99);
+    sys.scheduler.spawn(waiting).unwrap();
+
+    sys.display_owner = Some(10);
+    // Blocked on wait_for must NOT be woken prematurely.
+    assert!(!sys.wake_task(11));
+    assert_eq!(sys.scheduler.task(11).unwrap().state, context::TaskState::Blocked);
+
+    // Sleeping display_owner wakes immediately.
+    assert!(sys.wake_display_owner());
+    let woken = sys.scheduler.task(10).unwrap();
+    assert_eq!(woken.state, context::TaskState::Ready);
+    assert_eq!(woken.sleep_until, 0);
+}
+
+#[test]
 fn frame_allocator_spans_multiple_regions_up_to_8_gib() {
     let mut frames = Box::new(memory::FrameAllocator::new());
     // QEMU with 8 GiB: about 3 GiB below the PCI hole, 5 GiB above 4 GiB.

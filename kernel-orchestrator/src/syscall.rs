@@ -115,20 +115,68 @@ fn copy_to_user(context: &Context, address: u64, bytes: &[u8]) -> bool {
     true
 }
 
-/// Copies `len` bytes out of the current process, checking every page.
-fn copy_from_user(context: &Context, address: u64, len: usize) -> Option<Vec<u8>> {
-    let space = context.space.as_ref()?;
-    if !space.valid_user_range(address, len, false) { return None; }
-    let mut bytes = alloc::vec![0u8; len];
+/// Copies `out.len()` bytes out of the current process into `out`, checking every page.
+fn copy_from_user_into(context: &Context, address: u64, out: &mut [u8]) -> bool {
+    let Some(space) = context.space.as_ref() else { return false; };
+    if !space.valid_user_range(address, out.len(), false) { return false; }
     let mut done = 0;
-    while done < len {
+    while done < out.len() {
         let virt = address + done as u64;
-        let count = (4096 - (virt & 4095) as usize).min(len - done);
-        let phys = space.translate_user(virt, false)?;
-        unsafe { core::ptr::copy_nonoverlapping(phys_to_virt(phys) as *const u8, bytes[done..].as_mut_ptr(), count); }
+        let count = (4096 - (virt & 4095) as usize).min(out.len() - done);
+        let Some(phys) = space.translate_user(virt, false) else { return false; };
+        unsafe { core::ptr::copy_nonoverlapping(phys_to_virt(phys) as *const u8, out[done..].as_mut_ptr(), count); }
         done += count;
     }
-    Some(bytes)
+    true
+}
+
+/// Copies `len` bytes out of the current process, checking every page.
+fn copy_from_user(context: &Context, address: u64, len: usize) -> Option<Vec<u8>> {
+    let mut bytes = alloc::vec![0u8; len];
+    copy_from_user_into(context, address, &mut bytes).then_some(bytes)
+}
+
+#[inline(never)]
+fn file_io_transfer(
+    context: &Context,
+    fs: &mut Fs,
+    ino: Ino,
+    cursor: u64,
+    address: u64,
+    len: usize,
+    reading: bool,
+    now: u64,
+) -> (usize, Option<Option<TreeError>>) {
+    let mut done = 0usize;
+    let mut failure = None;
+    let mut buffer = [0u8; 4096];
+    while done < len {
+        let n = (len - done).min(4096);
+        let at = cursor + done as u64;
+        if reading {
+            match fs.read(ino, at, &mut buffer[..n]) {
+                Ok(0) => break,
+                Ok(got) => {
+                    if !copy_to_user(context, address + done as u64, &buffer[..got]) {
+                        failure = Some(None);
+                        break;
+                    }
+                    done += got;
+                }
+                Err(e) => { failure = Some(Some(e)); break; }
+            }
+        } else {
+            if !copy_from_user_into(context, address + done as u64, &mut buffer[..n]) {
+                failure = Some(None);
+                break;
+            }
+            match fs.write(ino, at, &buffer[..n], now) {
+                Ok(w) => done += w,
+                Err(e) => { failure = Some(Some(e)); break; }
+            }
+        }
+    }
+    (done, failure)
 }
 
 /// Writes to the process's standard output: the console, or its pipe.
@@ -235,11 +283,17 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             }
         }
     } else if is(number, SYS_WRITE) || is(number, 14) {
-        frame.rax = stdout_write(context, &[arg as u8]);
+        let piped = context.stdout.is_some();
+        let out = stdout_write(context, &[arg as u8]);
+        frame.rax = out;
+        if piped && out == 1 { system.wake_display_owner(); }
     } else if is(number, SYS_WRITE_BUFFER) {
         if arg1 <= 4096 {
             if let Some(bytes) = copy_from_user(context, arg, arg1 as usize) {
-                frame.rax = stdout_write(context, &bytes);
+                let piped = context.stdout.is_some();
+                let out = stdout_write(context, &bytes);
+                frame.rax = out;
+                if piped && out > 0 && out < BROKEN_PIPE { system.wake_display_owner(); }
             }
         }
     } else if is(number, SYS_OPEN) || is(number, SYS_OPEN_EXISTING) {
@@ -249,7 +303,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             let fs = ROOT_FS.lock();
             let opened = if is(number, SYS_OPEN_EXISTING) {
                 fs.resolve(&path).and_then(|ino| if fs.node(ino).is_some_and(|n| n.is_dir()) { Err(TreeError::IsDir) } else { Ok(ino) })
-            } else { fs.open_or_create(&path, kernel_kit::rtc::now()) }
+            } else { fs.open_or_create(&path, kernel_kit::rtc::cached_now(ticks)) }
                 .and_then(|ino| kernel_kit::storage::ensure_loaded(fs, ino).map(|_| ino));
             let builtin = opened.is_ok_and(|ino| fs.is_builtin(ino));
             ROOT_FS.unlock();
@@ -273,7 +327,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                 };
             }
             if context.readonly_files & (1 << arg) != 0 { return Err(FsCode::ReadOnly); }
-            let now = kernel_kit::rtc::now();
+            let now = kernel_kit::rtc::cached_now(ticks);
             let fs = ROOT_FS.lock();
             let result = if is(number, SYS_TRUNCATE) { fs.truncate(ino, 0, now).map(|_| 0) } else {
                 // The byte call appends (its original contract).
@@ -293,7 +347,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             let (ino, _) = descriptor(context, arg).ok_or(FsCode::BadHandle)?;
             if context.readonly_files & (1 << arg) != 0 { return Err(FsCode::ReadOnly); }
             let input = if arg2 == 0 { Vec::new() } else { copy_from_user(context, arg1, arg2 as usize).ok_or(FsCode::BadBuffer)? };
-            let now = kernel_kit::rtc::now();
+            let now = kernel_kit::rtc::cached_now(ticks);
             let fs = ROOT_FS.lock();
             let result = if is(number, SYS_REPLACE_FILE) { fs.replace(ino, &input, now) } else {
                 let end = fs.node(ino).map_or(0, |n| n.size());
@@ -314,25 +368,8 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                 frame.rax = failed(context, TreeError::ReadOnly);
             } else if context.space.as_ref().unwrap().valid_user_range(arg1, len, reading) {
                 let fs = ROOT_FS.lock();
-                let now = kernel_kit::rtc::now();
-                let mut done = 0usize;
-                let mut failure = None;
-                // Page-sized steps between the file's frames and the caller's pages.
-                let mut buffer = alloc::vec![0u8; 4096];
-                while done < len {
-                    let n = (len - done).min(4096);
-                    let at = cursor + done as u64;
-                    if reading {
-                        match fs.read(ino, at, &mut buffer[..n]) {
-                            Ok(0) => break,
-                            Ok(got) => { if !copy_to_user(context, arg1 + done as u64, &buffer[..got]) { failure = Some(None); break; } done += got; }
-                            Err(e) => { failure = Some(Some(e)); break; }
-                        }
-                    } else {
-                        let Some(bytes) = copy_from_user(context, arg1 + done as u64, n) else { failure = Some(None); break };
-                        match fs.write(ino, at, &bytes, now) { Ok(w) => done += w, Err(e) => { failure = Some(Some(e)); break; } }
-                    }
-                }
+                let now = kernel_kit::rtc::cached_now(ticks);
+                let (done, failure) = file_io_transfer(context, fs, ino, cursor, arg1, len, reading, now);
                 ROOT_FS.unlock();
                 context.open_files[arg as usize].1 += done;
                 frame.rax = match failure {
@@ -474,7 +511,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             let from = path_at(context, arg)?;
             let to = path_at(context, arg1)?;
             let fs = ROOT_FS.lock();
-            let moved = fs.rename(&from, &to, kernel_kit::rtc::now());
+            let moved = fs.rename(&from, &to, kernel_kit::rtc::cached_now(ticks));
             ROOT_FS.unlock();
             moved.map(|()| 0).map_err(code)
         })();
@@ -484,7 +521,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         let result = (|| {
             let path = path_at(context, arg)?;
             let fs = ROOT_FS.lock();
-            let made = fs.mkdir(&path, kernel_kit::rtc::now());
+            let made = fs.mkdir(&path, kernel_kit::rtc::cached_now(ticks));
             ROOT_FS.unlock();
             made.map(|_| 0).map_err(code)
         })();
@@ -598,14 +635,18 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         if let Some((Some(end), _)) = context.pipes.get(arg as usize) { frame.rax = pipe_read(end, context, arg1, len); }
     } else if is(number, SYS_PIPE_WRITE) {
         let len = (arg2 as usize).min(4096);
-        if let Some((_, Some(end))) = context.pipes.get(arg as usize) {
-            if let Some(bytes) = copy_from_user(context, arg1, len) {
-                frame.rax = match end.write(&bytes) {
-                    kernel_kit::pipe::Write::Wrote(count) => count as u64,
-                    kernel_kit::pipe::Write::WouldBlock => WOULD_BLOCK,
-                    kernel_kit::pipe::Write::Broken => ERROR,
-                };
-            }
+        let bytes = copy_from_user(context, arg1, len);
+        let write_result = bytes.and_then(|bytes| {
+            context.pipes.get(arg as usize).and_then(|(_, w)| w.as_ref()).map(|end| end.write(&bytes))
+        });
+        if let Some(result) = write_result {
+            let wrote = matches!(result, kernel_kit::pipe::Write::Wrote(count) if count > 0);
+            frame.rax = match result {
+                kernel_kit::pipe::Write::Wrote(count) => count as u64,
+                kernel_kit::pipe::Write::WouldBlock => WOULD_BLOCK,
+                kernel_kit::pipe::Write::Broken => ERROR,
+            };
+            if wrote { system.wake_display_owner(); }
         }
     } else if is(number, SYS_PROCESSES) {
         // A fixed-capacity, single-call snapshot avoids races between queries.
@@ -636,7 +677,12 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         if let Ok(message) = user_string(context, arg1, 256) {
             if let Some(target) = system.scheduler.task_mut(arg as usize) {
                 if target.state != TaskState::Terminated && target.mailbox.len() < 4 {
-                    target.mailbox.push_back(message.into_bytes()); frame.rax = 0;
+                    target.mailbox.push_back(message.into_bytes());
+                    if target.state == TaskState::Blocked && target.wait_for.is_none() {
+                        target.state = TaskState::Ready;
+                        target.sleep_until = 0;
+                    }
+                    frame.rax = 0;
                 }
             }
         }
@@ -695,7 +741,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         frame.rax = pool.total_count() as u64;
         kernel_kit::memory::FRAME_ALLOCATOR.unlock(flags);
     } else if is(number, SYS_TIME) {
-        frame.rax = kernel_kit::rtc::now();
+        frame.rax = kernel_kit::rtc::cached_now(ticks);
     } else if is(number, SYS_FREE_FRAMES) {
         let (pool, flags) = kernel_kit::memory::FRAME_ALLOCATOR.lock();
         frame.rax = pool.free_count() as u64;

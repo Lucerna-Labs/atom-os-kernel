@@ -777,6 +777,7 @@ fn main() {
     rt::console_print(&alloc::format!("DESKTOP_READY {}x{} scale={}\n", pw, ph, scale));
     let mut events = [InputEvent::default(); 64];
     let mut last_clock = String::new();
+    let mut last_clock_tick = 0u64;
     let mut toast_shown = false;
     let mut frames = 0u64;
     let mut total_frame_us = 0u64;
@@ -802,8 +803,11 @@ fn main() {
             let a = desktop.windows[i].app.tick(ticks);
             desktop.apply(id, a);
         }
-        let (time, _) = clock_strings(rt::time());
-        if time != last_clock { last_clock = time; desktop.invalidate_taskbar(); }
+        if last_clock.is_empty() || ticks.saturating_sub(last_clock_tick) >= 100 {
+            last_clock_tick = ticks;
+            let (time, _) = clock_strings(rt::time());
+            if time != last_clock { last_clock = time; desktop.invalidate_taskbar(); }
+        }
         let toast_live = desktop.toast.as_ref().is_some_and(|(_, until)| ticks < *until);
         if toast_live != toast_shown { toast_shown = toast_live; let area = desktop.toast_area(); desktop.invalidate(area); }
         if !desktop.damage.is_empty() {
@@ -826,7 +830,7 @@ fn main() {
         } else if moved {
             desktop.draw_cursor();
         }
-        if count == 0 { rt::sleep(1); }
+        if count == 0 && !moved { rt::sleep(25); }
     }
     let ids: Vec<u32> = desktop.windows.iter().map(|w| w.id).collect();
     for id in ids { desktop.close(id); }
