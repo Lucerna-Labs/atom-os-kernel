@@ -873,3 +873,31 @@ fn conversation_partner_is_the_pid_or_sub_function_and_nothing_else() {
     assert_eq!(conversation::partner(SYS_FILE_WRITE, 3), 0);
     assert_ne!(conversation::SHARED_IDENTITY, 0, "0 would mean 'use the pid' to the sensor");
 }
+
+#[test]
+fn collect_preserves_live_taint_and_forgets_reaped_task() {
+    extern crate kernel_taint;
+    let pid = 4242usize;
+    kernel_taint::forget(pid as u64);
+    let mut scheduler = scheduler::Scheduler::new();
+    let mut task = context::Context::new(pid, 0, 0, 0);
+    task.state = context::TaskState::Ready;
+    scheduler.spawn(task).unwrap();
+    assert!(kernel_taint::mark_tainted(pid as u64));
+    assert_eq!(kernel_taint::status(pid as u64), kernel_taint::TaintState::Tainted);
+
+    scheduler.collect();
+    assert_eq!(
+        kernel_taint::status(pid as u64),
+        kernel_taint::TaintState::Tainted,
+        "collect() must not wipe taint from live tasks"
+    );
+
+    scheduler.task_mut(pid).unwrap().state = context::TaskState::Terminated;
+    scheduler.collect();
+    assert_eq!(
+        kernel_taint::status(pid as u64),
+        kernel_taint::TaintState::Clean,
+        "collect() must forget taint when a terminated orphan task is reaped"
+    );
+}

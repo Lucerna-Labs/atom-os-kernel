@@ -1,6 +1,4 @@
 //! Bare-metal Interrupt Descriptor Table (IDT) mechanism.
-use crate::atoms::{project, combine};
-
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
 pub struct IdtEntry {
@@ -27,14 +25,9 @@ impl IdtEntry {
     }
 
     pub fn set_handler_addr(&mut self, addr: u64, dpl: u8) {
-        // Project a 64-bit address into the low, mid, and high offset fields
-        let (low, mid, high) = project(addr, |a| {
-            (a as u16, (a >> 16) as u16, (a >> 32) as u32)
-        });
-        
-        self.offset_low = combine(self.offset_low, low, |_, l| l);
-        self.offset_mid = combine(self.offset_mid, mid, |_, m| m);
-        self.offset_high = combine(self.offset_high, high, |_, h| h);
+        self.offset_low = addr as u16;
+        self.offset_mid = (addr >> 16) as u16;
+        self.offset_high = (addr >> 32) as u32;
         self.selector = 0x08; // Code segment selector in GDT
         
         // 0x8E = Present(1) | DPL(0) | 0 | GateType(0xE)

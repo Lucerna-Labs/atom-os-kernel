@@ -2,9 +2,8 @@ use core::alloc::{GlobalAlloc, Layout};
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::cell::UnsafeCell;
 use core::arch::asm;
-use crate::atoms::{combine, compare};
 
-/// A pure mathematical spinlock using the `compare` and swap concept (via AtomicBool)
+/// A spinlock using `AtomicBool`.
 pub struct Spinlock<T> {
     locked: AtomicBool,
     data: UnsafeCell<T>,
@@ -194,19 +193,20 @@ impl BumpAllocator {
     }
 }
 
-/// The Global Heap wrapper enforcing Atom Doctrine.
+/// Global heap allocator wrapping `BumpAllocator`.
 pub struct AtomHeap(pub Spinlock<BumpAllocator>);
 
 unsafe impl GlobalAlloc for AtomHeap {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let heap = self.0.lock();
-        
-        // Project the current 'next' pointer to respect alignment
+
         let align = layout.align();
-        let alloc_start = combine(heap.next, align, |n, a| {
-            let remainder = n % a;
-            if remainder == 0 { n } else { n + a - remainder }
-        });
+        let remainder = heap.next % align;
+        let alloc_start = if remainder == 0 {
+            heap.next
+        } else {
+            heap.next + align - remainder
+        };
         
         let alloc_end = alloc_start.saturating_add(layout.size());
         

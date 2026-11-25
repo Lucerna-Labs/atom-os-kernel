@@ -1,5 +1,4 @@
 //! Bare-metal x86_64 4-level Paging mechanism.
-use crate::atoms::{project, combine};
 use core::arch::asm;
 use core::sync::atomic::{AtomicU64, Ordering};
 
@@ -66,9 +65,7 @@ impl PageTableEntry {
     }
 
     pub fn set_address(&mut self, addr: u64, flags: u64) {
-        // Compose from the outside: The MMU expects the physical address and flags combined.
-        // We use the combine atom to merge the physical address with the control flags.
-        self.0 = combine(addr, flags, |a, f| (a & !0xFFF) | (f & 0xFFF));
+        self.0 = (addr & !0xFFF) | (flags & 0xFFF);
     }
 
     pub fn is_present(&self) -> bool {
@@ -99,13 +96,11 @@ impl PageTable {
 pub struct Cr3;
 
 impl Cr3 {
-    /// Projects a physical address into the CR3 register to activate a page table hierarchy.
+    /// Loads a physical address into the CR3 register to activate a page table hierarchy.
     pub unsafe fn load(phys_addr: u64) {
-        project(phys_addr, |addr| {
-            unsafe {
-                asm!("mov cr3, {}", in(reg) addr, options(nostack, preserves_flags));
-            }
-        });
+        unsafe {
+            asm!("mov cr3, {}", in(reg) phys_addr, options(nostack, preserves_flags));
+        }
     }
 
     /// Reads the current physical address of the active page table from CR3.

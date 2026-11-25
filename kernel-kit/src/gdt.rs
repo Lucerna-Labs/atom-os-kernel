@@ -1,6 +1,5 @@
 //! Global Descriptor Table and Task State Segment implementation for x86_64 bare-metal.
 use core::arch::asm;
-use crate::atoms::{combine, project};
 
 #[derive(Debug, Clone, Copy)]
 #[repr(transparent)]
@@ -69,11 +68,9 @@ pub struct TssDescriptor {
 impl TssDescriptor {
     pub fn new(tss_ptr: *const TaskStateSegment) -> Self {
         let ptr = tss_ptr as u64;
-        let mut low = 0x0000890000000067; // Base attributes for a 64-bit TSS (present, type 9, limit 103)
-        
-        low = combine(low, ptr, |l, p| {
-            l | ((p & 0xFFFFFF) << 16) | (((p >> 24) & 0xFF) << 56)
-        });
+        let low = 0x0000890000000067
+            | ((ptr & 0xFFFFFF) << 16)
+            | (((ptr >> 24) & 0xFF) << 56);
         let high = ptr >> 32;
 
         Self { low, high }
@@ -119,11 +116,9 @@ impl GlobalDescriptorTable {
             base: self as *const _ as u64,
         };
 
-        project(&gdtr, |ptr| {
-            unsafe {
-                asm!("lgdt [{}]", in(reg) ptr, options(nostack, readonly, preserves_flags));
-            }
-        });
+        unsafe {
+            asm!("lgdt [{}]", in(reg) &gdtr, options(nostack, readonly, preserves_flags));
+        }
 
         // Reload segment registers (CS is tricky, requires a far jump, but we can fake it with a retq or leave it for later wrapper if needed)
         // Here we just reload data segments. CS reload is typically done via pushing to stack and retf.

@@ -7,10 +7,7 @@ IPC, and persistent files on a virtual block device.
 ![The Atom OS desktop with Files, a text editor, a terminal and the system monitor](docs/screenshots/desktop.png)
 
 This repository contains the kernel, userspace runtime, bundled programs, and
-build and verification tools. Its core library defines eight root operations:
-**scan, hash, fold, project, scale, compare, combine, and order**. Their definitions
-live in [`kernel-kit/src/atoms.rs`](kernel-kit/src/atoms.rs); the kernel and
-orchestrator compose mechanisms around them.
+build and verification tools.
 
 **Current stage:** a bootable development kernel verified in QEMU with KVM and
 software emulation. Hardware installation and multiprocessor operation have not

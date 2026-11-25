@@ -2,7 +2,6 @@
 extern crate alloc;
 
 pub mod scheduler;
-pub mod salience_scheduler;
 pub mod syscall;
 pub mod conversation;
 pub mod system;

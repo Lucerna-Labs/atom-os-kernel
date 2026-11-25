@@ -16,7 +16,6 @@
 //! under the glyph at the insertion cell).
 
 use core::sync::atomic::{AtomicBool, Ordering};
-use crate::atoms::project;
 use crate::font8x8::FONT;
 use crate::memory::Spinlock;
 
@@ -206,8 +205,7 @@ impl VgaWriter {
             self.new_line();
         }
 
-        let (ascii, color) = project(byte, |b| (b, 0x0f));
-        self.store(ascii, color);
+        self.store(byte, 0x0f);
 
         self.column_position += 1;
         self.save_cursor();

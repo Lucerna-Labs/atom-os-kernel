@@ -22,7 +22,7 @@ static SENSOR_CYCLES: AtomicU64 = AtomicU64::new(0);
 static SENSOR_CALLS: AtomicU64 = AtomicU64::new(0);
 
 fn is(value: u64, code: u64) -> bool {
-    !kernel_kit::atoms::compare(&value, &code) && !kernel_kit::atoms::compare(&code, &value)
+    value == code
 }
 
 pub fn user_string(context: &Context, address: u64, limit: usize) -> Result<String, ()> {

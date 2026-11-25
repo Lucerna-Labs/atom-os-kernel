@@ -133,12 +133,11 @@ impl Scheduler {
         for index in 0..MAX_TASKS {
             if Some(index) == self.current { continue; }
             if let Some(task) = &mut self.tasks[index] {
-                // E34: dying context's taint entries are forgotten.
-                kernel_taint::forget(task.id as u64);
                 if task.state == TaskState::Terminated {
                     task.release_resources();
                     if task.parent == 0 || task.waited {
-                        // E21: the reaped pid leaves the shadow web's tables.
+                        // E21/E34: the reaped pid leaves the security tables.
+                        kernel_taint::forget(task.id as u64);
                         kernel_sense::forget(task.id as u64);
                         kernel_egress::forget(task.id as u64);
                         self.tasks[index] = None;
