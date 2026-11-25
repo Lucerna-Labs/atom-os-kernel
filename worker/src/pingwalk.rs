@@ -1,10 +1,7 @@
-//! E38b ping — the shell's window onto the wire.
+//! ping — ICMP echo probe over the kernel VirtIO network stack.
 //!
-//! Spawned by the shell's `ping` command (never runs inline: the
-//! child that touches network data takes the taint — the ceremony
-//! holds for interactive use too, and the shell stays clean).
-//! Bootstraps ARP, sends four prose echoes through the cone, reads
-//! the replies out of the ring, prints the receipts.
+//! Bootstraps ARP, sends four echo requests, reads replies out of the
+//! packet ring, and prints the counts.
 
 #![no_std]
 #![no_main]
@@ -24,12 +21,12 @@ fn main() {
     rt::print("[ping] bootstrap: asking the wire for the gateway\n");
     let _ = net(4, 0, 0);
     rt::sleep(6);
-    let prose = b"ping from the atom shell, the kernel hears its own voice";
+    let prose = b"ping from the atom shell";
     let mut replies = 0u64;
     for i in 0..4u64 {
         let cause = net(2, prose.as_ptr() as u64, prose.len() as u64);
         if cause != 1 {
-            let why = match cause { 2 => "cone refused", 3 => "no route yet", _ => "driver" };
+            let why = match cause { 3 => "no route yet", _ => "driver" };
             rt::print_args(format_args!("[ping] send {i} refused ({why})\n"));
             let _ = net(4, 0, 0); // re-bootstrap
             rt::sleep(6);

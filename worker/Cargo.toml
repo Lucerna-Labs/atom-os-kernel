@@ -19,58 +19,6 @@ name = "fs-probe"
 path = "src/fs_probe.rs"
 
 [[bin]]
-name = "spider"
-path = "src/spider.rs"
-
-[[bin]]
-name = "rogue"
-path = "src/rogue.rs"
-
-[[bin]]
-name = "weave-probe"
-path = "src/weave_probe.rs"
-
-[[bin]]
-name = "keykeep"
-path = "src/keykeep.rs"
-
-[[bin]]
-name = "instantkeep"
-path = "src/instantkeep.rs"
-
-[[bin]]
-name = "smuggler"
-path = "src/smuggler.rs"
-
-[[bin]]
-name = "lanewalk"
-path = "src/lanewalk.rs"
-
-[[bin]]
-name = "metronome"
-path = "src/metronome.rs"
-
-[[bin]]
-name = "taintwalk"
-path = "src/taintwalk.rs"
-
-[[bin]]
-name = "cryptwalk"
-path = "src/cryptwalk.rs"
-
-[[bin]]
-name = "seamwalk"
-path = "src/seamwalk.rs"
-
-[[bin]]
-name = "netwalk"
-path = "src/netwalk.rs"
-
-[[bin]]
-name = "udpwalk"
-path = "src/udpwalk.rs"
-
-[[bin]]
 name = "pingwalk"
 path = "src/pingwalk.rs"
 

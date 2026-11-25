@@ -1,30 +1,15 @@
-//! kernel-net — E37: the network as the ingress ceremony.
-//!
-//! The wire is the zero-click seam made real: packets arrive
-//! unbidden (nobody clicked), so the kernel treats every received
-//! byte as foreign by nature. This crate owns that contract:
+//! kernel-net — kernel VirtIO Ethernet, ARP, ICMP, and UDP stack.
 //!
 //! - **Inbound**: the driver is polled on the kernel's heartbeat
-//!   (timer tick) — packets exist when the web looks. ARP requests
-//!   are answered and ICMP echoes replied IN THE KERNEL (the OS
-//!   must speak to be spoken to); everything else lands in the app
-//!   packet ring. SYS_NET_RECV hands a packet to a task AND MARKS
-//!   THE TASK TAINTED — E34's doctrine, now with a real source:
-//!   "in a real system, opening a network resource would do this
-//!   automatically." It does.
-//! - **Outbound**: SYS_NET_SEND passes through the E24 egress cone
-//!   (prose passes, key-shaped data does not) and leaves as an ICMP
-//!   echo request — the network is the cone's real channel.
-//!
-//! Pure packet functions (parse/build/checksum) are host-testable;
-//! the driver and rings are kernel-side. no_std + atomics + the
-//! house spin lock, like the senses beside it.
+//!   (timer tick). ARP requests and ICMP echoes to our IP are answered
+//!   in kernel; UDP datagrams demux to bound listener rings; everything
+//!   else lands in the raw packet ring.
+//! - **Outbound**: `send_probed` transmits ICMP echo requests and
+//!   `udp_send` transmits UDP datagrams via the gateway MAC.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #[cfg(any(test, feature = "std"))]
 extern crate std;
-
-pub mod lightcone;
 
 use core::cell::UnsafeCell;
 use core::hint::spin_loop;
@@ -385,7 +370,7 @@ pub fn build_udp(
 // Kernel-side state (behind the house lock).
 // ---------------------------------------------------------------------------
 
-/// Minimal spin lock (same envelope as kernel-sense's).
+/// Minimal spin lock.
 pub struct Lock<T> {
     locked: AtomicBool,
     value: UnsafeCell<T>,
@@ -461,12 +446,11 @@ struct NetState {
     lens: [usize; RING_SLOTS],
     head: usize,
     count: usize,
-    /// Stats (receipts).
+    /// Stats.
     rx_total: u64,
     arp_replied: u64,
     icmp_replied: u64,
     tx_total: u64,
-    cone_blocked: u64,
     echo_id: u16,
 }
 
@@ -483,7 +467,6 @@ static STATE: Lock<NetState> = Lock::new(NetState {
     arp_replied: 0,
     icmp_replied: 0,
     tx_total: 0,
-    cone_blocked: 0,
     echo_id: 0x3713,
 });
 
@@ -506,7 +489,6 @@ pub fn is_up() -> bool {
 /// (including ICMP echo REPLIES to our probes) lands in the app ring.
 /// The `transmit` closure is the driver's send path.
 pub fn handle_frame(packet: &[u8], transmit: &mut dyn FnMut(&[u8])) {
-    lightcone::observe(0, packet);
     let (header, _) = match parse_eth(packet) {
         Some(split) => split,
         None => return,
@@ -576,7 +558,7 @@ pub fn handle_frame(packet: &[u8], transmit: &mut dyn FnMut(&[u8])) {
             }
         }
     }
-    // Foreign material: the app ring. A reader will pay taint for it.
+    // Unhandled frames land in the raw packet ring.
     if state.count < RING_SLOTS && packet.len() <= PACKET_BYTES {
         let slot = (state.head + state.count) % RING_SLOTS;
         state.ring[slot][..packet.len()].copy_from_slice(packet);
@@ -585,11 +567,8 @@ pub fn handle_frame(packet: &[u8], transmit: &mut dyn FnMut(&[u8])) {
     }
 }
 
-/// SYS_NET_RECV: hand the oldest foreign packet to the caller — and
-/// MARK THE CALLER TAINTED (the ingress ceremony: reading network
-/// data is handling foreign content; derived stays data). Copies the
-/// packet into `out`; returns its length, or ERROR (u64::MAX) if the
-/// ring is empty.
+/// SYS_NET recv: copy the oldest packet from the ring into `out`,
+/// returning its length or `None` if the ring is empty.
 pub fn recv_into(out: &mut [u8]) -> Option<usize> {
     let (len, src) = {
         let mut state = STATE.lock();
@@ -607,19 +586,12 @@ pub fn recv_into(out: &mut [u8]) -> Option<usize> {
     Some(len)
 }
 
-/// SYS_NET_SEND: the egress cone first (prose passes; key-shaped data
-/// never reaches the wire), then out as an ICMP echo request to the
-/// gateway. Returns Ok(()) or Err(cause) for the receipt.
+/// SYS_NET ICMP send: transmit an ICMP echo request to the gateway.
 pub enum SendCause {
-    Cone,
     NoRoute,
     Driver,
 }
 pub fn send_probed(data: &[u8], transmit: &mut dyn FnMut(&[u8]) -> bool) -> Result<(), SendCause> {
-    if !kernel_egress::gate(data) {
-        STATE.lock().cone_blocked += 1;
-        return Err(SendCause::Cone);
-    }
     let (mac, gateway_mac, id) = {
         let state = STATE.lock();
         (state.mac, state.gateway_mac, state.echo_id)
@@ -640,18 +612,13 @@ pub fn send_probed(data: &[u8], transmit: &mut dyn FnMut(&[u8]) -> bool) -> Resu
 }
 
 /// Packed status for SYS_NET sub 0:
-/// (up<<63) | arp_replied<<48 | icmp_replied<<32 | rx_total... too
-/// rich for one word; this surface returns the receipts that matter:
-/// (up<<63) | (ring_count<<56) | (rx_total&0xFF_FFFF<<32)... — the
-/// payload only needs up/ring/arp/icmp/cone. Keep it simple:
-/// (up<<63) | (ring_count << 48) | (arp<<32) | (icmp<<16) | cone.
+/// (up<<63) | (ring_count << 48) | (arp<<32) | (icmp<<16).
 pub fn status() -> u64 {
     let state = STATE.lock();
     (u64::from(state.up) << 63)
         | ((state.count as u64) << 48)
         | ((state.arp_replied.min(0xFFFF) as u64) << 32)
         | ((state.icmp_replied.min(0xFFFF) as u64) << 16)
-        | (state.cone_blocked.min(0xFFFF) as u64)
 }
 
 /// Broadcast ARP request for the gateway (bootstrap: nothing can be
@@ -681,7 +648,6 @@ static DEVICE: Lock<Option<kernel_kit::virtio_net::VirtioNet>> = Lock::new(None)
 /// Discover and bring up the NIC at boot. Failure is silence: a
 /// machine without a wire is a valid machine.
 pub fn boot_discover() -> bool {
-    lightcone::initialize();
     match kernel_kit::virtio_net::VirtioNet::discover() {
         Ok(mut device) => {
             bring_up(&mut device);
@@ -724,17 +690,11 @@ pub fn heartbeat() {
 
 /// Raw transmit through the registry. Returns success.
 pub fn send_raw(bytes: &[u8]) -> bool {
-    let sent = {
-        let mut device = DEVICE.lock();
-        match device.as_mut() {
-            Some(net) => net.transmit(bytes).is_ok(),
-            None => false,
-        }
-    };
-    if sent {
-        lightcone::observe(1, bytes);
+    let mut device = DEVICE.lock();
+    match device.as_mut() {
+        Some(net) => net.transmit(bytes).is_ok(),
+        None => false,
     }
-    sent
 }
 
 /// SYS_NET sub 4: ARP bootstrap probe (broadcast ask for the
@@ -797,10 +757,8 @@ pub fn udp_last_sender(port: u16) -> Option<([u8; 4], u16)> {
     Some((listener.last_sender_ip, listener.last_sender_port))
 }
 
-/// The socket-layer send: the egress cone first (the DATA — never
-/// the addressing header), then out via the gateway next-hop.
+/// Socket-layer UDP send via the gateway next-hop.
 pub enum UdpCause {
-    Cone,
     NoRoute,
     Driver,
 }
@@ -811,10 +769,6 @@ pub fn udp_send(
     data: &[u8],
     transmit: &mut dyn FnMut(&[u8]) -> bool,
 ) -> Result<(), UdpCause> {
-    if !kernel_egress::gate(data) {
-        STATE.lock().cone_blocked += 1;
-        return Err(UdpCause::Cone);
-    }
     let (mac, next) = {
         let state = STATE.lock();
         (state.mac, state.gateway_mac)
@@ -849,7 +803,6 @@ pub fn reset() {
     state.arp_replied = 0;
     state.icmp_replied = 0;
     state.tx_total = 0;
-    state.cone_blocked = 0;
     state.echo_id = 0x3713;
 }
 

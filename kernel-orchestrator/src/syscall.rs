@@ -7,20 +7,6 @@ use crate::system::System;
 
 pub use crate::abi::*;
 
-use core::sync::atomic::{AtomicU64, AtomicU8, Ordering};
-use crate::conversation;
-
-/// E21: how the shadow web's sites are keyed, chosen at the edge (SYS_SENSE
-/// sub 14). 0 = the program's identity and the raw first argument (the
-/// keying since 0139d12); 1 = the conversation itself: one shared identity
-/// and the partner the call addresses (`conversation::partner`), so every
-/// program shares the kernel's learned vocabulary. Blame lands on the pid
-/// under both. Default 0 until the measurement in docs/E21-ARMING.md says
-/// otherwise.
-static SENSE_KEYING: AtomicU8 = AtomicU8::new(0);
-static SENSOR_CYCLES: AtomicU64 = AtomicU64::new(0);
-static SENSOR_CALLS: AtomicU64 = AtomicU64::new(0);
-
 fn is(value: u64, code: u64) -> bool {
     value == code
 }
@@ -36,24 +22,6 @@ pub fn user_string(context: &Context, address: u64, limit: usize) -> Result<Stri
         bytes.push(byte);
     }
     Err(())
-}
-
-/// The lane's transit line — the observation point made visible.
-/// Written straight to serial (kernel-side), so lane traffic never
-/// passes through the cone-gated write channels: this IS the one way
-/// out, and the log line is its receipt.
-fn lane_transit_line(transit: u64, word: u64, real: bool) {
-    let line = alloc::format!(
-        "[LANE] transit #{} word {:#x} ({})\n",
-        transit,
-        word,
-        if real { "real" } else { "HONEY" }
-    );
-    let (mut serial, flags) = kernel_kit::serial::SERIAL1.lock();
-    for byte in line.as_bytes() {
-        serial.send(*byte);
-    }
-    kernel_kit::serial::SERIAL1.unlock(flags);
 }
 
 use kernel_kit::fs::{Fs, FsError as TreeError, Ino, ROOT_FS};
@@ -224,24 +192,6 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
     let arg2 = frame.rdx;
     frame.rax = ERROR;
     let mut switch = false;
-    // E21 shadow web: every syscall is a vibration at the kernel's
-    // single chokepoint. The sensor learns who talks to whom; after
-    // its cone freezes, foreign conversations spend quarantine budget.
-    // Never a payload — class, pid, target, weight only. The site is keyed
-    // on the program's identity, so a program keeps its learned
-    // conversations across runs; blame still lands on the pid. The rdtsc
-    // pair is the T3 measurement the design doc requires before any
-    // primitive is trusted live: the honest cost of feeling.
-    {
-        let started = unsafe { core::arch::x86_64::_rdtsc() };
-        if SENSE_KEYING.load(Ordering::Relaxed) == 1 {
-            kernel_sense::record_from(conversation::SHARED_IDENTITY, pid as u64, number, conversation::partner(number, arg), 1.0);
-        } else {
-            kernel_sense::record_from(context.identity, pid as u64, number, arg, 1.0);
-        }
-        SENSOR_CYCLES.fetch_add(unsafe { core::arch::x86_64::_rdtsc() } - started, Ordering::Relaxed);
-        SENSOR_CALLS.fetch_add(1, Ordering::Relaxed);
-    }
     if is(number, SYS_YIELD) {
         frame.rax = 0; switch = true;
     } else if is(number, SYS_ALLOC) {
@@ -277,26 +227,17 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
     } else if is(number, SYS_CONSOLE_WRITE) {
         if arg1 <= 4096 {
             if let Some(bytes) = copy_from_user(context, arg, arg1 as usize) {
-                // E24 egress cone: the console is the display channel too.
-                if kernel_egress::egress(pid as u64, &bytes) {
-                    let mut writer = kernel_kit::vga::VgaWriter::new();
-                    for &byte in &bytes { writer.write_byte(byte); }
-                    frame.rax = arg1;
-                }
+                let mut writer = kernel_kit::vga::VgaWriter::new();
+                for &byte in &bytes { writer.write_byte(byte); }
+                frame.rax = arg1;
             }
         }
     } else if is(number, SYS_WRITE) || is(number, 14) {
-        // E24: one byte joins the process's stream; the cone scores it
-        // with its neighbours when their window fills.
-        if kernel_egress::egress(pid as u64, &[arg as u8]) { frame.rax = stdout_write(context, &[arg as u8]); }
+        frame.rax = stdout_write(context, &[arg as u8]);
     } else if is(number, SYS_WRITE_BUFFER) {
         if arg1 <= 4096 {
             if let Some(bytes) = copy_from_user(context, arg, arg1 as usize) {
-                // E24 egress cone: the entropy gate on the outbound
-                // display channel — prose passes, key-shaped data does
-                // not, encoded keys fail the structure profile. It holds
-                // whether stdout is the console or a terminal's pipe.
-                if kernel_egress::egress(pid as u64, &bytes) { frame.rax = stdout_write(context, &bytes); }
+                frame.rax = stdout_write(context, &bytes);
             }
         }
     } else if is(number, SYS_OPEN) || is(number, SYS_OPEN_EXISTING) {
@@ -579,53 +520,40 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         frame.rax = 0;
     } else if is(number, SYS_EXEC) || is(number, SYS_EXEC_ARGS) || is(number, SYS_SPAWN) || is(number, SYS_SPAWN_ARGS) {
         // Copy all input before creating a child or replacing the caller's CR3.
-        // E34 taint wall: a TAINTED context cannot spawn or exec —
-        // derived content stays data. (This is the exec/spawn half of
-        // the gate; PROT_EXEC-equivalent for the atom OS.)
-        if !kernel_taint::gate_exec_spawn(pid as u64) {
-            frame.rax = ERROR;
-        } else {
-            let request = (|| {
-                let name = program_at(context, arg)?;
-                let extra = if is(number, SYS_EXEC_ARGS) || is(number, SYS_SPAWN_ARGS) {
-                    if arg2 > MAX_ARG_BYTES as u64 { return Err(()); }
-                    if arg2 == 0 { Vec::new() } else { copy_from_user(context, arg1, arg2 as usize).ok_or(())? }
-                } else if is(number, SYS_EXEC) && arg1 != 0 {
-                    // SYS_EXEC's optional argument string, split like a shell line.
-                    kernel_kit::arguments::extra_from_string(&user_string(context, arg1, ARGS_MAX + 1)?)
-                } else { Vec::new() };
-                let packed = kernel_kit::arguments::pack(&name, &extra)?;
-                Ok((name, extra, packed))
-            })();
-            if let Ok((name, extra, packed)) = request {
-                if is(number, SYS_SPAWN) || is(number, SYS_SPAWN_ARGS) {
-                    match system.spawn_with_args(pid, &name, &extra) {
-                        Ok(child) => {
-                            // E34: children inherit taint from their parent.
-                            kernel_taint::propagate_taint(pid as u64, child as u64);
-                            frame.rax = child as u64;
-                        }
-                        Err(()) => frame.rax = ERROR,
-                    }
-                } else if let Ok((space, entry)) = crate::process::load_image(&name, system.kernel_root) {
-                    let context = system.scheduler.current_task_mut().unwrap();
-                    // The new root keeps the same kernel mappings and stack. Switch
-                    // before dropping the old owner, so no live CR3 is reclaimed.
-                    unsafe { Cr3::load(space.root); }
-                    context.page_table_root = space.root;
-                    context.space = Some(space);
-                    context.arguments = packed;
-                    context.set_name(name);
-                    context.open_files = [(0, 0); 16]; context.readonly_files = 0; context.fs_error = 0;
-                    *frame = TrapFrame::new_user(entry, STACK_TOP);
-                    unsafe { crate::process::reset_fpu(rsp); }
+        let request = (|| {
+            let name = program_at(context, arg)?;
+            let extra = if is(number, SYS_EXEC_ARGS) || is(number, SYS_SPAWN_ARGS) {
+                if arg2 > MAX_ARG_BYTES as u64 { return Err(()); }
+                if arg2 == 0 { Vec::new() } else { copy_from_user(context, arg1, arg2 as usize).ok_or(())? }
+            } else if is(number, SYS_EXEC) && arg1 != 0 {
+                // SYS_EXEC's optional argument string, split like a shell line.
+                kernel_kit::arguments::extra_from_string(&user_string(context, arg1, ARGS_MAX + 1)?)
+            } else { Vec::new() };
+            let packed = kernel_kit::arguments::pack(&name, &extra)?;
+            Ok((name, extra, packed))
+        })();
+        if let Ok((name, extra, packed)) = request {
+            if is(number, SYS_SPAWN) || is(number, SYS_SPAWN_ARGS) {
+                match system.spawn_with_args(pid, &name, &extra) {
+                    Ok(child) => frame.rax = child as u64,
+                    Err(()) => frame.rax = ERROR,
                 }
+            } else if let Ok((space, entry)) = crate::process::load_image(&name, system.kernel_root) {
+                let context = system.scheduler.current_task_mut().unwrap();
+                // The new root keeps the same kernel mappings and stack. Switch
+                // before dropping the old owner, so no live CR3 is reclaimed.
+                unsafe { Cr3::load(space.root); }
+                context.page_table_root = space.root;
+                context.space = Some(space);
+                context.arguments = packed;
+                context.set_name(name);
+                context.open_files = [(0, 0); 16]; context.readonly_files = 0; context.fs_error = 0;
+                *frame = TrapFrame::new_user(entry, STACK_TOP);
+                unsafe { crate::process::reset_fpu(rsp); }
             }
         }
     } else if is(number, SYS_SPAWN_WITH) {
-        if !kernel_taint::gate_exec_spawn(pid as u64) {
-            frame.rax = ERROR;
-        } else if let Some(bytes) = copy_from_user(context, arg, core::mem::size_of::<SpawnRequest>()) {
+        if let Some(bytes) = copy_from_user(context, arg, core::mem::size_of::<SpawnRequest>()) {
             let request = unsafe { core::ptr::read_unaligned(bytes.as_ptr() as *const SpawnRequest) };
             let stdio = |selector: u64, current: &Option<kernel_kit::pipe::PipeEnd>, read: bool| -> Result<Option<kernel_kit::pipe::PipeEnd>, ()> {
                 match selector {
@@ -642,7 +570,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
             if let (Some(name), Some(args), Ok(stdin), Ok(stdout)) = (name, nul_string(&request.args),
                 stdio(request.stdin, &context.stdin, true), stdio(request.stdout, &context.stdout, false)) {
                 frame.rax = match system.spawn_with(pid, &name, &args, stdin, stdout) {
-                    Ok(child) => { kernel_taint::propagate_taint(pid as u64, child as u64); child as u64 }
+                    Ok(child) => child as u64,
                     Err(()) => ERROR,
                 };
             }
@@ -670,14 +598,11 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         let len = (arg2 as usize).min(4096);
         if let Some((_, Some(end))) = context.pipes.get(arg as usize) {
             if let Some(bytes) = copy_from_user(context, arg1, len) {
-                // E24: a pipe is an outbound channel like stdout.
-                if kernel_egress::egress(pid as u64, &bytes) {
-                    frame.rax = match end.write(&bytes) {
-                        kernel_kit::pipe::Write::Wrote(count) => count as u64,
-                        kernel_kit::pipe::Write::WouldBlock => WOULD_BLOCK,
-                        kernel_kit::pipe::Write::Broken => ERROR,
-                    };
-                }
+                frame.rax = match end.write(&bytes) {
+                    kernel_kit::pipe::Write::Wrote(count) => count as u64,
+                    kernel_kit::pipe::Write::WouldBlock => WOULD_BLOCK,
+                    kernel_kit::pipe::Write::Broken => ERROR,
+                };
             }
         }
     } else if is(number, SYS_PROCESSES) {
@@ -707,9 +632,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         frame.rax = pid as u64;
     } else if is(number, SYS_IPC_SEND) {
         if let Ok(message) = user_string(context, arg1, 256) {
-            // E24 egress cone: IPC is an outbound channel too.
-            if !kernel_egress::egress(pid as u64, message.as_bytes()) {
-            } else if let Some(target) = system.scheduler.task_mut(arg as usize) {
+            if let Some(target) = system.scheduler.task_mut(arg as usize) {
                 if target.state != TaskState::Terminated && target.mailbox.len() < 4 {
                     target.mailbox.push_back(message.into_bytes()); frame.rax = 0;
                 }
@@ -779,230 +702,12 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         frame.rax = system.scheduler.tasks.iter().flatten().filter(|t| t.state != TaskState::Terminated).count() as u64;
     } else if is(number, SYS_TICKS) {
         frame.rax = system.scheduler.ticks;
-    } else if is(number, SYS_SENSE) {
-        // E21 shadow-web control surface. Subcommands arrive in arg
-        // (rdi) — user-rt's call3(number, arg, arg1, arg2):
-        //   0 = status: (trained<<63) | (events<<32) | raised_sites
-        //   1 = freeze the normality cone now
-        //   2 = foreign budget of pid `arg1` (x 1e6, truncated)
-        //   11 = disarm (condemned pids are scheduled again), 12 = armed?
-        //   13 = reset the web to pre-learning (the demos replay a clean boot)
-        //   4 = normal-map word arg1 (0/1), 14/15 = set/read the keying,
-        //   16/17 = set/read the learning horizon (see docs/E21-ARMING.md)
-        let sub = arg;
-        if sub == 0 {
-            let (trained, events, raised, _readable) = kernel_sense::status();
-            frame.rax = (u64::from(trained) << 63) | ((events & 0x7FFF_FFFF) << 32) | raised as u64;
-        } else if sub == 1 {
-            kernel_sense::freeze();
-            frame.rax = 0;
-        } else if sub == 2 {
-            frame.rax = (kernel_sense::foreign_budget(arg1) * 1e6) as u64;
-        } else if sub == 6 {
-            // E31: rhythm status for pid arg1 — (matured<<63 |
-            // drifted<<62 | baseline_q<<32 | current_q).
-            let (matured, drifted, baseline, current) = kernel_sense::rhythm_status(arg1);
-            frame.rax = (u64::from(matured) << 63)
-                | (u64::from(drifted) << 62)
-                | (baseline << 32)
-                | current;
-        } else if sub == 7 {
-            // E36: seam status for pid arg1 — (bimodal<<63 | hole<<62).
-            let (bimodal, hole) = kernel_sense::seam_status(arg1);
-            frame.rax = (u64::from(bimodal) << 63) | (u64::from(hole) << 62);
-        } else if sub == 8 {
-            // E36: judge docket for pid arg1 — (certified<<63 |
-            // bimodal<<62 | episodes).
-            let (certified, bimodal, episodes) = kernel_sense::judge_status(arg1);
-            frame.rax = (u64::from(certified) << 63)
-                | (u64::from(bimodal) << 62)
-                | (episodes as u64 & 0xFF);
-        } else if sub == 9 {
-            // E36 diagnostic: chronological gap at index arg2 of pid
-            // arg1's rhythm ring (0 when absent).
-            frame.rax = kernel_sense::gap_at(arg1, arg2);
-        } else if sub == 10 {
-            // E36 diagnostic: seam internals for pid arg1 —
-            // (latched<<63 | strikes<<32 | foreign budget x1e6).
-            frame.rax = kernel_sense::seam_probe(arg1);
-        } else if sub == 11 {
-            kernel_sense::disarm();
-            frame.rax = 0;
-        } else if sub == 12 {
-            frame.rax = kernel_sense::armed() as u64;
-        } else if sub == 13 {
-            kernel_sense::reset();
-            frame.rax = 0;
-        } else if sub == 4 {
-            frame.rax = kernel_sense::normal_map_words()[(arg1 & 1) as usize];
-        } else if sub == 14 {
-            if arg1 <= 1 { SENSE_KEYING.store(arg1 as u8, Ordering::Relaxed); frame.rax = 0; }
-        } else if sub == 15 {
-            frame.rax = SENSE_KEYING.load(Ordering::Relaxed) as u64;
-        } else if sub == 16 {
-            kernel_sense::set_horizon(arg1);
-            frame.rax = 0;
-        } else if sub == 17 {
-            frame.rax = kernel_sense::horizon();
-        } else if sub == 3 {
-            // T3: average cycles per sensor record() call.
-            let calls = SENSOR_CALLS.load(Ordering::Relaxed);
-            frame.rax = if calls == 0 { 0 } else { SENSOR_CYCLES.load(Ordering::Relaxed) / calls };
-        }
-    } else if is(number, SYS_KEY) {
-        // E22 fail-dead key. sub = arg: 0=init (seed arg1^arg2 pairs),
-        // 1=maintain, 2=read word arg1, 3=status. The caller's pid is
-        // the keeper; the spider's signal revokes keepership forever.
-        let sub = arg;
-        if sub == 0 {
-            let seed = [arg1 ^ 0xE22_1, arg2 ^ 0xE22_2, arg1.rotate_left(17), arg2.rotate_left(23)];
-            frame.rax = u64::from(kernel_key::init(pid as u64, seed));
-        } else if sub == 1 {
-            frame.rax = u64::from(kernel_key::maintain(pid as u64));
-        } else if sub == 2 {
-            let words = kernel_key::read(pid as u64);
-            let index = (arg1 & 3) as usize;
-            frame.rax = words[index];
-        } else if sub == 3 {
-            let (alive, cause, energy) = kernel_key::status();
-            frame.rax = (u64::from(alive) << 63) | ((cause as u64) << 60) | energy;
-        }
-    } else if is(number, SYS_INSTANT) {
-        // E23 instant-key. sub = arg: 0=init (seed arg1), 1=maintain,
-        // 2=transform word arg1 (returns ERROR on refusal), 3=status.
-        // The key exists for one instruction inside this handler;
-        // userspace never sees key material — only its behavior.
-        let sub = arg;
-        if sub == 0 {
-            frame.rax = u64::from(kernel_instant::init(pid as u64, arg1 ^ 0xE23_5EED));
-        } else if sub == 1 {
-            frame.rax = u64::from(kernel_instant::maintain(pid as u64));
-        } else if sub == 2 {
-            match kernel_instant::transform(pid as u64, arg1) {
-                Some(out) => frame.rax = out,
-                None => frame.rax = ERROR,
-            }
-        } else if sub == 3 {
-            let (alive, cause, energy) = kernel_instant::status();
-            frame.rax = (u64::from(alive) << 63) | ((cause as u64) << 60) | energy;
-        }
-    } else if is(number, SYS_KEYLANE) {
-        // E25 the key lane — the one owned way out. sub = arg:
-        //   0=claim, 1=deposit(word=arg1,tag=arg2),
-        //   2=handoff -> word (ERROR if lane empty), 3=log_get(arg1)
-        //     -> kind<<32|word, 4=status.
-        // Real transits print a marked line to serial: the lane IS
-        // the observation point, and its traffic is legal precisely
-        // because it goes through here, not through the cone-gated
-        // write channels.
-        let sub = arg;
-        if sub == 0 {
-            frame.rax = u64::from(kernel_lane::claim(pid as u64));
-        } else if sub == 1 {
-            frame.rax = u64::from(kernel_lane::deposit(pid as u64, arg1, arg2));
-        } else if sub == 2 {
-            match kernel_lane::handoff(pid as u64) {
-                kernel_lane::Handoff::Real { word, transit, .. } => {
-                    lane_transit_line(transit, word, true);
-                    frame.rax = word;
-                }
-                kernel_lane::Handoff::Honey { word, transit } => {
-                    lane_transit_line(transit, word, false);
-                    frame.rax = word;
-                }
-                kernel_lane::Handoff::Nothing => frame.rax = ERROR,
-            }
-        } else if sub == 3 {
-            // A 64-bit word and a kind cannot share one 64-bit return
-            // without loss: the word comes back whole; the kind has
-            // its own query (sub 5).
-            let (_kind, word) = kernel_lane::log_get(arg1);
-            frame.rax = word;
-        } else if sub == 5 {
-            let (kind, _word) = kernel_lane::log_get(arg1);
-            frame.rax = kind;
-        } else if sub == 4 {
-            let (lane, holding, revoked, real, honey) = kernel_lane::status();
-            frame.rax = (lane << 48) | (u64::from(holding) << 47)
-                | (u64::from(revoked) << 46) | (real << 23) | honey;
-        }
-    } else if is(number, SYS_TAINT) {
-        // E34 taint layer. sub = arg:
-        //   0=mark_tainted(pid), 1=gate(pid), 2=promote(target),
-        //   3=status(pid), 4=forget(pid), 5=propagate(from,to),
-        //   6=set_input_focus (caller self-registers as the input
-        //      context — in a real system the keyboard handler at
-        //      boot does this; here the first caller at boot wins,
-        //      labeled honestly).
-        let sub = arg;
-        if sub == 0 {
-            frame.rax = u64::from(kernel_taint::mark_tainted(arg1));
-        } else if sub == 1 {
-            frame.rax = u64::from(kernel_taint::gate_exec_spawn(arg1));
-        } else if sub == 2 {
-            frame.rax = u64::from(kernel_taint::promote(pid as u64, arg1));
-        } else if sub == 3 {
-            frame.rax = match kernel_taint::status(arg1) {
-                kernel_taint::TaintState::Clean => 0,
-                kernel_taint::TaintState::Tainted => 1,
-                kernel_taint::TaintState::Promoted => 2,
-            };
-        } else if sub == 4 {
-            kernel_taint::forget(arg1);
-            frame.rax = 0;
-        } else if sub == 5 {
-            frame.rax = u64::from(kernel_taint::propagate_taint(arg1, arg2));
-        } else if sub == 6 {
-            kernel_taint::set_input_focus(pid as u64);
-            frame.rax = 0;
-        }
-    } else if is(number, SYS_CRYPT) {
-        // E35 crypt layer — encryption at rest with temporal scramble.
-        // sub = arg:
-        //   0=encrypt_word(word=arg1) -> ct; the temporal handle lands
-        //     in the single handle slot (read it with sub 2 before any
-        //     other crypt call — v1 single-slot, labeled),
-        //   1=decrypt_word(ct=arg1, handle=arg2) -> word (noise if the
-        //     handle is wrong or the key is dead),
-        //   2=take_handle -> the last encryption's temporal handle,
-        //   3=status -> (ready<<63) | nonce_counter,
-        //   4=destroy (the intrusion cascade fires this too).
-        // The field tick is the scheduler's own clock: ciphertext is a
-        // function of WHEN it was written, which a spatial DRAM
-        // snapshot cannot replay — the 4th dimension as a gate. v1
-        // scope is anti-snapshot, not inter-process secrecy (that is
-        // the lane's doctrine).
-        let sub = arg;
-        if sub == 0 {
-            let (ct, nonce) = kernel_crypt::encrypt_word(arg1, system.scheduler.ticks);
-            kernel_crypt::stash_handle(nonce);
-            frame.rax = ct;
-        } else if sub == 1 {
-            frame.rax = kernel_crypt::decrypt_word(arg1, arg2);
-        } else if sub == 2 {
-            frame.rax = kernel_crypt::take_handle();
-        } else if sub == 3 {
-            frame.rax = kernel_crypt::status();
-        } else if sub == 4 {
-            kernel_crypt::destroy();
-            frame.rax = 0;
-        }
-    } else if is(number, SYS_LIGHTCONE) {
-        if let Some(space) = context.space.as_ref() {
-            if let Some(phys) = space.translate_user(RECV_BASE, true) {
-                let target = phys_to_virt(phys) as *mut u8;
-                unsafe { core::ptr::write_bytes(target, 0, 4096); }
-                let page = unsafe { core::slice::from_raw_parts_mut(target, 4096) };
-                frame.rax = kernel_net::lightcone::read(arg, arg1, page).map(|n| n as u64).unwrap_or(ERROR);
-            }
-        }
     } else if is(number, SYS_NET) {
-        // E37 the network ingress. sub = arg:
-        //   0=status, 1=recv (RECV_BASE; MARKS THE CALLER TAINTED —
-        //   reading network data is handling foreign content),
-        //   2=send(bytes=arg1,len=arg2) through the E24 egress cone,
-        //   out as an ICMP echo request, 3=heartbeat now,
-        //   4=ARP bootstrap probe.
+        // Network stack: sub = arg:
+        //   0=status, 1=recv (to RECV_BASE),
+        //   2=send(bytes=arg1,len=arg2) as ICMP echo,
+        //   3=heartbeat now, 4=ARP bootstrap probe,
+        //   5=bind UDP port, 6=udp_send, 7=udp_recv, 8=last_sender.
         let sub = arg;
         if sub == 0 {
             frame.rax = kernel_net::status();
@@ -1013,12 +718,7 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                     unsafe { core::ptr::write_bytes(target, 0, 4096); }
                     let page = unsafe { core::slice::from_raw_parts_mut(target, 4096) };
                     match kernel_net::recv_into(page) {
-                        Some(len) => {
-                            // The ingress ceremony: this task now carries
-                            // foreign content. Derived stays data.
-                            kernel_taint::mark_tainted(pid as u64);
-                            frame.rax = len as u64;
-                        }
+                        Some(len) => frame.rax = len as u64,
                         None => frame.rax = ERROR,
                     }
                 }
@@ -1029,7 +729,6 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                 let transmit = &mut |out: &[u8]| kernel_net::send_raw(out);
                 frame.rax = match kernel_net::send_probed(bytes, transmit) {
                     Ok(()) => 1,
-                    Err(kernel_net::SendCause::Cone) => 2,
                     Err(kernel_net::SendCause::NoRoute) => 3,
                     Err(kernel_net::SendCause::Driver) => 4,
                 };
@@ -1040,13 +739,9 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
         } else if sub == 4 {
             frame.rax = kernel_net::arp_probe();
         } else if sub == 5 {
-            // E38: bind a listener port (the ceremony: a place you
-            // chose to receive foreign material).
             frame.rax = u64::from(kernel_net::bind(arg1 as u16));
         } else if sub == 6 {
-            // E38: udp_send. Buffer = [4B dst ip BE | 2B dst port BE
-            // | 2B src port BE | data...]. The cone judges the DATA
-            // (never the addressing header); taint applies on recv.
+            // Buffer = [4B dst ip BE | 2B dst port BE | 2B src port BE | data...].
             if arg2 >= 8 && arg2 <= 8 + 512
                 && context.space.as_ref().unwrap().valid_user_range(arg1, arg2 as usize, false) {
                 let bytes = unsafe { core::slice::from_raw_parts(arg1 as *const u8, arg2 as usize) };
@@ -1057,30 +752,23 @@ pub fn dispatch(system: &mut System, rsp: u64) -> u64 {
                 let transmit = &mut |out: &[u8]| kernel_net::send_raw(out);
                 frame.rax = match kernel_net::udp_send(ip, dst_port, src_port, &bytes[8..], transmit) {
                     Ok(()) => 1,
-                    Err(kernel_net::UdpCause::Cone) => 2,
                     Err(kernel_net::UdpCause::NoRoute) => 3,
                     Err(kernel_net::UdpCause::Driver) => 4,
                 };
             }
         } else if sub == 7 {
-            // E38: udp_recv(port) -> datagram at RECV_BASE; the
-            // caller is TAINTED (same ingress ceremony as raw recv).
             if let Some(space) = context.space.as_ref() {
                 if let Some(phys) = space.translate_user(RECV_BASE, true) {
                     let target = phys_to_virt(phys) as *mut u8;
                     unsafe { core::ptr::write_bytes(target, 0, 4096); }
                     let page = unsafe { core::slice::from_raw_parts_mut(target, 4096) };
                     match kernel_net::udp_recv_into(arg1 as u16, page) {
-                        Some(len) => {
-                            kernel_taint::mark_tainted(pid as u64);
-                            frame.rax = len as u64;
-                        }
+                        Some(len) => frame.rax = len as u64,
                         None => frame.rax = ERROR,
                     }
                 }
             }
         } else if sub == 8 {
-            // E38: last_sender(port) -> (ip<<16) | port, for replies.
             frame.rax = match kernel_net::udp_last_sender(arg1 as u16) {
                 Some((ip, port)) => (u32::from_be_bytes(ip) as u64) << 16 | port as u64,
                 None => ERROR,

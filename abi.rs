@@ -68,37 +68,12 @@ pub const SYS_EXEC_ARGS: u64 = 40;
 pub const SYS_ARGS: u64 = 41;
 pub const SYS_PROCESSES: u64 = 42;
 pub const SYS_KILL: u64 = 43;
-/// E21 shadow web: status / freeze the normality cone / query foreign budget.
-/// Sub 1 (freeze) also ARMS the cone: condemned pids are starved until sub 11
-/// disarms it (sub 12 reports whether it is armed). Sub 13 resets the web to
-/// its pre-learning state (used by the shell's `demos` command). Sub 4 reads
-/// word arg1 (0 or 1) of the normal map; sub 14 selects how sites are keyed
-/// (arg1: 0 = program identity and raw argument, 1 = the conversation's
-/// partner under one shared identity) and sub 15 reads it; sub 16 sets the
-/// learning horizon in events (arg1; u64::MAX keeps learning open until an
-/// explicit freeze) and sub 17 reads it.
-pub const SYS_SENSE: u64 = 44;
-/// E22 fail-dead key: sub=arg, see syscall handler (init/maintain/read/status).
-pub const SYS_KEY: u64 = 45;
-/// E23 instant-key: init/maintain/transform/status (reconstruction-at-use).
-pub const SYS_INSTANT: u64 = 46;
-/// E25 key lane: claim/deposit/handoff/log/status — the one owned way out.
-pub const SYS_KEYLANE: u64 = 47;
-/// E34 taint layer: sub=arg — 0=mark_tainted(pid=arg1), 1=gate(pid=arg1),
-/// 2=promote(target=arg1), 3=status(pid=arg1), 4=forget(pid=arg1),
-/// 5=propagate(from=arg1,to=arg2), 6=set_input_focus(self).
-pub const SYS_TAINT: u64 = 48;
-/// E35 crypt layer: encryption at rest with temporal scramble.
-/// sub=arg — 0=encrypt_word(word=arg1) -> ct (nonce via sub 2),
-/// 1=decrypt_word(ct=arg1, nonce=arg2) -> word, 2=last_nonce,
-/// 3=status ((ready<<63)|nonce_counter), 4=destroy.
-pub const SYS_CRYPT: u64 = 49;
-/// E40 the VGA cursor: sub=arg — 0=move cursor by arg cells
+// 44..=49 and 55 are retired (former E-series / lightcone syscalls); do not reuse.
+/// VGA text cursor: sub=arg — 0=move cursor by arg cells
 /// (negative = left, clamped line-local), 1=read (col | row<<8).
 pub const SYS_VGA: u64 = 54;
-/// E37 the network ingress: sub=arg — 0=status, 1=recv (to RECV_BASE,
-/// marks the caller tainted), 2=send(bytes=arg,len=arg1) through the
-/// egress cone as an ICMP echo, 3=heartbeat now, 4=ARP bootstrap.
+/// Network interface: sub=arg — 0=status, 1=recv (to RECV_BASE),
+/// 2=send(bytes=arg,len=arg1) as an ICMP echo, 3=heartbeat now, 4=ARP bootstrap.
 pub const SYS_NET: u64 = 50;
 /// Directory tree navigation. MKDIR (arg = path pointer) is strict: every
 /// parent must already exist (no mkdir -p semantics). CHDIR (arg = path
@@ -144,12 +119,6 @@ impl ProcessInfo {
     }
 }
 
-/// Read-only network causal-world admission records and provenance.
-pub const SYS_LIGHTCONE: u64 = 55;
-
-/// Read-only Lightcone response page (same per-process page as network receive).
-pub const LIGHTCONE_PAGE: u64 = 0x0000_7f00_0000_0000;
-
 // ---------------------------------------------------------------------------
 // Desktop, pipes and the page-backed filesystem (numbers 60 and up). These
 // came from the desktop line of work, where they used 34..57; they were moved
@@ -179,8 +148,7 @@ pub const SYS_CONSOLE_WRITE: u64 = 65;
 /// reader remains, or ERROR for a bad buffer or refused output. SYS_EXEC takes
 /// an optional argument string in rsi, split like SYS_SPAWN_WITH's.
 pub const WOULD_BLOCK: u64 = u64::MAX - 1;
-/// SYS_WRITE_BUFFER's result when standard output is a pipe nobody reads any more
-/// (ERROR there means a bad buffer or output the egress cone refused).
+/// SYS_WRITE_BUFFER's result when standard output is a pipe nobody reads any more.
 pub const BROKEN_PIPE: u64 = u64::MAX - 2;
 
 pub const ARGS_MAX: usize = 255;

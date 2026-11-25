@@ -271,15 +271,6 @@ def main():
         guest.command("faulttest", "FAULT_ISOLATION_OK status=142"); passed("USER_FAULT_CONTAINED")
         guest.command("sync", "SYNC_OK", 120)
         guest.command("df", r"Everything is saved"); passed("VIRTIO_FLUSH_COMMIT")
-        # The security demo fleet runs on request; its keys have one life per boot.
-        offset = len(guest.serial())
-        guest.command("demos", r"demos: finished[^\n]*\n", 150)
-        fleet = guest.serial()[offset:]
-        for marker in ["E22 PASS", "E23 PASS", "E24 PASS", "E25 PASS", "E31 PASS", "E34 PASS", "E35 PASS",
-                       "E36 PASS", "E37 PASS", "E38 PASS"]:
-            assert marker in fleet, (marker, fleet[-3000:])
-        guest.command("demos", "demos: already ran this boot")
-        passed("SECURITY_DEMO_FLEET")
         offset = len(guest.serial())
         guest.keys("reboot\n")
         guest.ready(offset)

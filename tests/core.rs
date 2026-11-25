@@ -5,7 +5,6 @@ extern crate alloc;
 extern crate kernel_kit;
 use kernel_kit::{context, elf, fs, keyboard, memory, slab};
 #[path = "../kernel-orchestrator/src/scheduler.rs"] mod scheduler;
-#[path = "../kernel-orchestrator/src/conversation.rs"] mod conversation;
 
 use std::alloc::{alloc_zeroed, dealloc, Layout};
 
@@ -861,43 +860,4 @@ fn process_snapshot_states_names_and_zeroed_unused_records() {
     scheduler.task_mut(99).unwrap().exit_code = KILLED_STATUS;
     assert_eq!(scheduler.snapshot().0[0].state, PROCESS_EXITED);
     assert_eq!(scheduler.snapshot().0[0].exit_code, KILLED_STATUS);
-}
-
-#[test]
-fn conversation_partner_is_the_pid_or_sub_function_and_nothing_else() {
-    use kernel_kit::abi::*;
-    assert_eq!(conversation::partner(SYS_IPC_SEND, 99), 99);
-    assert_eq!(conversation::partner(SYS_WAIT, 4), 4);
-    assert_eq!(conversation::partner(SYS_SENSE, 2), 2);
-    assert_eq!(conversation::partner(SYS_WRITE_BUFFER, 0x1000), 0);
-    assert_eq!(conversation::partner(SYS_FILE_WRITE, 3), 0);
-    assert_ne!(conversation::SHARED_IDENTITY, 0, "0 would mean 'use the pid' to the sensor");
-}
-
-#[test]
-fn collect_preserves_live_taint_and_forgets_reaped_task() {
-    extern crate kernel_taint;
-    let pid = 4242usize;
-    kernel_taint::forget(pid as u64);
-    let mut scheduler = scheduler::Scheduler::new();
-    let mut task = context::Context::new(pid, 0, 0, 0);
-    task.state = context::TaskState::Ready;
-    scheduler.spawn(task).unwrap();
-    assert!(kernel_taint::mark_tainted(pid as u64));
-    assert_eq!(kernel_taint::status(pid as u64), kernel_taint::TaintState::Tainted);
-
-    scheduler.collect();
-    assert_eq!(
-        kernel_taint::status(pid as u64),
-        kernel_taint::TaintState::Tainted,
-        "collect() must not wipe taint from live tasks"
-    );
-
-    scheduler.task_mut(pid).unwrap().state = context::TaskState::Terminated;
-    scheduler.collect();
-    assert_eq!(
-        kernel_taint::status(pid as u64),
-        kernel_taint::TaintState::Clean,
-        "collect() must forget taint when a terminated orphan task is reaped"
-    );
 }

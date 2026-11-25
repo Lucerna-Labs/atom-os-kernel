@@ -1,4 +1,4 @@
-//! udpsend — a message to the host, through the cone.
+//! udpsend — send a UDP datagram to the QEMU host gateway.
 
 #![no_std]
 #![no_main]
@@ -54,7 +54,6 @@ fn main() {
             rt::print_args(format_args!("sent {len} bytes to 10.0.2.2:5555\n"));
             rt::exit(0);
         }
-        2 => { rt::print("udpsend: the cone refused this message (key-shaped?)\n"); rt::exit(4); }
         _ => { rt::print("udpsend: driver error\n"); rt::exit(6); }
     }
 }

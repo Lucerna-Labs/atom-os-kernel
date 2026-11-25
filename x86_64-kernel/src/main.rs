@@ -544,23 +544,10 @@ pub extern "C" fn exception_handler(frame: *const u64, vector: u64) -> u64 {
 fn inject_payloads() {
     let shell_bytes = include_bytes!("../../target/x86_64-os/release/payload");
     let daemon_bytes = include_bytes!("../../target/x86_64-os/release/daemon");
-    
+
     let worker_bytes = include_bytes!("../../target/x86_64-os/release/worker");
     let fault_bytes = include_bytes!("../../target/x86_64-os/release/fault-probe");
     let fs_bytes = include_bytes!("../../target/x86_64-os/release/fs-probe");
-    let spider_bytes = include_bytes!("../../target/x86_64-os/release/spider");
-    let rogue_bytes = include_bytes!("../../target/x86_64-os/release/rogue");
-    let weave_bytes = include_bytes!("../../target/x86_64-os/release/weave-probe");
-    let keykeep_bytes = include_bytes!("../../target/x86_64-os/release/keykeep");
-    let instant_bytes = include_bytes!("../../target/x86_64-os/release/instantkeep");
-    let smuggler_bytes = include_bytes!("../../target/x86_64-os/release/smuggler");
-    let lane_bytes = include_bytes!("../../target/x86_64-os/release/lanewalk");
-    let metro_bytes = include_bytes!("../../target/x86_64-os/release/metronome");
-    let taint_bytes = include_bytes!("../../target/x86_64-os/release/taintwalk");
-    let crypt_bytes = include_bytes!("../../target/x86_64-os/release/cryptwalk");
-    let seam_bytes = include_bytes!("../../target/x86_64-os/release/seamwalk");
-    let net_bytes = include_bytes!("../../target/x86_64-os/release/netwalk");
-    let sock_bytes = include_bytes!("../../target/x86_64-os/release/udpwalk");
     let ping_bytes = include_bytes!("../../target/x86_64-os/release/pingwalk");
     let hello_bytes = include_bytes!("../../target/x86_64-os/release/hello");
     let sysinfo_bytes = include_bytes!("../../target/x86_64-os/release/sysinfo");
@@ -575,12 +562,12 @@ fn inject_payloads() {
     // The boot image's programs appear read-only in /bin, served from the image itself.
     let fs = kernel_kit::fs::ROOT_FS.lock();
     for (name, bytes) in [("shell.elf", &shell_bytes[..]), ("daemon.elf", &daemon_bytes[..]),
-        ("spider.elf", &spider_bytes[..]), ("rogue.elf", &rogue_bytes[..]),
-        ("weave.elf", &weave_bytes[..]), ("keykeep.elf", &keykeep_bytes[..]), ("instant.elf", &instant_bytes[..]), ("smuggler.elf", &smuggler_bytes[..]), ("lane.elf", &lane_bytes[..]), ("metro.elf", &metro_bytes[..]), ("taint.elf", &taint_bytes[..]), ("crypt.elf", &crypt_bytes[..]), ("seam.elf", &seam_bytes[..]), ("net.elf", &net_bytes[..]), ("sock.elf", &sock_bytes[..]), ("ping.elf", &ping_bytes[..]), ("hello.elf", &hello_bytes[..]), ("sysinfo.elf", &sysinfo_bytes[..]), ("netstat.elf", &netstat_bytes[..]), ("calc.elf", &calc_bytes[..]), ("udpsend.elf", &udpsend_bytes[..]),
-                          ("worker.elf", &worker_bytes[..]), ("fault.elf", &fault_bytes[..]), ("fs-probe.elf", &fs_bytes[..]),
-                          ("sleeper.elf", &sleeper_bytes[..]), ("desktop.elf", &desktop_bytes[..]),
-                          ("calculator.elf", &calculator_bytes[..]), ("about.elf", &about_bytes[..]),
-                          ("notepad.elf", &notepad_bytes[..])] {
+        ("ping.elf", &ping_bytes[..]), ("hello.elf", &hello_bytes[..]), ("sysinfo.elf", &sysinfo_bytes[..]),
+        ("netstat.elf", &netstat_bytes[..]), ("calc.elf", &calc_bytes[..]), ("udpsend.elf", &udpsend_bytes[..]),
+        ("worker.elf", &worker_bytes[..]), ("fault.elf", &fault_bytes[..]), ("fs-probe.elf", &fs_bytes[..]),
+        ("sleeper.elf", &sleeper_bytes[..]), ("desktop.elf", &desktop_bytes[..]),
+        ("calculator.elf", &calculator_bytes[..]), ("about.elf", &about_bytes[..]),
+        ("notepad.elf", &notepad_bytes[..])] {
         let _ = fs.install_builtin(name, bytes);
     }
     kernel_kit::fs::ROOT_FS.unlock();

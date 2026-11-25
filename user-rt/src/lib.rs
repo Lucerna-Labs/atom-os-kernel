@@ -32,7 +32,7 @@ pub fn exit(code: u64) -> ! {
     }
 }
 /// Writes to standard output, waiting while a pipe is full. Returns false when
-/// the output was refused (the egress cone or a bad buffer). A process whose
+/// the output was refused (for example, a bad buffer). A process whose
 /// output pipe has no reader left exits with BROKEN_PIPE_STATUS.
 pub fn try_print(text: &str) -> bool {
     let mut bytes = text.as_bytes();

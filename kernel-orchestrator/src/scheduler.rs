@@ -51,14 +51,6 @@ impl Scheduler {
             let index = (start + step) % MAX_TASKS;
             if let Some(task) = &mut self.tasks[index] {
                 if task.state == TaskState::Ready {
-                    // E21 spider: a pid the normality cone has
-                    // condemned is never scheduled. A task that never
-                    // runs cannot act — the veil dial as policy. The
-                    // sensor consults only task-side state here, so
-                    // this read cannot reenter the syscall tap.
-                    if kernel_sense::quarantined(task.id as u64) {
-                        continue;
-                    }
                     task.state = TaskState::Running;
                     self.current = Some(index);
                     return task.rsp;
@@ -72,56 +64,7 @@ impl Scheduler {
     pub fn timer_tick(&mut self, rsp: u64) -> u64 {
         self.ticks = self.ticks.wrapping_add(1);
         kernel_kit::io::INPUT_CLOCK.store(self.ticks as u32, core::sync::atomic::Ordering::Relaxed);
-        // E35: the crypt master key is derived once, at the field's
-        // first heartbeat, from the timestamp counter — per-boot
-        // entropy (v1 honest label: TSC seed; v2 derives from the
-        // QRNG lane). RAM pages encrypted under it read as noise to
-        // a cold-boot snapshot.
-        if self.ticks == 1 {
-            let seed = unsafe { core::arch::x86_64::_rdtsc() };
-            kernel_crypt::init(seed ^ 0xE35_B007);
-        }
-        // E21 thermodynamic release: condemnation erodes with wall
-        // time, so a false positive recovers and a real rogue is
-        // re-condemned the moment it resumes.
-        kernel_sense::tick();
-        // E37: the wire is felt on the kernel's own heartbeat — the
-        // polled NIC means packets exist when the web looks, never on
-        // the device's clock.
         kernel_net::heartbeat();
-        // E22 fail-dead key: passive erosion every tick, and the
-        // spider's condemnation signal destroys the key immediately.
-        kernel_key::tick();
-        kernel_instant::tick();
-        if let Some(intruder) = kernel_sense::take_intrusion_signal() {
-            // E25: if the intruder IS the lane task, the lane's trust
-            // dies with it — real material never travels again (the
-            // lane keeps serving honey, forever labeled). This is
-            // DISTRUST, not destruction: it rides the raw signal
-            // outside the judge, because the lane's doctrine is
-            // possession-is-proof and a single condemnation of the
-            // holder ends the ceremony.
-            if intruder == kernel_lane::lane_pid() {
-                kernel_lane::revoke();
-            }
-            // E36 the judge: condemn-starve already happened (the
-            // quarantined pid is never scheduled); DESTRUCTION waits
-            // for certified evidence — a latched drift verdict, a
-            // latched parasite seam plus a foreign-budget trace, or
-            // three re-condemnation episodes. Insufficient evidence
-            // abstains: the pid stays starved, the keys stay alive,
-            // and the thermodynamic release still frees a false
-            // positive. Patience costs safety nothing; a wrong
-            // cascade costs the whole boot (one life per key).
-            if kernel_sense::adjudicate(intruder) {
-                // The wire has one reader (the kernel); the destruction
-                // fans out to every key species: perishable, instant,
-                // and the crypt layer's master key.
-                kernel_key::spider_destroy();
-                kernel_instant::spider_destroy();
-                kernel_crypt::destroy();
-            }
-        }
         for task in self.tasks.iter_mut().flatten() {
             if task.state == TaskState::Blocked && task.wait_for.is_none() && task.sleep_until <= self.ticks {
                 task.state = TaskState::Ready;
@@ -136,10 +79,6 @@ impl Scheduler {
                 if task.state == TaskState::Terminated {
                     task.release_resources();
                     if task.parent == 0 || task.waited {
-                        // E21/E34: the reaped pid leaves the security tables.
-                        kernel_taint::forget(task.id as u64);
-                        kernel_sense::forget(task.id as u64);
-                        kernel_egress::forget(task.id as u64);
                         self.tasks[index] = None;
                     }
                 }

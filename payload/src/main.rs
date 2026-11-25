@@ -287,7 +287,7 @@ fn execute(command: &str) {
     let here = |p: &str| if p.is_empty() { String::from(".") } else { String::from(p) };
     match verb {
         "" => {}
-        "help" => rt::print("commands: help ls cd pwd mkdir rmdir cat edit echo cp rm mv df status fill sum clear msg desktop demos sense bench heaptest stats spawn run exec wait ps kill proctest selftest pairtest churn faulttest fstest storageprobe sync reboot ping\nuserspace: run hello.elf / sysinfo.elf / netstat.elf / calc.elf 2+3*4 / udpsend.elf <msg>\n"),
+        "help" => rt::print("commands: help ls cd pwd mkdir rmdir cat edit echo cp rm mv df status fill sum clear msg desktop bench heaptest stats spawn run exec wait ps kill proctest selftest pairtest churn faulttest fstest storageprobe sync reboot ping\nuserspace: run hello.elf / sysinfo.elf / netstat.elf / calc.elf 2+3*4 / udpsend.elf <msg>\n"),
         "ls" => list(&here(argument)),
         "clear" => { rt::call(SYS_CLEAR, 0, 0); }
         "bench" => bench(),
@@ -383,8 +383,6 @@ fn execute(command: &str) {
             }
             Err(()) => rt::print("ps failed\n"),
         },
-        "demos" => demos(),
-        "sense" => sense(argument),
         "kill" => match argument.parse::<u64>() {
             Ok(pid) => if rt::kill(pid) { rt::print_args(format_args!("killed pid {}\n", pid)); }
                        else { rt::print("kill failed: no live process with that PID\n"); },
@@ -421,8 +419,7 @@ fn execute(command: &str) {
             Err(e) => { rt::print_args(format_args!("SYNC_FAILED: {}\n", e.message())); }
         },
         "reboot" => { rt::call(SYS_REBOOT, 0, 0); rt::print("reboot failed (sync required)\n"); }
-        // E38b: the shell's window onto the wire. Spawned, never
-        // inline — the child takes the taint, the shell stays clean.
+        // Run ping in a child process.
         "ping" => {
             let child = rt::spawn("ping.elf");
             if child == ERROR { rt::print("ping: spawn refused (slot or image)\n"); }
@@ -430,101 +427,11 @@ fn execute(command: &str) {
         _ => rt::print("Unknown command\n"),
     }
 }
-/// E21 shadow-web diagnostics: `sense` prints the web's state and every
-/// live process's foreign budget and condemnation episodes; the verbs set the
-/// edge's knobs (see docs/E21-ARMING.md). `keying` and `horizon` reset the
-/// web, so learning restarts under the new choice.
-fn sense(argument: &str) {
-    let (verb, value) = argument.split_once(' ').unwrap_or((argument, ""));
-    match (verb, value.trim().parse::<u64>()) {
-        ("", _) => {
-            let packed = rt::call3(SYS_SENSE, 0, 0, 0);
-            rt::print_args(format_args!("SENSE trained={} armed={} events={} raised={} keying={} horizon={}\n",
-                packed >> 63, rt::call3(SYS_SENSE, 12, 0, 0), (packed >> 32) & 0x7FFF_FFFF, packed & 0xFFFF_FFFF,
-                rt::call3(SYS_SENSE, 15, 0, 0), rt::call3(SYS_SENSE, 17, 0, 0)));
-            rt::print_args(format_args!("MAP {:016x} {:016x}\n", rt::call3(SYS_SENSE, 4, 1, 0), rt::call3(SYS_SENSE, 4, 0, 0)));
-            if let Ok(tasks) = rt::processes() {
-                for task in tasks.iter().filter(|t| t.state != PROCESS_EXITED) {
-                    let docket = rt::call3(SYS_SENSE, 8, task.pid, 0);
-                    rt::print_args(format_args!("PID {} {} budget={} episodes={}\n",
-                        task.pid, task.name(), rt::call3(SYS_SENSE, 2, task.pid, 0), docket & 0xFF));
-                }
-            }
-        }
-        ("arm", _) => {
-            rt::call3(SYS_SENSE, 1, 0, 0);
-            if rt::call3(SYS_SENSE, 12, 0, 0) == 1 { rt::print("sense: cone frozen and armed\n"); }
-            else { rt::print("sense: nothing readable to freeze on; still learning, not armed\n"); }
-        }
-        ("disarm", _) => { rt::call3(SYS_SENSE, 11, 0, 0); rt::print("sense: cone disarmed\n"); }
-        ("reset", _) => { rt::call3(SYS_SENSE, 13, 0, 0); rt::print("sense: web reset, learning\n"); }
-        ("keying", Ok(keying)) if keying <= 1 => {
-            rt::call3(SYS_SENSE, 14, keying, 0); rt::call3(SYS_SENSE, 13, 0, 0);
-            rt::print_args(format_args!("sense: keying {}, web reset, learning\n", keying));
-        }
-        ("horizon", Ok(events)) => {
-            rt::call3(SYS_SENSE, 16, events, 0); rt::call3(SYS_SENSE, 13, 0, 0);
-            rt::print_args(format_args!("sense: horizon {}, web reset, learning\n", events));
-        }
-        _ => rt::print("usage: sense [arm|disarm|reset|keying 0|1|horizon events]\n"),
-    }
-}
-
-/// The security demo fleet (E21-E38), on request. The demos print as they
-/// run and the command returns when they are done (bounded, so a demo that
-/// hangs cannot keep the shell). Their keys have one life per boot, so a
-/// second run in the same boot is refused.
-fn demos() {
-    // E35's master key is alive from the first tick until the crypt demo
-    // destroys it; a dead key means the fleet already ran this boot.
-    if rt::call3(SYS_CRYPT, 3, 0, 0) >> 63 == 0 {
-        rt::print("demos: already ran this boot (their keys have one life per boot)\n");
-        return;
-    }
-    // The fleet was designed against a shadow web freshly trained on a clean
-    // boot, so replay one: reset the web, then the boot benchmark's 10,000
-    // yields retrain it (unarmed) before the demos start.
-    rt::call3(SYS_SENSE, 13, 0, 0);
-    for _ in 0..10000 { rt::yield_now(); }
-    let mut fleet = Vec::new();
-    // E35: crypt first — the master key must be demonstrated alive
-    // before the rogue's condemnation fires the destruction cascade,
-    // and cryptwalk destroys the key itself at the end (one life per
-    // boot, same doctrine as the perishable key).
-    // E21: the shadow-web spider probe, then the key, cone, lane, rhythm
-    // and taint demos; E36 last — the seam demo's certification fires the
-    // cascade; then the network ingress (E37) and datagram (E38) demos.
-    for program in ["crypt.elf", "spider.elf", "weave.elf", "keykeep.elf", "instant.elf", "smuggler.elf",
-                    "lane.elf", "metro.elf", "taint.elf", "seam.elf", "net.elf", "sock.elf"] {
-        let pid = rt::spawn(program);
-        if pid == ERROR { rt::print_args(format_args!("demos: {} not found\n", program)); } else { fleet.push(pid); }
-    }
-    let mut remaining = 6000u64;
-    while remaining > 0 && rt::processes().is_ok_and(|tasks| tasks.iter().any(|t| fleet.contains(&t.pid) && t.state != PROCESS_EXITED)) {
-        rt::sleep(10); remaining = remaining.saturating_sub(10);
-    }
-    // A demo still running at the deadline is ended with everything it
-    // started, so nothing from the fleet outlives it.
-    let leftovers: Vec<(u64, String)> = rt::processes().unwrap_or_default().iter()
-        .filter(|t| t.state != PROCESS_EXITED && (fleet.contains(&t.pid) || fleet.contains(&t.parent)))
-        .map(|t| (t.pid, String::from(t.name()))).collect();
-    for (pid, _) in leftovers.iter().rev() { rt::kill(*pid); }
-    let finished: Vec<u64> = rt::processes().unwrap_or_default().iter()
-        .filter(|t| fleet.contains(&t.pid) && t.state == PROCESS_EXITED).map(|t| t.pid).collect();
-    for pid in finished { rt::wait(pid); }
-    // E21: the demos are over, so the cone stands down (sensing continues).
-    rt::call3(SYS_SENSE, 11, 0, 0);
-    if leftovers.is_empty() { rt::print("demos: finished\n"); }
-    else {
-        let names: Vec<&str> = leftovers.iter().map(|(_, name)| name.as_str()).collect();
-        rt::print_args(format_args!("demos: finished (ended after 60 s: {})\n", names.join(", ")));
-    }
-}
 
 fn main() {
     rt::print("ATOM OS kernel shell\n");
     heap_test(); bench();
-    rt::print("shell: ready (type 'demos' to run the security demo fleet)\n");
+    rt::print("shell: ready\n");
     // Boot into the desktop when this is the console shell on a machine with
     // a display. A shell inside a desktop terminal has a piped stdin and
     // never gets here with a free display.

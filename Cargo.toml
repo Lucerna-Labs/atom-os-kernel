@@ -1,12 +1,12 @@
 [workspace]
-members = ["daemon", "user-rt", "worker", "desktop", "ui-intent", "atom-window", "gui-apps",
-    "kernel-kit", "kernel-lightcone",
-    "kernel-orchestrator", "kernel-sense", "kernel-key", "kernel-instant", "kernel-egress", "kernel-lane", "kernel-taint", "kernel-crypt", "kernel-net", "payload",
+members = [
+    "daemon", "user-rt", "worker", "desktop", "ui-intent", "atom-window", "gui-apps",
+    "kernel-kit", "kernel-orchestrator", "kernel-net", "payload",
     "x86_64-kernel",
 ]
 # bootloader/ is the from-scratch atom-bootloader (Lucerna-Labs line); it is not
 # used to build the boot image yet, so it stays outside the workspace.
-exclude = ["runner", "bootloader"]
+exclude = ["bootloader"]
 resolver = "2"
 
 [profile.dev]
